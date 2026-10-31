@@ -282,7 +282,7 @@
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
         Train spells only while standing at a trainer. Gather herbs by hand and sulfur with a pickaxe<br>
-        Click the minimap for the world map. Click a spot on it to teleport. Unexplored land stays hidden<br>
+        Click the minimap for the world map. Numbers are mob levels. Gray is 5 below you and gives no XP<br>
         H/M: first potion. Click a potion to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
@@ -360,7 +360,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround } from './worldgen.js';
+        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround } from './worldgen.js';
 
         const infoBox = document.getElementById('info');
         const showInfo = document.getElementById('showInfo');
@@ -1099,6 +1099,18 @@
                         ctx.fillRect(mark.mx - 3, mark.mz - 3, 6, 6);
                     }
                 }
+                ctx.font = 'bold 14px sans-serif';
+                for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+                    for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+                        const mob = zoneNpc(zx, zz);
+                        const mine = stats.level || 1;
+                        const gap = mine - mob.level;
+                        ctx.fillStyle = gap >= 5 ? '#9a9a9a' : mob.level >= mine + 6 ? '#ff5a5a' : mob.level >= mine + 3 ? '#f0a050' : '#8dff9a';
+                        const x0 = g.origin + (zx + WORLD_RADIUS) * g.cell;
+                        const y0 = g.origin + (zz + WORLD_RADIUS) * g.cell;
+                        ctx.fillText(String(mob.level), x0 + g.cell / 2, y0 + g.cell * 0.62);
+                    }
+                }
                 if (mapLayers.players) for (const entry of remotePlayers.values()) {
                     if (!seenAt(entry.mesh.position.x, entry.mesh.position.z)) continue;
                     const rp = toMap(entry.mesh.position.x, entry.mesh.position.z);
@@ -1116,7 +1128,7 @@
                 ctx.strokeStyle = '#ffffff';
                 ctx.stroke();
                 const known = exploredZones.has(here.zx + ',' + here.zz);
-                document.getElementById('worldmapReadout').textContent = (known ? here.name : 'Unexplored') + '  ' + here.x.toFixed(0) + ', ' + here.z.toFixed(0) + '   ·   click to teleport';
+                document.getElementById('worldmapReadout').textContent = (known ? here.name : 'Unexplored') + '  ' + here.x.toFixed(0) + ', ' + here.z.toFixed(0) + '   ·   gray levels give no XP';
             }
 
             function worldFromMapEvent(e) {
@@ -3808,7 +3820,9 @@
                             const ready = data.quests ? applyQuests(data.quests) : '';
                             if (data.heal) showMessage('+' + data.heal + ' HP');
                             else if (data.killed) {
-                                const xp = data.leveled ? 'Level ' + data.level + '! +' + data.gained + ' XP' : '+' + data.gained + ' XP';
+                                const xp = data.gained > 0
+                                    ? (data.leveled ? 'Level ' + data.level + '! +' + data.gained + ' XP' : '+' + data.gained + ' XP')
+                                    : 'No XP';
                                 showMessage(ready ? xp + ' · ' + ready : xp);
                                 if (data.chest) addChest(data.chest);
                             } else if (ready) showMessage(ready);

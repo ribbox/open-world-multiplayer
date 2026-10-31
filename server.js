@@ -373,6 +373,11 @@ function maxManaFor(player) {
     return 10 + ((player.level || 1) - 1) * 4 + talentRank(player, 'meditation') * 2;
 }
 
+function xpForKill(player, npc) {
+    if (!npc || npc.level <= player.level - 5) return 0;
+    return 20 * npc.level;
+}
+
 function grantXp(player, amount) {
     player.xp += amount;
     let leveled = false;
@@ -1587,7 +1592,7 @@ wss.on('connection', (ws) => {
                     npc.hp = 0;
                     npc.alive = false;
                     npc.respawnAt = Date.now() + 8000;
-                    gained = 20 * npc.level;
+                    gained = xpForKill(player, npc);
                     leveled = grantXp(player, gained);
                     chest = spawnChest(npc);
                     noteKill(player, npc);
@@ -1839,7 +1844,7 @@ wss.on('connection', (ws) => {
                     npc.hp = 0;
                     npc.alive = false;
                     npc.respawnAt = Date.now() + 8000;
-                    gained = 20 * npc.level;
+                    gained = xpForKill(player, npc);
                     leveled = grantXp(player, gained);
                     chest = spawnChest(npc);
                     noteKill(player, npc);

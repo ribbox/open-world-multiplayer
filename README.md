@@ -41,7 +41,7 @@ node server.js
 - Mouse wheel: zoom in/out on the character
 
 ## Notes
-- Click the minimap to open the world map. Both maps hide land you have not walked near. Exploration is saved with your character. Click a spot on the world map to teleport there for testing. The world is a 9 by 9 block of zones with a post fence on the edge. Every zone has a camp, marked in gold once you have seen it. Camp Glade keeps Mira, Bram, and Sela.
+- The world map shows each zone's mob level. Green is close to your level, orange and red are higher, and gray is 5 or more levels below you. Killing a gray mob gives no XP. Click a spot on the world map to teleport.
 - A shop assistant buys bag items and supplies. The coin price is rarity times quality: armor, magic, and potion strength raise it. Shift-click sells a whole stack. Spell training still requires a trainer. A character can learn only 2 crafting skills.
 - Gathering and inventory are server-authoritative. Trees and rocks are shared, and a depleted node stays gone for everyone.
 - Hostile NPCs roam, chase nearby players, and show up as red squares on the minimap. Each kind is a different shape: boar, wolf, spider, bandit, ogre, wisp, knight, and cultist. Each zone has its own creatures. Camp Glade is wild boars at level 1–2. Neighboring zones are wolves, spiders, or bandits, and farther zones are ogres, knights, wisps, and cultists at higher levels. Their loot follows the creature: hides, silk, coins, ore, gems, plate, or magic patterns. NPC level sets their hit points. Armor reduces the damage they deal.
