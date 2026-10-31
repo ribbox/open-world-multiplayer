@@ -253,6 +253,7 @@
         Click an NPC or another player, or press Tab, to target them<br>
         B: Bag &nbsp; C: Character sheet &nbsp; F: Loot<br>
         Character sheet Craft tab makes gear. The gold Shop button buys recipe sets<br>
+        Farther zones hold stronger creatures with their own loot<br>
         H/M: first potion. Click a potion to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
@@ -1139,7 +1140,7 @@
                 if (!selectedNpcId) return null;
                 const npc = worldNpcs.get(selectedNpcId);
                 if (npc && !npc.dying) {
-                    return { kind: 'npc', id: selectedNpcId, group: npc.group, name: 'Hostile', level: npc.level, hp: npc.hp, maxHp: npc.maxHp };
+                    return { kind: 'npc', id: selectedNpcId, group: npc.group, name: npc.name || 'Hostile', level: npc.level, hp: npc.hp, maxHp: npc.maxHp };
                 }
                 const remote = remotePlayers.get(selectedNpcId);
                 if (remote) {
@@ -1169,7 +1170,7 @@
                 frame.style.borderColor = aimed.kind === 'player' ? 'rgba(80,180,255,0.8)' : 'rgba(255,80,80,0.7)';
                 document.getElementById('targetName').textContent = aimed.kind === 'player'
                     ? aimed.name
-                    : 'Hostile  Lv ' + (aimed.level || 1);
+                    : aimed.name + '  Lv ' + (aimed.level || 1);
                 const pct = aimed.maxHp ? Math.max(0, Math.min(1, (aimed.hp || 0) / aimed.maxHp)) : 1;
                 const fill = document.getElementById('targetHpFill');
                 fill.style.width = (pct * 100) + '%';
@@ -1331,33 +1332,35 @@
                 tryAttack(id);
             }
 
-            function makeNpcSprite(level, hp, maxHp) {
+            function makeNpcSprite(name, level, hp, maxHp) {
                 const canvas = document.createElement('canvas');
                 canvas.width = 256;
-                canvas.height = 96;
+                canvas.height = 112;
                 const ctx = canvas.getContext('2d');
                 ctx.fillStyle = 'rgba(0,0,0,0.6)';
-                ctx.fillRect(28, 6, 200, 34);
+                ctx.fillRect(8, 4, 240, 52);
                 ctx.fillStyle = '#ff6666';
-                ctx.font = 'bold 24px Arial';
+                ctx.font = 'bold 20px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText('Lv ' + level, 128, 23);
+                ctx.fillText(name || 'Hostile', 128, 20);
+                ctx.font = '16px Arial';
+                ctx.fillText('Lv ' + level, 128, 42);
                 ctx.fillStyle = '#222';
-                ctx.fillRect(28, 50, 200, 14);
+                ctx.fillRect(28, 66, 200, 14);
                 const width = Math.max(0, Math.min(200, 200 * (hp / (maxHp || 1))));
                 ctx.fillStyle = '#e74c3c';
-                ctx.fillRect(28, 50, width, 14);
+                ctx.fillRect(28, 66, width, 14);
                 const tex = new THREE.CanvasTexture(canvas);
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-                sprite.scale.set(1.8, 0.68, 1);
-                sprite.position.y = 2.35;
+                sprite.scale.set(1.8, 0.78, 1);
+                sprite.position.y = 2.45;
                 sprite.userData.texture = tex;
                 return sprite;
             }
 
-            function tintHostile(root) {
-                const tint = new THREE.Color('#c0392b');
+            function tintHostile(root, color) {
+                const tint = new THREE.Color(color || '#c0392b');
                 root.traverse(obj => {
                     if (!obj.isMesh || !obj.material) return;
                     const source = Array.isArray(obj.material) ? obj.material : [obj.material];
@@ -1513,9 +1516,10 @@
                     if (old.material) old.material.dispose();
                     if (old.userData.texture) old.userData.texture.dispose();
                 }
-                const label = makeNpcSprite(state.level, state.hp, state.maxHp);
+                const label = makeNpcSprite(state.name, state.level, state.hp, state.maxHp);
                 entry.group.add(label);
                 entry.group.userData.label = label;
+                entry.name = state.name || entry.name;
                 entry.level = state.level;
                 entry.hp = state.hp;
                 entry.maxHp = state.maxHp || entry.maxHp || state.hp;
@@ -1528,9 +1532,10 @@
                     if (!npcTemplate) return;
                     const group = new THREE.Group();
                     const model = cloneSkinned(npcTemplate);
-                    model.scale.setScalar(npcScale);
+                    const rank = 0.9 + Math.min(12, state.level || 1) * 0.05;
+                    model.scale.setScalar(npcScale * rank);
                     model.position.y = npcFoot;
-                    tintHostile(model);
+                    tintHostile(model, state.tint);
                     group.add(model);
                     if (npcClips.length) {
                         const remoteMixer = new THREE.AnimationMixer(model);
@@ -1539,14 +1544,29 @@
                     }
                     group.position.set(state.x, 0, state.z);
                     scene.add(group);
-                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, level: -1, hp: -1, maxHp: state.maxHp || 1 };
+                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, name: state.name || 'Hostile', level: -1, hp: -1, maxHp: state.maxHp || 1 };
                     group.userData.npcId = state.id;
                     worldNpcs.set(state.id, entry);
                 }
                 entry.tx = state.x;
                 entry.tz = state.z;
                 entry.rotY = state.rotY || 0;
-                if (entry.level !== state.level || entry.hp !== state.hp) setNpcLabel(entry, state);
+                if (entry.name !== (state.name || entry.name) || entry.level !== state.level || entry.hp !== state.hp) {
+                    setNpcLabel(entry, { name: state.name || entry.name, level: state.level, hp: state.hp, maxHp: state.maxHp || entry.maxHp, id: state.id });
+                }
+            }
+
+            function forgetNpc(id) {
+                const entry = worldNpcs.get(id);
+                if (!entry) return;
+                scene.remove(entry.group);
+                const label = entry.group.userData.label;
+                if (label) {
+                    if (label.material) label.material.dispose();
+                    if (label.userData.texture) label.userData.texture.dispose();
+                }
+                worldNpcs.delete(id);
+                if (selectedNpcId === id) selectNpc(null);
             }
 
             function syncNpcs(list) {
@@ -2991,6 +3011,8 @@
                         else showMessage('Hit');
                     } else if (data.type === 'npcs') {
                         syncNpcs(data.npcs || []);
+                    } else if (data.type === 'npcUnload') {
+                        (data.ids || []).forEach(forgetNpc);
                     } else if (data.type === 'npcHit') {
                         const entry = worldNpcs.get(data.id);
                         const prev = entry && entry.hp > 0 ? entry.hp : 0;

@@ -128,3 +128,22 @@ export function zoneAt(x, z) {
         z: ((z - originZ) / ZONE_SIZE) * 100
     };
 }
+
+const ZONE_PACKS = [
+    ['boar'],
+    ['wolf', 'spider', 'bandit'],
+    ['ogre', 'spider', 'bandit'],
+    ['knight', 'ogre', 'wisp'],
+    ['cultist', 'knight', 'wisp']
+];
+
+export function zoneNpc(zx, zz) {
+    const ring = Math.max(Math.abs(zx), Math.abs(zz));
+    const row = ZONE_PACKS[Math.min(ring, ZONE_PACKS.length - 1)];
+    const h = chunkSeed(zx + 11, zz - 5);
+    return {
+        kind: row[h % row.length],
+        level: 1 + ring * 2 + (h % 2),
+        ring
+    };
+}

@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { chunkResources } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, ZONE_SIZE } from './worldgen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -87,10 +87,21 @@ function hitsFor(id) {
 
 const players = new Map();
 const npcs = new Map();
-const NPC_COUNT = 8;
+const seededZones = new Set();
 const AGGRO_RANGE = 9;
 const ATTACK_RANGE = 2.6;
 const NPC_HIT_RANGE = 1.55;
+
+const NPC_KINDS = {
+    boar: { id: 'boar', name: 'Wild Boar', tint: '#8d6a3a', loot: 'hide' },
+    wolf: { id: 'wolf', name: 'Wolf', tint: '#7f8c8d', loot: 'hide' },
+    spider: { id: 'spider', name: 'Moss Spider', tint: '#1e8449', loot: 'silk' },
+    bandit: { id: 'bandit', name: 'Bandit', tint: '#c0392b', loot: 'bandit' },
+    ogre: { id: 'ogre', name: 'Hill Ogre', tint: '#6e4b2a', loot: 'ore' },
+    wisp: { id: 'wisp', name: 'Fen Wisp', tint: '#5dade2', loot: 'wisp' },
+    knight: { id: 'knight', name: 'Plate Knight', tint: '#d5d8dc', loot: 'plate' },
+    cultist: { id: 'cultist', name: 'Cultist', tint: '#8e44ad', loot: 'magic' }
+};
 
 function xpToNext(level) {
     return 50 * level;
@@ -129,16 +140,47 @@ function publicNpc(n) {
         rotY: n.rotY,
         level: n.level,
         hp: n.hp,
-        maxHp: n.maxHp
+        maxHp: n.maxHp,
+        name: n.name,
+        kind: n.kind,
+        tint: n.tint
+    };
+}
+
+function zoneKey(zx, zz) {
+    return zx + ',' + zz;
+}
+
+function clampToZone(npc, x, z) {
+    const half = ZONE_SIZE / 2 - 8;
+    const cx = npc.zx * ZONE_SIZE;
+    const cz = npc.zz * ZONE_SIZE;
+    return {
+        x: Math.max(cx - half, Math.min(cx + half, x)),
+        z: Math.max(cz - half, Math.min(cz + half, z))
     };
 }
 
 function placeNpc(npc) {
-    const angle = Math.random() * Math.PI * 2;
-    const dist = 18 + Math.random() * 55;
-    npc.x = Math.cos(angle) * dist;
-    npc.z = Math.sin(angle) * dist;
-    npc.level = 1 + Math.floor(Math.random() * 5);
+    const profile = zoneNpc(npc.zx, npc.zz);
+    const kind = NPC_KINDS[profile.kind] || NPC_KINDS.boar;
+    const span = ZONE_SIZE - 44;
+    let x = npc.zx * ZONE_SIZE;
+    let z = npc.zz * ZONE_SIZE;
+    for (let n = 0; n < 8; n++) {
+        x = npc.zx * ZONE_SIZE + (Math.random() - 0.5) * span;
+        z = npc.zz * ZONE_SIZE + (Math.random() - 0.5) * span;
+        if (Math.hypot(x, z) > 16) break;
+    }
+    if (Math.hypot(x, z) < 16) x += 18;
+    const placed = clampToZone(npc, x, z);
+    npc.x = placed.x;
+    npc.z = placed.z;
+    npc.kind = kind.id;
+    npc.name = kind.name;
+    npc.tint = kind.tint;
+    npc.loot = kind.loot;
+    npc.level = profile.level;
     npc.maxHp = npcMaxHp(npc.level);
     npc.hp = npc.maxHp;
     npc.alive = true;
@@ -151,15 +193,49 @@ function placeNpc(npc) {
 function pickWander(npc) {
     const angle = Math.random() * Math.PI * 2;
     const dist = 4 + Math.random() * 14;
-    npc.wanderX = npc.homeX + Math.cos(angle) * dist;
-    npc.wanderZ = npc.homeZ + Math.sin(angle) * dist;
+    const next = clampToZone(npc, npc.homeX + Math.cos(angle) * dist, npc.homeZ + Math.sin(angle) * dist);
+    npc.wanderX = next.x;
+    npc.wanderZ = next.z;
     npc.wanderUntil = Date.now() + 3000 + Math.random() * 4000;
 }
 
-for (let i = 0; i < NPC_COUNT; i++) {
-    const npc = { id: 'n' + i };
-    placeNpc(npc);
-    npcs.set(npc.id, npc);
+function ensureZone(zx, zz) {
+    const key = zoneKey(zx, zz);
+    if (seededZones.has(key)) return;
+    seededZones.add(key);
+    for (let i = 0; i < 2; i++) {
+        const npc = { id: 'z' + zx + '_' + zz + '_' + i, zx, zz };
+        placeNpc(npc);
+        npcs.set(npc.id, npc);
+    }
+}
+
+function refreshNpcZones() {
+    const want = new Set();
+    const marks = [{ x: 0, z: 0 }];
+    for (const player of players.values()) marks.push(player);
+    for (const mark of marks) {
+        const here = zoneAt(mark.x, mark.z);
+        for (let dx = -2; dx <= 2; dx++) {
+            for (let dz = -2; dz <= 2; dz++) want.add(zoneKey(here.zx + dx, here.zz + dz));
+        }
+    }
+    for (const key of want) {
+        const [zx, zz] = key.split(',').map(Number);
+        ensureZone(zx, zz);
+    }
+    const unload = [];
+    for (const [id, npc] of npcs) {
+        if (want.has(zoneKey(npc.zx, npc.zz))) continue;
+        unload.push(id);
+        npcs.delete(id);
+        seededZones.delete(zoneKey(npc.zx, npc.zz));
+    }
+    if (unload.length) broadcast({ type: 'npcUnload', ids: unload });
+}
+
+for (let zx = -1; zx <= 1; zx++) {
+    for (let zz = -1; zz <= 1; zz++) ensureZone(zx, zz);
 }
 
 function becomeGhost(player, now) {
@@ -779,67 +855,107 @@ function savePlayer(player) {
     scheduleSave();
 }
 
-const LOOT_WEIGHTS = [
-    { kind: 'junk', weight: 28 },
-    { kind: 'coins', weight: 18 },
-    { kind: 'gather', weight: 12 },
-    { kind: 'cloth', weight: 8 },
-    { kind: 'leather', weight: 7 },
-    { kind: 'ore', weight: 7 },
-    { kind: 'health', weight: 7 },
-    { kind: 'mana', weight: 5 },
-    { kind: 'gem', weight: 3 },
-    { kind: 'recipe', weight: 3 },
-    { kind: 'armor', weight: 2 }
-];
-const JUNK_NAMES = ['Bent nail', 'Torn cloth', 'Cracked bead', 'Rusty buckle', 'Frayed rope'];
+const LOOT_TABLES = {
+    hide: [
+        { kind: 'leather', weight: 34 },
+        { kind: 'junk', weight: 26, names: ['Tusk', 'Torn hide', 'Bone chip'] },
+        { kind: 'coins', weight: 16 },
+        { kind: 'health', weight: 14 },
+        { kind: 'cloth', weight: 6 },
+        { kind: 'recipe', weight: 4, sets: ['leather'] }
+    ],
+    silk: [
+        { kind: 'cloth', weight: 36 },
+        { kind: 'junk', weight: 18, names: ['Webbing', 'Dried silk', 'Chitin'] },
+        { kind: 'mana', weight: 16 },
+        { kind: 'coins', weight: 12 },
+        { kind: 'recipe', weight: 12, sets: ['cloth'] },
+        { kind: 'health', weight: 6 }
+    ],
+    bandit: [
+        { kind: 'coins', weight: 34 },
+        { kind: 'junk', weight: 18, names: ['Bent dagger', 'Torn bandana', 'Rusty key'] },
+        { kind: 'leather', weight: 14 },
+        { kind: 'recipe', weight: 14, sets: ['weapon', 'leather'] },
+        { kind: 'health', weight: 10 },
+        { kind: 'ore', weight: 10 }
+    ],
+    ore: [
+        { kind: 'ore', weight: 32 },
+        { kind: 'stone', weight: 18 },
+        { kind: 'junk', weight: 14, names: ['Ogre tooth', 'Cracked club', 'Flint'] },
+        { kind: 'coins', weight: 12 },
+        { kind: 'health', weight: 12 },
+        { kind: 'recipe', weight: 12, sets: ['plate', 'weapon'] }
+    ],
+    wisp: [
+        { kind: 'gem', weight: 22 },
+        { kind: 'mana', weight: 22 },
+        { kind: 'cloth', weight: 14 },
+        { kind: 'recipe', weight: 18, sets: ['magic'] },
+        { kind: 'coins', weight: 12 },
+        { kind: 'junk', weight: 12, names: ['Wisp ash', 'Faded rune', 'Glass bead'] }
+    ],
+    plate: [
+        { kind: 'ore', weight: 22 },
+        { kind: 'armor', weight: 20 },
+        { kind: 'coins', weight: 18 },
+        { kind: 'recipe', weight: 16, sets: ['plate', 'weapon'] },
+        { kind: 'health', weight: 12 },
+        { kind: 'junk', weight: 12, names: ['Broken rivet', 'Dented plate', 'Banner scrap'] }
+    ],
+    magic: [
+        { kind: 'gem', weight: 20 },
+        { kind: 'mana', weight: 18 },
+        { kind: 'recipe', weight: 22, sets: ['magic'] },
+        { kind: 'cloth', weight: 14 },
+        { kind: 'coins', weight: 12 },
+        { kind: 'junk', weight: 14, names: ['Hexed bead', 'Burnt page', 'Black candle'] }
+    ]
+};
 
-function rollKind() {
-    const total = LOOT_WEIGHTS.reduce((sum, row) => sum + row.weight, 0);
+function rollRow(table) {
+    const total = table.reduce((sum, row) => sum + row.weight, 0);
     let roll = Math.random() * total;
-    for (const row of LOOT_WEIGHTS) {
+    for (const row of table) {
         roll -= row.weight;
-        if (roll <= 0) return row.kind;
+        if (roll <= 0) return row;
     }
-    return 'junk';
+    return table[table.length - 1];
 }
 
-function rollLoot(level) {
+function lootItem(row, level) {
+    const kind = row.kind;
+    if (kind === 'junk') {
+        const names = row.names || ['Bent nail', 'Torn cloth', 'Cracked bead'];
+        return { kind, name: names[Math.floor(Math.random() * names.length)], qty: 1 };
+    }
+    if (kind === 'coins') {
+        return { kind, name: 'Coins', qty: level * 4 + Math.floor(Math.random() * (level * 2 + 1)) };
+    }
+    if (kind === 'health') return { kind, name: 'Health potion', qty: 1, amount: 8 + level * 3 };
+    if (kind === 'mana') return { kind, name: 'Mana potion', qty: 1, amount: 6 + level * 2 };
+    if (kind === 'stone') return { kind, name: 'Stone', qty: 1 + Math.floor(level / 2) };
+    if (kind === 'cloth' || kind === 'leather' || kind === 'ore' || kind === 'gem') {
+        return { kind, name: MATERIAL_NAMES[kind], qty: kind === 'gem' ? 1 : 1 + Math.floor(level / 2) };
+    }
+    if (kind === 'recipe') {
+        let ids = LOOT_RECIPE_IDS;
+        if (row.sets) ids = ids.filter(id => row.sets.includes(RECIPES[id].set));
+        if (!ids.length) ids = LOOT_RECIPE_IDS;
+        const id = ids[Math.floor(Math.random() * ids.length)];
+        return { kind: 'recipe', name: 'Pattern: ' + RECIPES[id].name, qty: 1, recipe: id };
+    }
+    const wear = ['head', 'shoulders', 'chest', 'hands', 'legs', 'feet'][Math.floor(Math.random() * 6)];
+    const wearName = { head: 'Plate Helm', shoulders: 'Plate Pauldrons', chest: 'Plate Scrap', hands: 'Plate Gauntlets', legs: 'Plate Greaves', feet: 'Plate Sabatons' };
+    return { kind: 'armor', slot: wear, style: 'plate', name: wearName[wear], qty: 1, armor: 1 + Math.floor((level - 1) / 2) };
+}
+
+function rollLoot(level, tableId) {
+    const table = LOOT_TABLES[tableId] || LOOT_TABLES.hide;
     const count = 1 + Math.floor((level - 1) / 2) + (Math.random() < 0.5 ? 1 : 0);
     const items = [];
-    for (let i = 0; i < count; i++) {
-        const kind = rollKind();
-        if (kind === 'junk') {
-            items.push({ kind, name: JUNK_NAMES[Math.floor(Math.random() * JUNK_NAMES.length)], qty: 1 });
-        } else if (kind === 'coins') {
-            items.push({ kind, name: 'Coins', qty: level * 4 + Math.floor(Math.random() * (level * 2 + 1)) });
-        } else if (kind === 'gather') {
-            const wood = Math.random() < 0.5;
-            items.push({
-                kind: wood ? 'wood' : 'stone',
-                name: wood ? 'Wood' : 'Stone',
-                qty: 1 + Math.floor(level / 2)
-            });
-        } else if (kind === 'health') {
-            items.push({ kind, name: 'Health potion', qty: 1, amount: 8 + level * 3 });
-        } else if (kind === 'mana') {
-            items.push({ kind, name: 'Mana potion', qty: 1, amount: 6 + level * 2 });
-        } else if (kind === 'cloth' || kind === 'leather' || kind === 'ore' || kind === 'gem') {
-            items.push({ kind, name: MATERIAL_NAMES[kind], qty: kind === 'gem' ? 1 : 1 + Math.floor(level / 2) });
-        } else if (kind === 'recipe') {
-            const id = LOOT_RECIPE_IDS[Math.floor(Math.random() * LOOT_RECIPE_IDS.length)];
-            items.push({ kind: 'recipe', name: 'Pattern: ' + RECIPES[id].name, qty: 1, recipe: id });
-        } else {
-            const armorSlots = ['head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'waist', 'legs', 'feet', 'offhand'];
-            const wear = armorSlots[Math.floor(Math.random() * armorSlots.length)];
-            const wearName = {
-                head: 'Helm scrap', neck: 'Pendant', shoulders: 'Pauldrons', cloak: 'Cloak scrap',
-                chest: 'Armor scrap', hands: 'Gloves', waist: 'Belt', legs: 'Leggings',
-                feet: 'Boot scrap', offhand: 'Buckler'
-            };
-            items.push({ kind: 'armor', slot: wear, name: wearName[wear], qty: 1, armor: 1 + Math.floor((level - 1) / 2) });
-        }
-    }
+    for (let i = 0; i < count; i++) items.push(lootItem(rollRow(table), level));
     return items;
 }
 
@@ -856,7 +972,7 @@ function spawnChest(npc) {
         x: npc.x,
         z: npc.z,
         level: npc.level,
-        items: rollLoot(npc.level),
+        items: rollLoot(npc.level, npc.loot),
         spawnedAt: Date.now()
     };
     chests.set(chest.id, chest);
@@ -885,6 +1001,7 @@ function tickNpcs() {
     const now = Date.now();
     const dt = Math.min(0.1, (now - lastNpcTick) / 1000);
     lastNpcTick = now;
+    refreshNpcZones();
 
     for (const npc of npcs.values()) {
         if (!npc.alive) {
@@ -1294,7 +1411,9 @@ wss.on('connection', (ws) => {
                     alive: npc.alive,
                     x: npc.x,
                     z: npc.z,
-                    level: npc.level
+                    level: npc.level,
+                    name: npc.name,
+                    tint: npc.tint
                 });
                 return { dealt: per, killed: !npc.alive, gained, leveled, chest };
             };
