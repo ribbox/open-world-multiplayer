@@ -62,15 +62,18 @@
         #status { text-align: center; margin-bottom: 4px; text-shadow: 0 1px 2px #000; }
         #barRow { display: flex; align-items: flex-end; gap: 6px; }
         #barSlots { display: flex; gap: 4px; }
-        .bar-slot, .bar-nav, #bagButton {
+        .bar-slot, .bar-nav, #bagButton, #sheetButton {
             width: 46px; height: 46px; padding: 0; color: white; cursor: pointer;
             border: 1px solid rgba(255,255,255,0.45); background: rgba(0,0,0,0.55);
             border-radius: 4px; font-size: 11px; line-height: 1.1;
         }
         .bar-nav, #bagButton { width: 36px; font-size: 16px; }
-        #bagButton { width: 46px; background: #3d3420; }
+        #bagButton { width: 46px; background-color: #3d3420; }
+        #sheetButton { background-color: #2c3140; }
         #bagButton.open, #sheetButton.open { outline: 2px solid #f1c40f; }
-        #sheetButton { width: 46px; background: #2c3140; font-size: 12px; }
+        #bagButton, #sheetButton { font-size: 0; background-repeat: no-repeat; background-position: center; background-size: 34px 34px; }
+        .bar-slot { background-repeat: no-repeat; background-position: center 16px; background-size: 30px 30px; }
+        #actionPicker canvas, .spell-row canvas { width: 28px; height: 28px; }
         #sheet {
             display: none; position: absolute; left: 50%; top: 48px; transform: translateX(-50%);
             width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 160px); overflow: auto;
@@ -161,8 +164,8 @@
             <button type="button" class="bar-nav" id="pagePrev">‹</button>
             <div id="barSlots"></div>
             <button type="button" class="bar-nav" id="pageNext">›</button>
-            <button type="button" id="bagButton">Bag</button>
-            <button type="button" id="sheetButton">Char</button>
+            <button type="button" id="bagButton" title="Bag" aria-label="Bag"></button>
+            <button type="button" id="sheetButton" title="Character" aria-label="Character"></button>
         </div>
         <div id="pageLabel">Page 1 / 3</div>
     </div>
@@ -397,7 +400,7 @@
                 'power-strike': { name: 'Power Strike', short: 'Pwr', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Heavy hit. 6 mana.' },
                 cleave: { name: 'Cleave', short: 'Clv', kind: 'spell', weapon: 'sword', hint: 'Warrior talent spell. 5 mana.' },
                 staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'Requires an equipped staff.' },
-                'arcane-bolt': { name: 'Arcane Bolt', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Longer range. 5 mana.' },
+                'arcane-bolt': { name: 'Arcane Missile', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Each rank fires another bolt. 5 mana.' },
                 'arcane-surge': { name: 'Arcane Surge', short: 'Srg', kind: 'spell', weapon: 'staff', hint: 'Mage talent spell. 8 mana.' },
                 mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Restore health. 4 mana.' },
                 gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.' }
@@ -1078,6 +1081,164 @@
                 gameSocket.send(JSON.stringify({ type: 'actionbar', pages: actionBar }));
             }
 
+            function spellBolts(id) {
+                if (id !== 'arcane-bolt') return 1;
+                return (character.spellRanks && character.spellRanks[id]) || 1;
+            }
+
+            function makeIcon(id, bolts) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 64;
+                canvas.height = 64;
+                const g = canvas.getContext('2d');
+                g.lineJoin = 'round';
+                g.lineCap = 'round';
+                if (id === 'sword') drawSword(g);
+                else if (id === 'power-strike') { drawSword(g); drawSlash(g, '#f6e58d', 1); }
+                else if (id === 'cleave') { drawSlash(g, '#ffd36b', -1); drawSlash(g, '#ffe9a8', 1); }
+                else if (id === 'staff') drawStaff(g);
+                else if (id === 'arcane-bolt') drawBolts(g, bolts || 1);
+                else if (id === 'arcane-surge') { drawBolts(g, 1); g.strokeStyle = '#d6efff'; g.lineWidth = 2; g.strokeRect(8, 8, 48, 48); }
+                else if (id === 'mend') drawMend(g);
+                else if (id === 'gather') drawAxe(g);
+                else if (id === 'bag') drawBag(g);
+                else if (id === 'character') drawCharacter(g);
+                return canvas;
+            }
+
+            function drawSword(g) {
+                g.fillStyle = '#d5dbe0';
+                g.beginPath();
+                g.moveTo(34, 6);
+                g.lineTo(42, 14);
+                g.lineTo(24, 48);
+                g.lineTo(16, 40);
+                g.closePath();
+                g.fill();
+                g.fillStyle = '#8d6a45';
+                g.fillRect(14, 46, 16, 6);
+                g.fillStyle = '#c0c6cc';
+                g.fillRect(10, 44, 22, 4);
+            }
+
+            function drawSlash(g, color, dir) {
+                g.strokeStyle = color;
+                g.lineWidth = 4;
+                g.beginPath();
+                g.arc(32, 34, 18, dir < 0 ? 3.6 : 5.3, dir < 0 ? 5.2 : 6.6);
+                g.stroke();
+            }
+
+            function drawStaff(g) {
+                g.strokeStyle = '#7a4b2a';
+                g.lineWidth = 5;
+                g.beginPath();
+                g.moveTo(26, 58);
+                g.lineTo(38, 10);
+                g.stroke();
+                g.fillStyle = '#5dade2';
+                g.beginPath();
+                g.arc(40, 10, 7, 0, Math.PI * 2);
+                g.fill();
+            }
+
+            function drawBolt(g, x, y, scale) {
+                g.save();
+                g.translate(x, y);
+                g.rotate(-0.7);
+                g.scale(scale, scale);
+                g.fillStyle = '#7ec8ff';
+                g.beginPath();
+                g.moveTo(12, 0);
+                g.lineTo(-8, 5);
+                g.lineTo(-3, 0);
+                g.lineTo(-8, -5);
+                g.closePath();
+                g.fill();
+                g.fillStyle = '#f4fbff';
+                g.beginPath();
+                g.moveTo(4, 0);
+                g.lineTo(-2, 2);
+                g.lineTo(0, 0);
+                g.lineTo(-2, -2);
+                g.closePath();
+                g.fill();
+                g.restore();
+            }
+
+            function drawBolts(g, count) {
+                const n = Math.max(1, Math.min(3, count));
+                const layouts = {
+                    1: [[32, 34, 1.35]],
+                    2: [[24, 40, 1.05], [42, 26, 1.05]],
+                    3: [[20, 46, 0.9], [34, 32, 0.9], [48, 18, 0.9]]
+                };
+                for (const [x, y, scale] of layouts[n]) drawBolt(g, x, y, scale);
+            }
+
+            function drawMend(g) {
+                g.fillStyle = '#2ecc71';
+                g.beginPath();
+                g.moveTo(32, 54);
+                g.bezierCurveTo(4, 34, 8, 14, 32, 24);
+                g.bezierCurveTo(56, 14, 60, 34, 32, 54);
+                g.fill();
+            }
+
+            function drawAxe(g) {
+                g.strokeStyle = '#8d6a45';
+                g.lineWidth = 4;
+                g.beginPath();
+                g.moveTo(30, 56);
+                g.lineTo(30, 16);
+                g.stroke();
+                g.fillStyle = '#b0b7bf';
+                g.beginPath();
+                g.moveTo(30, 10);
+                g.quadraticCurveTo(52, 16, 48, 30);
+                g.quadraticCurveTo(40, 26, 30, 28);
+                g.closePath();
+                g.fill();
+            }
+
+            function drawBag(g) {
+                g.fillStyle = '#8d5a2b';
+                g.beginPath();
+                g.moveTo(16, 28);
+                g.lineTo(12, 56);
+                g.lineTo(52, 56);
+                g.lineTo(48, 28);
+                g.closePath();
+                g.fill();
+                g.strokeStyle = '#e6c27a';
+                g.lineWidth = 3;
+                g.beginPath();
+                g.arc(32, 24, 10, Math.PI, 0);
+                g.stroke();
+                g.strokeRect(28, 36, 8, 8);
+            }
+
+            function drawCharacter(g) {
+                g.fillStyle = '#f0d0b0';
+                g.beginPath();
+                g.arc(32, 22, 10, 0, Math.PI * 2);
+                g.fill();
+                g.fillStyle = '#5d6d8a';
+                g.beginPath();
+                g.moveTo(14, 58);
+                g.quadraticCurveTo(32, 34, 50, 58);
+                g.closePath();
+                g.fill();
+            }
+
+            function paintIcon(el, id, bolts) {
+                const canvas = makeIcon(id, bolts);
+                el.style.backgroundImage = 'url(' + canvas.toDataURL() + ')';
+                el.style.backgroundRepeat = 'no-repeat';
+                el.style.backgroundPosition = 'center';
+                el.style.backgroundSize = id === 'bag' || id === 'character' ? '34px 34px' : '30px 30px';
+            }
+
             function renderBar() {
                 const root = document.getElementById('barSlots');
                 root.textContent = '';
@@ -1094,11 +1255,7 @@
                     key.className = 'key';
                     key.textContent = String(i + 1);
                     button.appendChild(key);
-                    if (action) {
-                        const label = document.createElement('div');
-                        label.textContent = action.short;
-                        button.appendChild(label);
-                    }
+                    if (action) paintIcon(button, id, spellBolts(id));
                     button.addEventListener('mousedown', (e) => e.preventDefault());
                     button.addEventListener('click', () => { if (action) useAction(id); });
                     button.addEventListener('contextmenu', (e) => {
@@ -1144,7 +1301,11 @@
                         if (!spellKnown(id)) continue;
                         const choice = document.createElement('button');
                         choice.type = 'button';
-                        choice.textContent = ACTIONS[id].name;
+                        choice.className = 'icon-btn';
+                        choice.appendChild(makeIcon(id, spellBolts(id)));
+                        const name = document.createElement('span');
+                        name.textContent = ACTIONS[id].name;
+                        choice.appendChild(name);
                         choice.draggable = true;
                         choice.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', 'action:' + id));
                         choice.addEventListener('click', () => {
@@ -1292,21 +1453,24 @@
                     if (spell.class !== character.class) continue;
                     const line = document.createElement('div');
                     line.className = 'spell-row';
-                    const known = (character.trained || []).includes(id) && (!spell.talent || (character.talents[spell.talent] || 0) > 0);
+                    const rank = (character.spellRanks && character.spellRanks[id]) || 0;
+                    const maxRank = spell.maxRank || 1;
+                    const known = rank > 0 && (!spell.talent || (character.talents[spell.talent] || 0) > 0);
+                    line.appendChild(makeIcon(id, id === 'arcane-bolt' ? Math.max(1, rank) : 1));
                     const label = document.createElement('div');
-                    label.textContent = spell.name + (spell.cost ? ' · ' + spell.cost + ' coins' : '') + (spell.level > 1 ? ' · level ' + spell.level : '');
+                    label.textContent = spell.name + (rank === 0 && spell.cost ? ' · ' + spell.cost + ' coins' : '') + (rank > 0 && rank < maxRank ? ' · ' + (spell.rankCost || spell.cost) + ' coins' : '') + (spell.level > 1 && rank === 0 ? ' · level ' + spell.level : '');
                     line.appendChild(label);
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.className = 'text-btn';
-                    if (known) {
+                    if (known && rank >= maxRank) {
                         button.textContent = 'Trained';
                         button.disabled = true;
                     } else if (spell.talent && !(character.talents[spell.talent] > 0)) {
                         button.textContent = 'Talent';
                         button.disabled = true;
                     } else {
-                        button.textContent = 'Train';
+                        button.textContent = rank > 0 ? 'Improve' : 'Train';
                         button.addEventListener('click', () => sendCharacter('train', { spell: id }));
                     }
                     line.appendChild(button);
@@ -1369,6 +1533,8 @@
                 picker.hidden = true;
             });
             renderBar();
+            paintIcon(document.getElementById('bagButton'), 'bag');
+            paintIcon(document.getElementById('sheetButton'), 'character');
 
             // Input
             document.addEventListener('keydown', (e) => {

@@ -26,7 +26,8 @@ node server.js
 ## Controls
 - W/S: move, A/D: turn
 - Space: jump, Shift: sprint
-- 1-8: use the current action-bar page. [ and ] change page. Right-click a slot, or drag, to assign a weapon, spell, or Gather.
+- 1-8 use the current action-bar page. [ and ] change page. The slots, bag, and character buttons are icons. Right-click a slot to assign a trained action.
+- Arcane Missile can be improved on the character sheet. Each rank fires another bolt, and the icon shows that many bolts.
 - B opens the bag. C opens the character sheet. Choose Warrior or Mage once.
 - The sheet equips a weapon and head, chest, or feet. Class spells are trained there. Each level after the first gives a talent point for that class's tree.
 - F: loot a chest. H and M use the first health or mana potion.

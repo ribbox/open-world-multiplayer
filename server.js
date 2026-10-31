@@ -262,7 +262,7 @@ const SPELLS = {
     'power-strike': { class: 'warrior', name: 'Power Strike', level: 1, cost: 0 },
     cleave: { class: 'warrior', name: 'Cleave', level: 4, cost: 20, talent: 'cleave' },
     staff: { class: 'mage', name: 'Staff', level: 1, cost: 0 },
-    'arcane-bolt': { class: 'mage', name: 'Arcane Bolt', level: 1, cost: 0 },
+    'arcane-bolt': { class: 'mage', name: 'Arcane Missile', level: 1, cost: 0, maxRank: 3, rankCost: 12 },
     mend: { class: 'mage', name: 'Mend', level: 2, cost: 15 },
     'arcane-surge': { class: 'mage', name: 'Arcane Surge', level: 4, cost: 25, talent: 'surge' }
 };
@@ -306,6 +306,13 @@ function loadCharacter(prof) {
         }
     }
     prof.talents = talents;
+    const ranks = {};
+    const rawRanks = prof.spellRanks && typeof prof.spellRanks === 'object' ? prof.spellRanks : {};
+    for (const id of prof.trained) {
+        const maxRank = (SPELLS[id] && SPELLS[id].maxRank) || 1;
+        ranks[id] = Math.max(1, Math.min(maxRank, Number(rawRanks[id]) || 1));
+    }
+    prof.spellRanks = ranks;
 }
 
 function armorValue(player) {
@@ -350,6 +357,7 @@ function publicCharacter(player) {
         equipment: player.equipment,
         trained: player.trained,
         talents: player.talents,
+        spellRanks: player.spellRanks || {},
         points: talentPoints(player),
         known: knownSpells(player),
         spells: SPELLS,
@@ -383,6 +391,8 @@ function chooseClass(player, className) {
     player.class = className;
     player.trained = kit.trained.slice();
     player.talents = {};
+    player.spellRanks = {};
+    for (const id of player.trained) player.spellRanks[id] = 1;
     player.equipment.weapon = copySlot(kit.weapon);
     refreshDerived(player);
     savePlayer(player);
@@ -393,11 +403,17 @@ function trainSpell(player, id) {
     const spell = SPELLS[id];
     if (!player.class) return 'Choose a class first';
     if (!spell || spell.class !== player.class) return 'Not for your class';
-    if (player.trained.includes(id) && (!spell.talent || talentRank(player, spell.talent) > 0)) return 'Already trained';
     if (spell.talent && talentRank(player, spell.talent) < 1) return 'Needs the talent';
-    if (player.level < spell.level) return 'Requires level ' + spell.level;
-    if (!spendCoins(player, spell.cost)) return 'Not enough coins';
+    if (!player.spellRanks) player.spellRanks = {};
+    const rank = player.trained.includes(id) ? (player.spellRanks[id] || 1) : 0;
+    const maxRank = spell.maxRank || 1;
+    if (rank >= maxRank) return 'Already trained';
+    const next = rank + 1;
+    if (player.level < spell.level + next - 1) return 'Requires level ' + (spell.level + next - 1);
+    const cost = rank === 0 ? spell.cost : (spell.rankCost || spell.cost);
+    if (!spendCoins(player, cost)) return 'Not enough coins';
     if (!player.trained.includes(id)) player.trained.push(id);
+    player.spellRanks[id] = next;
     savePlayer(player);
     return null;
 }
@@ -583,6 +599,7 @@ function savePlayer(player) {
     prof.equipment = player.equipment;
     prof.trained = player.trained;
     prof.talents = player.talents;
+    prof.spellRanks = player.spellRanks || {};
     prof.level = player.level;
     prof.xp = player.xp;
     prof.wood = 0;
@@ -845,6 +862,7 @@ wss.on('connection', (ws) => {
                 },
                 trained: prof.trained.slice(),
                 talents: { ...prof.talents },
+                spellRanks: { ...prof.spellRanks },
                 bagSlots: prof.bagSlots || 0,
                 slots: prof.slots.map(copySlot),
                 actionbar: prof.actionbar,
@@ -1002,7 +1020,9 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'attackResult', ok: false, reason: 'No target', ...statsOf(player) });
                 return;
             }
-            const damage = spec.damage(player.level) + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0);
+            const rank = (player.spellRanks && player.spellRanks[data.ability || 'sword']) || 1;
+            const bolts = (data.ability === 'arcane-bolt') ? rank : 1;
+            const damage = (spec.damage(player.level) + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0)) * bolts;
             best.hp -= damage;
             let gained = 0;
             let leveled = false;
@@ -1029,6 +1049,7 @@ wss.on('connection', (ws) => {
                 type: 'attackResult',
                 ok: true,
                 damage,
+                bolts,
                 npcId: best.id,
                 killed: !best.alive,
                 gained,
