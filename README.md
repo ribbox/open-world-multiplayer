@@ -28,6 +28,7 @@ node server.js
 - Space: jump, Shift: sprint
 - 1/2: switch tool, E: swing/gather
 - Hold Right Mouse + move: orbit camera
+- Mouse wheel: zoom in/out on the character
 
 ## Notes
 - Gathering is currently client-side (each player sees their own inventory).

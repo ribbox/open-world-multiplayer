@@ -49,6 +49,7 @@
         1: Axe &nbsp; 2: Pickaxe<br>
         E: Swing / Gather<br>
         Hold Right Mouse: Rotate Camera<br>
+        Mouse Wheel: Zoom<br>
         <small>Player: human model &nbsp;|&nbsp; NPCs: minion model (served by server)</small>
     </div>
     <div id="inventory">
@@ -161,6 +162,7 @@
                             const m = new THREE.AnimationMixer(npc);
                             const act = m.clipAction(gltf.animations[0]);
                             act.play();
+                            // store mixer for update later if desired
                         }
                     }
                     console.log('NPCs spawned');
@@ -316,7 +318,9 @@
             // Camera orbit
             let cameraYaw = Math.PI;
             let cameraPitch = 0.25;
-            const cameraDistance = 8;
+            let cameraDistance = 8;
+            const minCameraDistance = 2.2;
+            const maxCameraDistance = 28;
             const cameraHeight = 2.2;
             let isOrbiting = false;
             let lastMouseX = 0;
@@ -536,6 +540,12 @@
                 cameraPitch -= dy * orbitSensitivity;
                 cameraPitch = Math.max(-0.4, Math.min(1.2, cameraPitch));
             });
+            renderer.domElement.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomStep = Math.max(0.4, cameraDistance * 0.12);
+                cameraDistance += Math.sign(e.deltaY) * zoomStep;
+                cameraDistance = Math.max(minCameraDistance, Math.min(maxCameraDistance, cameraDistance));
+            }, { passive: false });
 
             window.addEventListener('resize', () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
@@ -707,7 +717,6 @@
 
             // Start multiplayer after a short delay so scene is ready
             setTimeout(connectMultiplayer, 500);
-
         } catch (err) {
             showError(err.message || err);
         }
