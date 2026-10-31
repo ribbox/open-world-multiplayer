@@ -246,7 +246,7 @@ function sanitizeActionBar(pages) {
     return bar;
 }
 
-const EQUIP_SLOTS = ['weapon', 'head', 'chest', 'feet'];
+const EQUIP_SLOTS = ['head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'waist', 'legs', 'feet', 'weapon', 'offhand'];
 const CLASS_KITS = {
     warrior: {
         weapon: { kind: 'weapon', weapon: 'sword', name: 'Worn Sword', qty: 1, armor: 0, amount: 0, slot: 'weapon' },
@@ -276,7 +276,9 @@ const TALENTS = {
 };
 
 function emptyEquipment() {
-    return { weapon: null, head: null, chest: null, feet: null };
+    const gear = {};
+    for (const slot of EQUIP_SLOTS) gear[slot] = null;
+    return gear;
 }
 
 function loadCharacter(prof) {
@@ -318,7 +320,8 @@ function loadCharacter(prof) {
 function armorValue(player) {
     let total = talentRank(player, 'toughness');
     let worn = false;
-    for (const slot of ['head', 'chest', 'feet']) {
+    for (const slot of EQUIP_SLOTS) {
+        if (slot === 'weapon') continue;
         const piece = player.equipment && player.equipment[slot];
         if (!piece) continue;
         worn = true;
@@ -652,9 +655,13 @@ function rollLoot(level) {
         } else if (kind === 'mana') {
             items.push({ kind, name: 'Mana potion', qty: 1, amount: 6 + level * 2 });
         } else {
-            const armorSlots = ['head', 'chest', 'feet'];
+            const armorSlots = ['head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'waist', 'legs', 'feet', 'offhand'];
             const wear = armorSlots[Math.floor(Math.random() * armorSlots.length)];
-            const wearName = { head: 'Helm scrap', chest: 'Armor scrap', feet: 'Boot scrap' };
+            const wearName = {
+                head: 'Helm scrap', neck: 'Pendant', shoulders: 'Pauldrons', cloak: 'Cloak scrap',
+                chest: 'Armor scrap', hands: 'Gloves', waist: 'Belt', legs: 'Leggings',
+                feet: 'Boot scrap', offhand: 'Buckler'
+            };
             items.push({ kind: 'armor', slot: wear, name: wearName[wear], qty: 1, armor: 1 + Math.floor((level - 1) / 2) });
         }
     }
@@ -854,12 +861,7 @@ wss.on('connection', (ws) => {
                 armor: 0,
                 legacyArmor: prof.legacyArmor || 0,
                 class: prof.class,
-                equipment: {
-                    weapon: prof.equipment.weapon ? copySlot(prof.equipment.weapon) : null,
-                    head: prof.equipment.head ? copySlot(prof.equipment.head) : null,
-                    chest: prof.equipment.chest ? copySlot(prof.equipment.chest) : null,
-                    feet: prof.equipment.feet ? copySlot(prof.equipment.feet) : null
-                },
+                equipment: Object.fromEntries(EQUIP_SLOTS.map(slot => [slot, prof.equipment[slot] ? copySlot(prof.equipment[slot]) : null])),
                 trained: prof.trained.slice(),
                 talents: { ...prof.talents },
                 spellRanks: { ...prof.spellRanks },

@@ -23,20 +23,26 @@
         }
         #bagSlots {
             display: grid;
-            grid-template-columns: repeat(4, 36px);
+            grid-template-columns: repeat(4, 40px);
             gap: 3px;
             margin-top: 4px;
         }
         .slot {
-            width: 36px;
-            height: 36px;
-            padding: 1px;
+            position: relative;
+            width: 40px;
+            height: 40px;
+            padding: 0;
             border: 1px solid rgba(255,255,255,0.35);
-            background: rgba(0,0,0,0.35);
+            background-color: rgba(0,0,0,0.35);
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: 28px 28px;
             color: white;
-            font-size: 9px;
-            line-height: 1.15;
             cursor: pointer;
+        }
+        .slot .qty {
+            position: absolute; right: 2px; bottom: 0; font-size: 10px;
+            text-shadow: 0 1px 1px #000; pointer-events: none;
         }
         .slot.wood { background: #6b4f2a; }
         .slot.stone { background: #5f6368; }
@@ -83,13 +89,45 @@
         #sheet.open { display: block; }
         #sheet h2 { margin: 0 0 8px; font-size: 18px; }
         #sheet .row { display: flex; gap: 16px; align-items: flex-start; }
-        #doll { display: grid; grid-template-columns: 72px 72px; gap: 6px; }
+        #doll {
+            position: relative;
+            display: grid;
+            grid-template-columns: 54px 54px 54px;
+            grid-template-areas:
+                ". head ."
+                "cloak neck shoulders"
+                "weapon chest offhand"
+                ". hands ."
+                ". waist ."
+                ". legs ."
+                ". feet .";
+            gap: 5px;
+        }
+        #doll::before {
+            content: "";
+            position: absolute;
+            left: 54px; right: 54px; top: 4px; bottom: 4px;
+            border-radius: 28px 28px 16px 16px;
+            background: rgba(255,255,255,0.05);
+            pointer-events: none;
+        }
+        .paper-slot.head { grid-area: head; }
+        .paper-slot.neck { grid-area: neck; }
+        .paper-slot.shoulders { grid-area: shoulders; }
+        .paper-slot.cloak { grid-area: cloak; }
+        .paper-slot.chest { grid-area: chest; }
+        .paper-slot.hands { grid-area: hands; }
+        .paper-slot.waist { grid-area: waist; }
+        .paper-slot.legs { grid-area: legs; }
+        .paper-slot.feet { grid-area: feet; }
+        .paper-slot.weapon { grid-area: weapon; }
+        .paper-slot.offhand { grid-area: offhand; }
+        .paper-slot { width: 54px; height: 54px; padding: 0; font-size: 0; background-repeat: no-repeat; background-position: center; background-size: 36px 36px; }
         .paper-slot, .class-pick, .sheet-tab, .text-btn {
             color: white; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.3);
             border-radius: 4px; cursor: pointer;
         }
-        .paper-slot { width: 72px; height: 64px; font-size: 11px; }
-        .paper-slot.filled { background: #3d4f6f; }
+        .paper-slot.filled { background-color: #3d4f6f; }
         .class-pick { width: 220px; min-height: 88px; padding: 8px; text-align: left; }
         .sheet-tab { padding: 4px 10px; margin-right: 4px; }
         .sheet-tab.on { background: #3d4f6f; }
@@ -138,7 +176,7 @@
         Right-click a slot to assign a trained action<br>
         E: Gather if something is close, otherwise attack<br>
         B: Bag &nbsp; C: Character sheet &nbsp; F: Loot<br>
-        H/M: first potion. Click a potion or armor slot to use it<br>
+        H/M: first potion. Click a potion to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
         <small>Player: human model &nbsp;|&nbsp; NPCs: minion model (served by server)</small>
@@ -456,7 +494,6 @@
             }
 
             const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, baseSlots: 16 };
-            const SLOT_LETTER = { wood: 'Wd', stone: 'St', coins: 'C', junk: 'J', health: 'HP', mana: 'MP', armor: 'Ar' };
             function updateInventoryUI() {
                 const slots = inventory.slots || [];
                 const used = slots.filter(Boolean).length;
@@ -469,12 +506,13 @@
                     cell.type = 'button';
                     cell.className = 'slot' + (slot ? ' ' + slot.kind : '');
                     if (slot) {
-                        const name = document.createElement('div');
-                        name.textContent = SLOT_LETTER[slot.kind] || '?';
-                        const qty = document.createElement('div');
-                        qty.textContent = 'x' + slot.qty;
-                        cell.appendChild(name);
-                        cell.appendChild(qty);
+                        paintItem(cell, slot);
+                        if (slot.qty > 1) {
+                            const qty = document.createElement('div');
+                            qty.className = 'qty';
+                            qty.textContent = String(slot.qty);
+                            cell.appendChild(qty);
+                        }
                         cell.title = slot.name + ' x' + slot.qty;
                     } else {
                         cell.title = 'Empty';
@@ -1239,6 +1277,165 @@
                 el.style.backgroundSize = id === 'bag' || id === 'character' ? '34px 34px' : '30px 30px';
             }
 
+            function itemCanvas(item, faded) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 64;
+                canvas.height = 64;
+                const g = canvas.getContext('2d');
+                const kind = item.kind;
+                const slot = item.slot || '';
+                if (kind === 'weapon') {
+                    if (item.weapon === 'staff') drawStaff(g);
+                    else drawSword(g);
+                } else if (kind === 'wood') drawWood(g);
+                else if (kind === 'stone') drawStone(g);
+                else if (kind === 'coins') drawCoins(g);
+                else if (kind === 'junk') drawJunk(g);
+                else if (kind === 'health') drawVial(g, '#e74c3c');
+                else if (kind === 'mana') drawVial(g, '#3498db');
+                else drawGear(g, slot || 'chest');
+                if (faded) {
+                    g.globalCompositeOperation = 'source-atop';
+                    g.fillStyle = 'rgba(20, 24, 32, 0.45)';
+                    g.fillRect(0, 0, 64, 64);
+                }
+                return canvas;
+            }
+
+            function paintItem(el, item, faded) {
+                el.style.backgroundImage = 'url(' + itemCanvas(item, faded).toDataURL() + ')';
+                el.style.backgroundRepeat = 'no-repeat';
+                el.style.backgroundPosition = 'center';
+                el.style.backgroundSize = '32px 32px';
+            }
+
+            function drawWood(g) {
+                g.fillStyle = '#8d5a2b';
+                g.fillRect(14, 28, 36, 10);
+                g.fillStyle = '#c4a574';
+                g.beginPath();
+                g.arc(16, 33, 7, 0, Math.PI * 2);
+                g.arc(48, 33, 7, 0, Math.PI * 2);
+                g.fill();
+            }
+
+            function drawStone(g) {
+                g.fillStyle = '#9aa3ad';
+                g.beginPath();
+                g.moveTo(18, 46);
+                g.lineTo(12, 28);
+                g.lineTo(28, 14);
+                g.lineTo(50, 22);
+                g.lineTo(52, 42);
+                g.closePath();
+                g.fill();
+            }
+
+            function drawCoins(g) {
+                g.fillStyle = '#f1c40f';
+                g.beginPath();
+                g.ellipse(32, 34, 16, 12, 0, 0, Math.PI * 2);
+                g.fill();
+                g.strokeStyle = '#b7950b';
+                g.lineWidth = 2;
+                g.beginPath();
+                g.ellipse(32, 28, 16, 12, 0, 0, Math.PI * 2);
+                g.stroke();
+                g.fill();
+            }
+
+            function drawJunk(g) {
+                g.strokeStyle = '#b0b6be';
+                g.lineWidth = 3;
+                g.beginPath();
+                g.moveTo(16, 44);
+                g.lineTo(24, 22);
+                g.lineTo(40, 36);
+                g.lineTo(48, 18);
+                g.stroke();
+            }
+
+            function drawVial(g, color) {
+                g.fillStyle = color;
+                g.beginPath();
+                g.moveTo(26, 18);
+                g.lineTo(38, 18);
+                g.lineTo(42, 50);
+                g.quadraticCurveTo(32, 58, 22, 50);
+                g.closePath();
+                g.fill();
+                g.fillStyle = '#ddd';
+                g.fillRect(28, 10, 8, 8);
+            }
+
+            function drawGear(g, slot) {
+                g.strokeStyle = '#d5dbe6';
+                g.fillStyle = '#8ea0b8';
+                g.lineWidth = 3;
+                if (slot === 'head') {
+                    g.beginPath();
+                    g.arc(32, 28, 14, Math.PI, 0);
+                    g.lineTo(46, 42);
+                    g.lineTo(18, 42);
+                    g.closePath();
+                    g.fill();
+                } else if (slot === 'neck') {
+                    g.beginPath();
+                    g.arc(32, 34, 8, 0, Math.PI * 2);
+                    g.fill();
+                    g.beginPath();
+                    g.arc(32, 22, 14, 0.4, Math.PI - 0.4);
+                    g.stroke();
+                } else if (slot === 'shoulders') {
+                    g.beginPath();
+                    g.ellipse(20, 34, 12, 8, -0.4, 0, Math.PI * 2);
+                    g.ellipse(44, 34, 12, 8, 0.4, 0, Math.PI * 2);
+                    g.fill();
+                } else if (slot === 'cloak') {
+                    g.beginPath();
+                    g.moveTo(22, 14);
+                    g.lineTo(42, 14);
+                    g.lineTo(50, 52);
+                    g.lineTo(14, 52);
+                    g.closePath();
+                    g.fill();
+                } else if (slot === 'hands') {
+                    g.beginPath();
+                    g.ellipse(22, 36, 10, 12, 0, 0, Math.PI * 2);
+                    g.ellipse(42, 36, 10, 12, 0, 0, Math.PI * 2);
+                    g.fill();
+                } else if (slot === 'waist') {
+                    g.fillRect(14, 28, 36, 10);
+                    g.fillStyle = '#f1c40f';
+                    g.fillRect(30, 30, 6, 6);
+                } else if (slot === 'legs') {
+                    g.fillRect(18, 12, 12, 38);
+                    g.fillRect(34, 12, 12, 38);
+                } else if (slot === 'feet') {
+                    g.beginPath();
+                    g.moveTo(14, 36);
+                    g.lineTo(28, 36);
+                    g.lineTo(30, 46);
+                    g.lineTo(12, 46);
+                    g.closePath();
+                    g.moveTo(34, 36);
+                    g.lineTo(50, 36);
+                    g.lineTo(52, 46);
+                    g.lineTo(32, 46);
+                    g.fill();
+                } else if (slot === 'offhand') {
+                    g.beginPath();
+                    g.moveTo(22, 10);
+                    g.lineTo(44, 16);
+                    g.lineTo(40, 48);
+                    g.lineTo(18, 42);
+                    g.closePath();
+                    g.fill();
+                } else {
+                    g.fillRect(18, 14, 28, 34);
+                }
+            }
+
             function renderBar() {
                 const root = document.getElementById('barSlots');
                 root.textContent = '';
@@ -1411,14 +1608,19 @@
                 row.className = 'row';
                 const doll = document.createElement('div');
                 doll.id = 'doll';
-                const labels = { head: 'Head', chest: 'Chest', feet: 'Feet', weapon: 'Weapon' };
-                for (const slot of ['head', 'weapon', 'chest', 'feet']) {
+                const labels = {
+                    head: 'Head', neck: 'Neck', shoulders: 'Shoulders', cloak: 'Cloak',
+                    chest: 'Chest', hands: 'Hands', waist: 'Waist', legs: 'Legs', feet: 'Feet',
+                    weapon: 'Weapon', offhand: 'Off hand'
+                };
+                for (const slot of ['head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'waist', 'legs', 'feet', 'weapon', 'offhand']) {
                     const piece = character.equipment && character.equipment[slot];
                     const button = document.createElement('button');
                     button.type = 'button';
-                    button.className = 'paper-slot' + (piece ? ' filled' : '');
-                    button.textContent = piece ? piece.name : labels[slot];
-                    button.title = piece ? 'Unequip' : 'Empty';
+                    button.className = 'paper-slot ' + slot + (piece ? ' filled' : '');
+                    const shown = piece || { kind: slot === 'weapon' ? 'weapon' : 'armor', slot, weapon: slot === 'weapon' && character.class === 'mage' ? 'staff' : 'sword' };
+                    paintItem(button, shown, !piece);
+                    button.title = piece ? piece.name + (piece.armor ? ' · armor ' + piece.armor : '') + ' (click to unequip)' : labels[slot];
                     button.addEventListener('click', () => {
                         if (piece) sendCharacter('unequip', { slot });
                     });
@@ -1507,6 +1709,7 @@
                     if (!slot || (slot.kind !== 'armor' && slot.kind !== 'weapon')) return;
                     const line = document.createElement('div');
                     line.className = 'spell-row';
+                    line.appendChild(itemCanvas(slot));
                     const label = document.createElement('div');
                     label.textContent = slot.name + (slot.armor ? ' · armor ' + slot.armor : '');
                     line.appendChild(label);
