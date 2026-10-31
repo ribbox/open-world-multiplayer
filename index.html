@@ -74,6 +74,21 @@
             text-shadow: 0 1px 2px #000; pointer-events: none; z-index: 10;
         }
         #zoneName { font-weight: bold; }
+        #mapLayersButton {
+            position: absolute; left: 152px; bottom: 168px; z-index: 12;
+            width: 36px; height: 20px; padding: 0; font-size: 11px; color: white;
+            background: rgba(0,0,0,0.72); border: 1px solid rgba(255,255,255,0.45);
+            border-radius: 4px; cursor: pointer;
+        }
+        #mapLayers {
+            position: absolute; left: 204px; bottom: 15px; z-index: 12;
+            width: 128px; color: white; background: rgba(0,0,0,0.82);
+            border: 1px solid rgba(255,255,255,0.35); border-radius: 6px;
+            padding: 8px; font-size: 12px;
+        }
+        #mapLayers[hidden] { display: none; }
+        #mapLayers label { display: flex; align-items: center; gap: 6px; margin: 3px 0; cursor: pointer; }
+        #mapLayers i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
         #targetFrame {
             position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
             width: 220px; color: white; background: rgba(0,0,0,0.72);
@@ -223,7 +238,7 @@
         H/M: first potion. Click a potion to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
-        Minimap: zone name and 0–100 coordinates<br>
+        Minimap: zone name and 0–100 coordinates. Map chooses what is shown<br>
         <small>Player: human model &nbsp;|&nbsp; NPCs: minion model (served by server)</small>
     </div>
     <button type="button" id="showInfo" hidden>Help</button>
@@ -257,6 +272,16 @@
     <div id="actionPicker" hidden></div>
     <div id="mapReadout"><div id="zoneName">Camp Glade</div><div id="zoneCoords">50.0, 50.0</div></div>
     <canvas id="minimap" width="180" height="180"></canvas>
+    <button type="button" id="mapLayersButton" title="Choose what the minimap shows">Map</button>
+    <div id="mapLayers" hidden>
+        <label><input type="checkbox" data-layer="grid" checked> <i style="background:#fff"></i> Grid</label>
+        <label><input type="checkbox" data-layer="trees" checked> <i style="background:#228B22;border-radius:50%"></i> Trees</label>
+        <label><input type="checkbox" data-layer="rocks" checked> <i style="background:#888;border-radius:50%"></i> Rocks</label>
+        <label><input type="checkbox" data-layer="npcs" checked> <i style="background:#e74c3c"></i> Hostiles</label>
+        <label><input type="checkbox" data-layer="chests" checked> <i style="background:#f1c40f"></i> Chests</label>
+        <label><input type="checkbox" data-layer="bodies" checked> <i style="background:#d6ecff;border-radius:50%"></i> Bodies</label>
+        <label><input type="checkbox" data-layer="players" checked> <i style="background:#5dade2;border-radius:50%"></i> Players</label>
+    </div>
     <div id="hurtFlash"></div>
     <div id="ghostBanner" hidden>
         <div id="ghostText">You are a ghost. Return to your body.</div>
@@ -672,6 +697,21 @@
             const remotePlayers = new Map();
             const zoneNameEl = document.getElementById('zoneName');
             const zoneCoordsEl = document.getElementById('zoneCoords');
+            const mapLayers = { grid: true, trees: true, rocks: true, npcs: true, chests: true, bodies: true, players: true };
+            try {
+                Object.assign(mapLayers, JSON.parse(localStorage.getItem('ow-map') || '{}'));
+            } catch (err) { /* keep defaults */ }
+            const mapLayersPanel = document.getElementById('mapLayers');
+            document.getElementById('mapLayersButton').addEventListener('click', () => {
+                mapLayersPanel.hidden = !mapLayersPanel.hidden;
+            });
+            mapLayersPanel.querySelectorAll('input').forEach(input => {
+                input.checked = mapLayers[input.dataset.layer] !== false;
+                input.addEventListener('change', () => {
+                    mapLayers[input.dataset.layer] = input.checked;
+                    localStorage.setItem('ow-map', JSON.stringify(mapLayers));
+                });
+            });
 
             function drawMinimap() {
                 const ctx = minimapCtx;
@@ -718,7 +758,7 @@
                 ctx.clip();
 
                 const span = 90;
-                for (let ox = -1; ox <= 1; ox++) {
+                if (mapLayers.grid) for (let ox = -1; ox <= 1; ox++) {
                     for (let oz = -1; oz <= 1; oz++) {
                         const originX = (here.zx + ox) * ZONE_SIZE - ZONE_SIZE / 2;
                         const originZ = (here.zz + oz) * ZONE_SIZE - ZONE_SIZE / 2;
@@ -746,6 +786,8 @@
 
                 for (const c of allColliders) {
                     if (!c.type) continue;
+                    if (c.type === 'tree' && !mapLayers.trees) continue;
+                    if (c.type !== 'tree' && !mapLayers.rocks) continue;
                     const p = place(c.x, c.z);
                     if (!p) continue;
                     ctx.beginPath();
@@ -754,21 +796,21 @@
                     ctx.fill();
                 }
 
-                for (const entry of worldNpcs.values()) {
+                if (mapLayers.npcs) for (const entry of worldNpcs.values()) {
                     const p = place(entry.group.position.x, entry.group.position.z);
                     if (!p) continue;
                     ctx.fillStyle = '#e74c3c';
                     ctx.fillRect(p.mx - 3, p.mz - 3, 6, 6);
                 }
 
-                for (const chest of worldChests.values()) {
+                if (mapLayers.chests) for (const chest of worldChests.values()) {
                     const p = place(chest.x, chest.z);
                     if (!p) continue;
                     ctx.fillStyle = '#f1c40f';
                     ctx.fillRect(p.mx - 3, p.mz - 3, 6, 6);
                 }
 
-                for (const marker of corpseMarkers.values()) {
+                if (mapLayers.bodies) for (const marker of corpseMarkers.values()) {
                     const p = place(marker.position.x, marker.position.z);
                     if (!p) continue;
                     ctx.fillStyle = '#d6ecff';
@@ -777,7 +819,7 @@
                     ctx.fill();
                 }
 
-                for (const entry of remotePlayers.values()) {
+                if (mapLayers.players) for (const entry of remotePlayers.values()) {
                     const p = place(entry.mesh.position.x, entry.mesh.position.z);
                     if (!p) continue;
                     ctx.beginPath();

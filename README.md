@@ -1,6 +1,6 @@
 # Open World Prototype (Multiplayer)
 
-Browser-based open-world game with multiplayer support, packaged for Docker. The ground has hills, a river, and lakes. The minimap is divided into named zones and shows coordinates from 0 to 100 inside the current zone. Hide the instruction box with ×; Help brings it back.
+Browser-based open-world game with multiplayer support, packaged for Docker. The ground has hills, a river, and lakes. The minimap is divided into named zones and shows coordinates from 0 to 100 inside the current zone. The Map button on the minimap turns markers on or off. Hide the instruction box with ×; Help brings it back.
 
 ## Models
 - `/models/player.glb` — more human low-poly civilian (CC0) used for the local player.
