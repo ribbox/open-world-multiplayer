@@ -439,11 +439,9 @@
                 (err) => showError('Failed to load player model: ' + err.message)
             );
 
-            // Load NPC model. The server decides where hostile NPCs roam.
-            let npcTemplate = null;
-            let npcClips = [];
-            let npcScale = 1;
-            let npcFoot = 0;
+            // Each NPC kind is a file in /models.
+            const npcModels = new Map();
+            let npcModelsReady = false;
             const worldNpcs = new Map();
             const worldCivs = new Map();
             const worldChests = new Map();
@@ -465,25 +463,30 @@
             targetRing.visible = false;
             scene.add(targetRing);
 
-            loader.load(
-                '/models/npc.glb',
-                (gltf) => {
-                    npcTemplate = gltf.scene;
-                    npcClips = gltf.animations || [];
-                    const probe = cloneSkinned(npcTemplate);
-                    const box = new THREE.Box3().setFromObject(probe);
-                    const size = box.getSize(new THREE.Vector3());
-                    npcScale = 1.4 / (size.y || 1);
-                    probe.scale.setScalar(npcScale);
-                    box.setFromObject(probe);
-                    npcFoot = -box.min.y;
-                    if (pendingNpcs) syncNpcs(pendingNpcs);
-                    if (pendingCivilians) spawnCivilians(pendingCivilians);
-                    console.log('NPC model loaded');
-                },
-                undefined,
-                (err) => console.warn('NPC load failed', err)
-            );
+            const NPC_MODEL_KINDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist', 'shop', 'trainer', 'quest'];
+            let npcLoadsLeft = NPC_MODEL_KINDS.length;
+            function finishNpcModels() {
+                npcLoadsLeft -= 1;
+                if (npcLoadsLeft > 0) return;
+                npcModelsReady = npcModels.size > 0;
+                if (pendingNpcs) syncNpcs(pendingNpcs);
+                if (pendingCivilians) spawnCivilians(pendingCivilians);
+                console.log('NPC models loaded', npcModels.size);
+            }
+            for (const kind of NPC_MODEL_KINDS) {
+                loader.load(
+                    '/models/' + kind + '.glb',
+                    (gltf) => {
+                        npcModels.set(kind, gltf.scene);
+                        finishNpcModels();
+                    },
+                    undefined,
+                    (err) => {
+                        console.warn('NPC model failed', kind, err);
+                        finishNpcModels();
+                    }
+                );
+            }
 
             // Simple tools still attached to the group (positioned roughly at hand height)
             function createAxe() {
@@ -1450,119 +1453,32 @@
                 return sprite;
             }
 
-            const npcGeos = {};
-            function npcGeo(kind, a, b, c) {
-                const key = kind + ':' + a + ':' + b + ':' + c;
-                if (!npcGeos[key]) {
-                    if (kind === 'box') npcGeos[key] = new THREE.BoxGeometry(a, b, c);
-                    else if (kind === 'sphere') npcGeos[key] = new THREE.SphereGeometry(a, 10, 8);
-                    else npcGeos[key] = new THREE.ConeGeometry(a, b, 8);
-                }
-                return npcGeos[key];
-            }
-            function addPart(parent, geo, color, x, y, z, rot) {
-                const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color }));
-                mesh.position.set(x, y, z);
-                if (rot) mesh.rotation.set(rot[0], rot[1], rot[2]);
-                parent.add(mesh);
-                return mesh;
-            }
-            function addHumanoid(g, cloth, skin) {
-                addPart(g, npcGeo('box', 0.22, 0.7, 0.22), cloth, -0.14, 0.35, 0);
-                addPart(g, npcGeo('box', 0.22, 0.7, 0.22), cloth, 0.14, 0.35, 0);
-                addPart(g, npcGeo('box', 0.5, 0.58, 0.3), cloth, 0, 0.95, 0);
-                addPart(g, npcGeo('box', 0.14, 0.52, 0.14), skin, -0.36, 0.98, 0);
-                addPart(g, npcGeo('box', 0.14, 0.52, 0.14), skin, 0.36, 0.98, 0);
-                addPart(g, npcGeo('sphere', 0.18), skin, 0, 1.42, 0);
-                g.userData.labelY = 2.05;
-            }
-            function buildNpcBody(kind) {
-                const g = new THREE.Group();
-                if (kind === 'boar') {
-                    addPart(g, npcGeo('box', 0.42, 0.4, 0.95), '#8d6a3a', 0, 0.5, 0);
-                    addPart(g, npcGeo('box', 0.3, 0.26, 0.32), '#6b4f2a', 0, 0.62, 0.52);
-                    addPart(g, npcGeo('cone', 0.05, 0.2), '#f4ecd8', -0.08, 0.5, 0.7, [-Math.PI / 2, 0, 0.4]);
-                    addPart(g, npcGeo('cone', 0.05, 0.2), '#f4ecd8', 0.08, 0.5, 0.7, [-Math.PI / 2, 0, -0.4]);
-                    [[-0.16, 0.28], [0.16, 0.28], [-0.16, -0.28], [0.16, -0.28]].forEach(([x, z]) => {
-                        addPart(g, npcGeo('box', 0.12, 0.3, 0.12), '#5c4122', x, 0.15, z);
-                    });
-                    g.userData.labelY = 1.25;
-                } else if (kind === 'wolf') {
-                    addPart(g, npcGeo('box', 0.32, 0.36, 1.05), '#7f8c8d', 0, 0.52, 0);
-                    addPart(g, npcGeo('box', 0.24, 0.22, 0.36), '#95a5a6', 0, 0.66, 0.58);
-                    addPart(g, npcGeo('cone', 0.07, 0.18), '#566061', -0.08, 0.88, 0.52);
-                    addPart(g, npcGeo('cone', 0.07, 0.18), '#566061', 0.08, 0.88, 0.52);
-                    addPart(g, npcGeo('box', 0.08, 0.08, 0.34), '#566061', 0, 0.64, -0.62);
-                    [[-0.12, 0.32], [0.12, 0.32], [-0.12, -0.32], [0.12, -0.32]].forEach(([x, z]) => {
-                        addPart(g, npcGeo('box', 0.1, 0.34, 0.1), '#636e72', x, 0.17, z);
-                    });
-                    g.userData.labelY = 1.3;
-                } else if (kind === 'spider') {
-                    addPart(g, npcGeo('sphere', 0.32), '#1e8449', 0, 0.42, -0.05);
-                    addPart(g, npcGeo('sphere', 0.16), '#145a32', 0, 0.4, 0.36);
-                    for (let i = 0; i < 8; i++) {
-                        const side = i < 4 ? -1 : 1;
-                        const along = ((i % 4) - 1.5) * 0.18;
-                        addPart(g, npcGeo('box', 0.04, 0.04, 0.55), '#0e3d22', side * 0.28, 0.36, along, [0, side * 0.7, side * 0.55]);
-                    }
-                    g.userData.labelY = 1.15;
-                } else if (kind === 'bandit') {
-                    addHumanoid(g, '#922b21', '#c4a574');
-                    addPart(g, npcGeo('cone', 0.22, 0.28), '#641e16', 0, 1.68, 0);
-                    addPart(g, npcGeo('box', 0.06, 0.32, 0.06), '#bdc3c7', 0.48, 0.85, 0.12);
-                } else if (kind === 'ogre') {
-                    const body = new THREE.Group();
-                    addHumanoid(body, '#6e4b2a', '#a9784e');
-                    body.scale.setScalar(1.28);
-                    g.add(body);
-                    addPart(g, npcGeo('box', 0.12, 0.7, 0.12), '#4a3728', 0.62, 0.7, 0.15);
-                    g.userData.labelY = 2.7;
-                } else if (kind === 'wisp') {
-                    const glow = new THREE.Mesh(npcGeo('sphere', 0.34), new THREE.MeshBasicMaterial({ color: '#7fd4ff', transparent: true, opacity: 0.72 }));
-                    glow.position.y = 1.15;
-                    g.add(glow);
-                    addPart(g, npcGeo('sphere', 0.1), '#ffffff', 0, 1.2, 0.12);
-                    addPart(g, npcGeo('sphere', 0.08), '#d6f3ff', 0.22, 1.35, 0);
-                    addPart(g, npcGeo('sphere', 0.06), '#d6f3ff', -0.2, 0.95, 0.08);
-                    g.userData.labelY = 1.85;
-                } else if (kind === 'knight') {
-                    addHumanoid(g, '#d5d8dc', '#f4f6f7');
-                    addPart(g, npcGeo('box', 0.28, 0.2, 0.28), '#aeb6bf', 0, 1.58, 0);
-                    addPart(g, npcGeo('box', 0.08, 0.46, 0.34), '#85929e', -0.42, 0.95, 0.08);
-                } else if (kind === 'cultist') {
-                    addPart(g, npcGeo('cone', 0.46, 1.35), '#6c3483', 0, 0.68, 0);
-                    addPart(g, npcGeo('sphere', 0.16), '#4a235a', 0, 1.42, 0);
-                    addPart(g, npcGeo('cone', 0.22, 0.32), '#4a235a', 0, 1.68, 0);
-                    g.userData.labelY = 2.15;
-                } else if (kind === 'shop') {
-                    addHumanoid(g, '#f1c40f', '#c4a574');
-                    addPart(g, npcGeo('box', 0.22, 0.08, 0.22), '#f7dc6f', 0.28, 1.05, 0.2);
-                    addPart(g, npcGeo('sphere', 0.07), '#b7950b', 0.28, 1.16, 0.2);
-                } else if (kind === 'trainer') {
-                    addPart(g, npcGeo('cone', 0.42, 1.25), '#2e86c1', 0, 0.62, 0);
-                    addPart(g, npcGeo('sphere', 0.16), '#c4a574', 0, 1.38, 0);
-                    addPart(g, npcGeo('box', 0.22, 0.05, 0.16), '#f5e6c8', 0.28, 0.95, 0.16);
-                    g.userData.labelY = 1.9;
-                } else if (kind === 'quest') {
-                    addHumanoid(g, '#1e8449', '#c4a574');
-                    addPart(g, npcGeo('box', 0.18, 0.04, 0.24), '#f5e6c8', 0.32, 1.05, 0.16);
-                } else {
-                    addHumanoid(g, '#922b21', '#c4a574');
-                }
-                return g;
+            function cloneNpcModel(kind) {
+                const template = npcModels.get(kind) || npcModels.get('boar');
+                if (!template) return null;
+                const model = template.clone(true);
+                model.traverse(obj => {
+                    if (!obj.isMesh || !obj.material) return;
+                    obj.material = Array.isArray(obj.material) ? obj.material.map(mat => mat.clone()) : obj.material.clone();
+                });
+                return model;
             }
 
             function ensureCivilian(civ) {
-                if (!civ || worldCivs.has(civ.id)) return;
+                if (!civ || !npcModelsReady || worldCivs.has(civ.id)) return;
+                const body = cloneNpcModel(civ.role);
+                if (!body) return;
                 const group = new THREE.Group();
-                const body = buildNpcBody(civ.role);
+                body.updateWorldMatrix(true, true);
+                const bounds = new THREE.Box3().setFromObject(body);
                 group.add(body);
                 group.userData.body = body;
+                group.userData.labelY = bounds.max.y + 0.22;
                 group.userData.bobAmp = 0.03;
                 group.position.set(civ.x, terrainHeight(civ.x, civ.z), civ.z);
                 group.userData.civilId = civ.id;
                 const label = makeCivSprite(civ.name, civ.title, civ.tint);
-                label.position.y = body.userData.labelY || 2.2;
+                label.position.y = group.userData.labelY;
                 group.add(label);
                 scene.add(group);
                 worldCivs.set(civ.id, { group, id: civ.id, name: civ.name, title: civ.title, role: civ.role, text: civ.text, quest: civ.quest || '', tint: civ.tint, bob: Math.random() * Math.PI * 2 });
@@ -1570,6 +1486,7 @@
 
             function spawnCivilians(list) {
                 pendingCivilians = list || [];
+                if (!npcModelsReady) return;
                 for (const civ of pendingCivilians) ensureCivilian(civ);
             }
 
@@ -1730,13 +1647,17 @@
             function upsertNpc(state) {
                 let entry = worldNpcs.get(state.id);
                 if (!entry) {
+                    if (!npcModelsReady) return;
+                    const body = cloneNpcModel(state.kind || 'boar');
+                    if (!body) return;
                     const group = new THREE.Group();
-                    const body = buildNpcBody(state.kind || 'boar');
                     const rank = 0.9 + Math.min(12, state.level || 1) * 0.05;
                     body.scale.setScalar(rank);
+                    body.updateWorldMatrix(true, true);
+                    const bounds = new THREE.Box3().setFromObject(body);
                     group.add(body);
                     group.userData.body = body;
-                    group.userData.labelY = (body.userData.labelY || 2.2) * rank;
+                    group.userData.labelY = bounds.max.y + 0.22;
                     group.userData.bobAmp = state.kind === 'wisp' ? 0.16 : 0.035;
                     group.position.set(state.x, 0, state.z);
                     scene.add(group);
@@ -1767,6 +1688,7 @@
 
             function syncNpcs(list) {
                 pendingNpcs = list;
+                if (!npcModelsReady) return;
                 const seen = new Set();
                 for (const state of list) {
                     if (!state || state.hp <= 0) continue;
