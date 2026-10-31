@@ -39,6 +39,7 @@
             gap: 3px;
             margin-top: 4px;
         }
+        #bagHint { font-size: 11px; color: #ccc; margin-top: 6px; max-width: 176px; line-height: 1.3; }
         .slot {
             position: relative;
             width: 40px;
@@ -246,6 +247,7 @@
         <div id="bag">
             <span id="bagLabel">Bag 0/16</span>
             <div id="bagSlots"></div>
+            <div id="bagHint">Right-click destroys one. Shift+right-click destroys the stack.</div>
         </div>
         <span id="playerColor" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span>
         <input id="playerName" maxlength="16" placeholder="Name">
@@ -617,6 +619,11 @@
                         cell.title = 'Empty';
                     }
                     cell.addEventListener('click', () => useSlot(index));
+                    cell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        if (!slot || !gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
+                        gameSocket.send(JSON.stringify({ type: 'discard', slot: index, all: e.shiftKey }));
+                    });
                     root.appendChild(cell);
                 });
             }
@@ -2859,6 +2866,12 @@
                             applyStats(data);
                             const names = (data.items || []).map(item => (item.qty > 1 ? item.qty + ' ' : '') + item.name);
                             showMessage((names.join(', ') || 'Empty') + (data.leftover ? ' (bag full)' : ''));
+                        }
+                    } else if (data.type === 'discardResult') {
+                        if (!data.ok) showMessage(data.reason || 'Cannot destroy');
+                        else {
+                            applyInventory(data.inventory);
+                            showMessage('Destroyed ' + (data.qty > 1 ? data.qty + ' ' : '') + data.name);
                         }
                     } else if (data.type === 'useResult') {
                         if (!data.ok) showMessage(data.reason || 'Cannot use');

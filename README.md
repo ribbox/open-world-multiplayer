@@ -32,7 +32,7 @@ node server.js
 - A hit flashes the NPC and pops a damage number. A killing blow tips the body over and bursts it apart. Damage you take reddens the screen.
 - B opens the bag. C opens the character sheet. Choose Warrior or Mage once.
 - The sheet equips a weapon and off hand around a body: head, neck, shoulders, cloak, chest, hands, waist, legs, and feet. Class spells are trained there. Each level after the first gives a talent point for that class's tree.
-- Bag slots show an icon for the item. A count appears only when a stack is more than one.
+- Bag slots show an icon for the item. A count appears only when a stack is more than one. Right-click a slot to destroy one item. Shift+right-click destroys the whole stack, which frees room for new loot.
 - F: loot a chest. H and M use the first health or mana potion.
 - Hold Right Mouse + move: orbit camera
 - Mouse wheel: zoom in/out on the character

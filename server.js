@@ -1219,6 +1219,22 @@ wss.on('connection', (ws) => {
             return;
         }
 
+        if (data.type === 'discard') {
+            const index = Number.isInteger(data.slot) ? data.slot : -1;
+            const slot = player.slots[index];
+            if (!slot) {
+                send(ws, { type: 'discardResult', ok: false, reason: 'Empty slot' });
+                return;
+            }
+            const qty = data.all ? slot.qty : 1;
+            const name = slot.name;
+            slot.qty -= qty;
+            if (slot.qty <= 0) player.slots[index] = null;
+            savePlayer(player);
+            send(ws, { type: 'discardResult', ok: true, name, qty, inventory: inventoryOf(player) });
+            return;
+        }
+
         if (data.type === 'use') {
             let index = Number.isInteger(data.slot) ? data.slot : -1;
             if (index < 0 || !player.slots[index]) {
