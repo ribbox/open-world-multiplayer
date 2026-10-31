@@ -216,9 +216,14 @@ const SELL_RARITY = {
     ore: 3, armor: 3, weapon: 3, recipe: 4, gem: 5
 };
 
+export function itemRarity(item) {
+    if (!item) return 1;
+    return SELL_RARITY[item.kind] || 1;
+}
+
 export function sellPrice(item) {
     if (!item) return 0;
-    const rarity = SELL_RARITY[item.kind] || 1;
+    const rarity = itemRarity(item);
     let quality = 1 + (item.armor || 0);
     if (item.magic) quality += 2;
     if (item.amount) quality += Math.floor(item.amount / 12);

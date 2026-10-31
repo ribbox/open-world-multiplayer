@@ -490,13 +490,13 @@ const RECIPES = {
 };
 
 const CRAFT_SETS = {
-    cloth: { name: 'Clothworking', cost: 12, text: 'Hat, robe, gloves, pants, and shoes.' },
-    leather: { name: 'Leatherworking', cost: 20, text: 'Cap, jerkin, gloves, pants, and boots.' },
-    plate: { name: 'Armorsmithing', cost: 30, text: 'Helm, breastplate, gauntlets, greaves, and sabatons.' },
-    weapon: { name: 'Weaponsmithing', cost: 16, text: 'Iron sword and oak staff.' },
-    magic: { name: 'Spellforging', cost: 28, text: 'Rune blade and arcane staff.' },
-    alchemy: { name: 'Alchemy', cost: 18, text: 'Health and mana potions from herbs.' },
-    explosive: { name: 'Explosives', cost: 22, text: 'Bombs from powder and stone.' }
+    cloth: { name: 'Clothworking', cost: 12, rarity: 1, text: 'Hat, robe, gloves, pants, and shoes.' },
+    leather: { name: 'Leatherworking', cost: 20, rarity: 2, text: 'Cap, jerkin, gloves, pants, and boots.' },
+    plate: { name: 'Armorsmithing', cost: 30, rarity: 3, text: 'Helm, breastplate, gauntlets, greaves, and sabatons.' },
+    weapon: { name: 'Weaponsmithing', cost: 16, rarity: 1, text: 'Iron sword and oak staff.' },
+    magic: { name: 'Spellforging', cost: 28, rarity: 4, text: 'Rune blade and arcane staff.' },
+    alchemy: { name: 'Alchemy', cost: 18, rarity: 2, text: 'Health and mana potions from herbs.' },
+    explosive: { name: 'Explosives', cost: 22, rarity: 2, text: 'Bombs from powder and stone.' }
 };
 
 const MAX_CRAFT_SKILLS = 2;
