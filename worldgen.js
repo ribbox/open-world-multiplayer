@@ -122,6 +122,7 @@ export function chunkResources(cx, cz) {
             items.push({ id: `${cx},${cz},${index}`, type: 'sulfur', x, z, px, pz, sx: 0.45, sy: 0.7, sz: 0.45, hits: 3 });
         }
     }
+    appendDesignedNodes(cx, cz, items);
     return items;
 }
 
@@ -141,13 +142,16 @@ export function zoneAt(x, z) {
     const zz = Math.floor((z + ZONE_SIZE / 2) / ZONE_SIZE);
     const originX = zx * ZONE_SIZE - ZONE_SIZE / 2;
     const originZ = zz * ZONE_SIZE - ZONE_SIZE / 2;
-    return {
+    const grid = {
         zx,
         zz,
         name: zoneName(zx, zz),
         x: ((x - originX) / ZONE_SIZE) * 100,
         z: ((z - originZ) / ZONE_SIZE) * 100
     };
+    const drawn = designedZoneAt(x, z);
+    if (drawn) grid.name = drawn.name;
+    return grid;
 }
 
 const ZONE_PACKS = [
@@ -267,4 +271,94 @@ export function zoneNpc(zx, zz) {
         level: 1 + ring * 2 + (h % 2),
         ring
     };
+}
+
+const MOB_IDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
+const NODE_TYPES = ['tree', 'rock', 'herb', 'sulfur'];
+let designedZones = [];
+let designedNodes = [];
+
+function pointInPoly(x, z, points) {
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const xi = points[i][0];
+        const zi = points[i][1];
+        const xj = points[j][0];
+        const zj = points[j][1];
+        const crosses = (zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / ((zj - zi) || 1e-9) + xi;
+        if (crosses) inside = !inside;
+    }
+    return inside;
+}
+
+export function applyWorldConfig(config) {
+    designedZones = [];
+    designedNodes = [];
+    const zones = Array.isArray(config && config.zones) ? config.zones : [];
+    for (const zone of zones.slice(0, 24)) {
+        const points = (Array.isArray(zone.points) ? zone.points : []).slice(0, 80).map(point => [Number(point[0]), Number(point[1])]).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+        if (points.length < 3) continue;
+        const entry = {
+            id: String(zone.id || ('zone-' + designedZones.length)).slice(0, 24),
+            name: String(zone.name || 'Zone').slice(0, 32),
+            points,
+            mob: MOB_IDS.includes(zone.mob) ? zone.mob : 'boar',
+            level: Math.max(1, Math.min(30, Math.round(Number(zone.level) || 1))),
+            hp: Math.max(0, Math.min(500, Math.round(Number(zone.hp) || 0))),
+            loot: String(zone.loot || 'hide').slice(0, 24),
+            camps: [],
+            nodes: []
+        };
+        for (const camp of (Array.isArray(zone.camps) ? zone.camps : []).slice(0, 6)) {
+            const x = Number(camp.x);
+            const z = Number(camp.z);
+            if (!Number.isFinite(x) || !Number.isFinite(z)) continue;
+            entry.camps.push({
+                x, z,
+                shop: String(camp.shop || 'Merchant').slice(0, 16),
+                trainer: String(camp.trainer || 'Trainer').slice(0, 16)
+            });
+        }
+        for (const node of (Array.isArray(zone.nodes) ? zone.nodes : []).slice(0, 40)) {
+            const x = Number(node.x);
+            const z = Number(node.z);
+            if (!Number.isFinite(x) || !Number.isFinite(z) || !NODE_TYPES.includes(node.type)) continue;
+            const placed = { type: node.type, x, z };
+            entry.nodes.push(placed);
+            designedNodes.push(placed);
+        }
+        designedZones.push(entry);
+    }
+}
+
+export function designedZoneAt(x, z) {
+    for (let i = designedZones.length - 1; i >= 0; i--) {
+        if (pointInPoly(x, z, designedZones[i].points)) return designedZones[i];
+    }
+    return null;
+}
+
+export function listDesignedZones() {
+    return designedZones;
+}
+
+function appendDesignedNodes(cx, cz, items) {
+    for (const node of designedNodes) {
+        if (Math.floor(node.x / CHUNK_SIZE) !== cx || Math.floor(node.z / CHUNK_SIZE) !== cz) continue;
+        const index = items.length;
+        const rock = node.type === 'rock';
+        const sulfur = node.type === 'sulfur';
+        items.push({
+            id: `${cx},${cz},${index}`,
+            type: node.type,
+            x: node.x,
+            z: node.z,
+            px: node.x - cx * CHUNK_SIZE,
+            pz: node.z - cz * CHUNK_SIZE,
+            sx: rock ? 1.1 : sulfur ? 0.45 : 0,
+            sy: rock ? 0.7 : sulfur ? 0.7 : 0,
+            sz: rock ? 1.1 : sulfur ? 0.45 : 0,
+            hits: node.type === 'tree' ? 3 : node.type === 'herb' ? 2 : node.type === 'sulfur' ? 3 : 4
+        });
+    }
 }

@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampFolk, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampFolk, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, applyWorldConfig, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -15,6 +15,8 @@ const PORT = process.env.PORT || 3000;
 const GATHER_RANGE = 3.2;
 const GATHER_COOLDOWN_MS = 400;
 const COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c', '#ec4899'];
+const worldRules = { hpBase: 6, hpPerLevel: 4, grayLevels: 5, xpPerMobLevel: 20 };
+let lootTables = null;
 
 const dataDir = path.join(__dirname, 'data');
 const savePath = path.join(dataDir, 'save.json');
@@ -27,6 +29,7 @@ app.use((req, res, next) => {
     next();
 });
 app.use(express.static(__dirname));
+app.use(express.json({ limit: '1mb' }));
 
 function loadSave() {
     try {
@@ -108,12 +111,47 @@ const CIVILIANS = [
     { id: 'bram', name: 'Bram', role: 'trainer', title: 'Trainer', tint: '#5dade2', x: -10, z: 4, text: 'Choose a class, then train your spells with me.' },
     { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' }
 ];
-for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
-    for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
-        if (zx === 0 && zz === 0) continue;
-        CIVILIANS.push(...zoneCampFolk(zx, zz));
+
+function rebuildCivilians() {
+    const home = CIVILIANS.filter(civ => civ.id === 'mira' || civ.id === 'bram' || civ.id === 'sela');
+    CIVILIANS.length = 0;
+    CIVILIANS.push(...home);
+    for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+        for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+            if (zx === 0 && zz === 0) continue;
+            const spot = zoneCamp(zx, zz);
+            const drawn = designedZoneAt(spot.x, spot.z);
+            if (drawn && drawn.camps.length) continue;
+            CIVILIANS.push(...zoneCampFolk(zx, zz));
+        }
+    }
+    for (const zone of listDesignedZones()) {
+        zone.camps.forEach((camp, index) => {
+            CIVILIANS.push({
+                id: 'dshop-' + zone.id + '-' + index,
+                name: camp.shop,
+                role: 'shop',
+                title: 'Shop',
+                tint: '#f1c40f',
+                x: camp.x + 2.2,
+                z: camp.z,
+                text: 'I buy and sell in ' + zone.name + '.'
+            });
+            CIVILIANS.push({
+                id: 'dtrain-' + zone.id + '-' + index,
+                name: camp.trainer,
+                role: 'trainer',
+                title: 'Trainer',
+                tint: '#5dade2',
+                x: camp.x - 2.2,
+                z: camp.z,
+                text: 'I train spells in ' + zone.name + '.'
+            });
+        });
     }
 }
+
+rebuildCivilians();
 
 const QUESTS = {
     'boar-tusks': { name: 'Boar Tusks', text: 'Kill 3 wild boars in Camp Glade.', kind: 'boar', count: 3, coins: 20, xp: 50 }
@@ -186,7 +224,7 @@ function maxHpFor(level) {
 }
 
 function npcMaxHp(level) {
-    return 6 + level * 4;
+    return Math.max(1, worldRules.hpBase + level * worldRules.hpPerLevel);
 }
 
 function publicPlayer(id, p) {
@@ -261,6 +299,16 @@ function placeNpc(npc) {
     npc.loot = kind.loot;
     npc.level = profile.level;
     npc.maxHp = npcMaxHp(npc.level);
+    const drawn = designedZoneAt(npc.x, npc.z);
+    if (drawn) {
+        const shaped = NPC_KINDS[drawn.mob] || kind;
+        npc.kind = shaped.id;
+        npc.name = shaped.name;
+        npc.tint = shaped.tint;
+        npc.loot = drawn.loot || shaped.loot;
+        npc.level = drawn.level;
+        npc.maxHp = drawn.hp > 0 ? drawn.hp : npcMaxHp(npc.level);
+    }
     npc.hp = npc.maxHp;
     npc.alive = true;
     npc.homeX = npc.x;
@@ -374,8 +422,8 @@ function maxManaFor(player) {
 }
 
 function xpForKill(player, npc) {
-    if (!npc || npc.level <= player.level - 5) return 0;
-    return 20 * npc.level;
+    if (!npc || npc.level <= player.level - worldRules.grayLevels) return 0;
+    return worldRules.xpPerMobLevel * npc.level;
 }
 
 function grantXp(player, amount) {
@@ -1113,7 +1161,8 @@ function lootItem(row, level) {
 }
 
 function rollLoot(level, tableId) {
-    const table = LOOT_TABLES[tableId] || LOOT_TABLES.hide;
+    const tables = lootTables || LOOT_TABLES;
+    const table = tables[tableId] || tables.hide || LOOT_TABLES.hide;
     const count = 1 + Math.floor((level - 1) / 2) + (Math.random() < 0.5 ? 1 : 0);
     const items = [];
     for (let i = 0; i < count; i++) items.push(lootItem(rollRow(table), level));
@@ -1971,6 +2020,181 @@ wss.on('connection', (ws) => {
     });
 });
 
+const worldPath = path.join(dataDir, 'world.json');
+let worldConfig = null;
+const adminTokens = new Set();
+const LOOT_KINDS = ['junk', 'coins', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor'];
+
+function defaultWorldConfig() {
+    return {
+        hpBase: 6,
+        hpPerLevel: 4,
+        grayLevels: 5,
+        xpPerMobLevel: 20,
+        adminPassword: '',
+        loot: JSON.parse(JSON.stringify(LOOT_TABLES)),
+        zones: []
+    };
+}
+
+function sanitizeLoot(input) {
+    const out = {};
+    const source = input && typeof input === 'object' ? input : {};
+    const names = new Set([...Object.keys(LOOT_TABLES), ...Object.keys(source)]);
+    for (const name of names) {
+        if (!/^[a-z0-9-]{1,24}$/i.test(name)) continue;
+        const rows = Array.isArray(source[name]) ? source[name] : LOOT_TABLES[name];
+        if (!Array.isArray(rows)) continue;
+        const clean = [];
+        for (const row of rows.slice(0, 24)) {
+            if (!row || !LOOT_KINDS.includes(row.kind)) continue;
+            const weight = Math.max(1, Math.min(100, Math.round(Number(row.weight) || 0)));
+            const entry = { kind: row.kind, weight };
+            if (row.kind === 'junk') {
+                const names = String(row.names || '').split(',').map(part => part.trim()).filter(Boolean).slice(0, 8);
+                if (Array.isArray(row.names)) entry.names = row.names.map(part => String(part).slice(0, 24)).filter(Boolean).slice(0, 8);
+                else if (names.length) entry.names = names.map(part => part.slice(0, 24));
+            }
+            if (row.kind === 'recipe') {
+                const sets = Array.isArray(row.sets) ? row.sets : String(row.sets || '').split(',').map(part => part.trim()).filter(Boolean);
+                entry.sets = sets.filter(id => CRAFT_SETS[id]).slice(0, 8);
+            }
+            clean.push(entry);
+        }
+        if (clean.length) out[name.slice(0, 24)] = clean;
+    }
+    if (!Object.keys(out).length) return JSON.parse(JSON.stringify(LOOT_TABLES));
+    return out;
+}
+
+function clampNum(value, fallback, min, max) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+function sanitizeWorld(input) {
+    const src = input && typeof input === 'object' ? input : {};
+    return {
+        hpBase: clampNum(src.hpBase, 6, 1, 80),
+        hpPerLevel: clampNum(src.hpPerLevel, 4, 0, 40),
+        grayLevels: clampNum(src.grayLevels, 5, 1, 20),
+        xpPerMobLevel: clampNum(src.xpPerMobLevel, 20, 0, 100),
+        adminPassword: typeof src.adminPassword === 'string' ? src.adminPassword.slice(0, 64) : '',
+        loot: sanitizeLoot(src.loot),
+        zones: Array.isArray(src.zones) ? src.zones : []
+    };
+}
+
+function adminPassword() {
+    if (process.env.ADMIN_PASSWORD) return String(process.env.ADMIN_PASSWORD);
+    if (worldConfig && worldConfig.adminPassword) return worldConfig.adminPassword;
+    return 'admin';
+}
+
+function publicWorld() {
+    return {
+        hpBase: worldRules.hpBase,
+        hpPerLevel: worldRules.hpPerLevel,
+        grayLevels: worldRules.grayLevels,
+        xpPerMobLevel: worldRules.xpPerMobLevel,
+        zones: listDesignedZones()
+    };
+}
+
+function applyLoaded(config) {
+    worldRules.hpBase = config.hpBase;
+    worldRules.hpPerLevel = config.hpPerLevel;
+    worldRules.grayLevels = config.grayLevels;
+    worldRules.xpPerMobLevel = config.xpPerMobLevel;
+    applyWorldConfig(config);
+    lootTables = config.loot;
+    worldConfig = { ...config, zones: listDesignedZones(), loot: lootTables };
+    rebuildCivilians();
+    npcs.clear();
+    seededZones.clear();
+    refreshNpcZones();
+}
+
+function loadWorldFile() {
+    let parsed = null;
+    try {
+        parsed = JSON.parse(fs.readFileSync(worldPath, 'utf8'));
+    } catch { /* first run */ }
+    const next = sanitizeWorld(parsed || {});
+    if (parsed && typeof parsed.adminPassword === 'string') next.adminPassword = parsed.adminPassword.slice(0, 64);
+    applyLoaded(next);
+}
+
+function saveWorldFile() {
+    try {
+        fs.mkdirSync(dataDir, { recursive: true });
+        fs.writeFileSync(worldPath, JSON.stringify(worldConfig));
+    } catch (err) {
+        console.error('World save failed', err);
+    }
+}
+
+function requireAdmin(req, res, next) {
+    const header = req.get('authorization') || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    if (!adminTokens.has(token)) {
+        res.status(401).json({ error: 'Login required' });
+        return;
+    }
+    next();
+}
+
+app.post('/api/setup/login', (req, res) => {
+    if (String((req.body && req.body.password) || '') !== adminPassword()) {
+        res.status(401).json({ error: 'Wrong password' });
+        return;
+    }
+    const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    adminTokens.add(token);
+    res.json({ token, locked: !!process.env.ADMIN_PASSWORD });
+});
+
+app.get('/api/world', (req, res) => {
+    res.json(publicWorld());
+});
+
+app.get('/api/setup/config', requireAdmin, (req, res) => {
+    res.json({ ...publicWorld(), loot: lootTables, locked: !!process.env.ADMIN_PASSWORD });
+});
+
+app.put('/api/setup/config', requireAdmin, (req, res) => {
+    const next = sanitizeWorld(req.body || {});
+    next.adminPassword = worldConfig.adminPassword || '';
+    applyLoaded(next);
+    saveWorldFile();
+    broadcast({
+        type: 'world',
+        world: publicWorld(),
+        civilians: CIVILIANS.map(publicCivilian),
+        npcs: Array.from(npcs.values()).filter(npc => npc.alive).map(publicNpc)
+    });
+    res.json({ ok: true, config: { ...publicWorld(), loot: lootTables } });
+});
+
+app.post('/api/setup/password', requireAdmin, (req, res) => {
+    if (process.env.ADMIN_PASSWORD) {
+        res.status(400).json({ error: 'Password is set by ADMIN_PASSWORD' });
+        return;
+    }
+    const password = String((req.body && req.body.password) || '');
+    if (password.length < 4) {
+        res.status(400).json({ error: 'Use at least 4 characters' });
+        return;
+    }
+    worldConfig.adminPassword = password.slice(0, 64);
+    saveWorldFile();
+    res.json({ ok: true });
+});
+
+loadWorldFile();
+
 server.listen(PORT, () => {
     console.log(`Open World server running on http://0.0.0.0:${PORT}`);
+    console.log('World setup page: /setup');
 });

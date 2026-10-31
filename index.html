@@ -282,7 +282,8 @@
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
         Train spells only while standing at a trainer. Gather herbs by hand and sulfur with a pickaxe<br>
-        Click the minimap for the world map. Numbers are mob levels. Gray is 5 below you and gives no XP<br>
+        Click the minimap for the world map. Numbers are mob levels. Gray gives no XP<br>
+        World setup is a separate page at /setup<br>
         H/M: first potion. Click a potion to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
@@ -360,7 +361,15 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround } from './worldgen.js';
+        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones } from './worldgen.js';
+
+        let bootWorld = null;
+        try {
+            const worldResponse = await fetch('/api/world');
+            if (worldResponse.ok) bootWorld = await worldResponse.json();
+        } catch (err) { bootWorld = null; }
+        if (bootWorld) applyWorldConfig(bootWorld);
+        let grayLevels = (bootWorld && bootWorld.grayLevels) || 5;
 
         const infoBox = document.getElementById('info');
         const showInfo = document.getElementById('showInfo');
@@ -1102,14 +1111,29 @@
                 ctx.font = 'bold 14px sans-serif';
                 for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
                     for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
-                        const mob = zoneNpc(zx, zz);
+                        const drawn = designedZoneAt(zx * ZONE_SIZE, zz * ZONE_SIZE);
+                        const mob = drawn || zoneNpc(zx, zz);
                         const mine = stats.level || 1;
                         const gap = mine - mob.level;
-                        ctx.fillStyle = gap >= 5 ? '#9a9a9a' : mob.level >= mine + 6 ? '#ff5a5a' : mob.level >= mine + 3 ? '#f0a050' : '#8dff9a';
+                        ctx.fillStyle = gap >= grayLevels ? '#9a9a9a' : mob.level >= mine + 6 ? '#ff5a5a' : mob.level >= mine + 3 ? '#f0a050' : '#8dff9a';
                         const x0 = g.origin + (zx + WORLD_RADIUS) * g.cell;
                         const y0 = g.origin + (zz + WORLD_RADIUS) * g.cell;
                         ctx.fillText(String(mob.level), x0 + g.cell / 2, y0 + g.cell * 0.62);
                     }
+                }
+                ctx.lineWidth = 2;
+                for (const zone of listDesignedZones()) {
+                    ctx.beginPath();
+                    zone.points.forEach((point, index) => {
+                        const spot = toMap(point[0], point[1]);
+                        if (index === 0) ctx.moveTo(spot.mx, spot.mz);
+                        else ctx.lineTo(spot.mx, spot.mz);
+                    });
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(120, 190, 255, 0.2)';
+                    ctx.strokeStyle = '#d6ecff';
+                    ctx.fill();
+                    ctx.stroke();
                 }
                 if (mapLayers.players) for (const entry of remotePlayers.values()) {
                     if (!seenAt(entry.mesh.position.x, entry.mesh.position.z)) continue;
@@ -1348,6 +1372,19 @@
                 scene.add(group);
                 loadedChunks.set(key, { group, colliders });
                 colliders.forEach(c => allColliders.push(c));
+            }
+
+            function reloadChunks() {
+                for (const data of loadedChunks.values()) {
+                    for (const c of data.colliders) {
+                        const idx = allColliders.indexOf(c);
+                        if (idx !== -1) allColliders.splice(idx, 1);
+                        colliderById.delete(c.id);
+                    }
+                    scene.remove(data.group);
+                }
+                loadedChunks.clear();
+                terrainMeshes.length = 0;
             }
 
             function removeCollider(c) {
@@ -3870,6 +3907,13 @@
                         applyStats(data);
                         if (data.character) applyCharacter(data.character);
                         showMessage(data.ok === false ? (data.reason || 'Cannot do that') : (data.note || 'Character updated'));
+                    } else if (data.type === 'world') {
+                        applyWorldConfig(data.world || {});
+                        if (data.world && data.world.grayLevels) grayLevels = data.world.grayLevels;
+                        reloadChunks();
+                        if (data.civilians) spawnCivilians(data.civilians);
+                        if (data.npcs) syncNpcs(data.npcs);
+                        showMessage('World updated');
                     } else if (data.type === 'fog') {
                         for (const key of data.add || []) rememberFog(key);
                     } else if (data.type === 'teleport') {

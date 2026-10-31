@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>World setup</title>
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; background: #12151c; color: #eee; }
+        header, #login { padding: 12px 16px; }
+        header { display: flex; gap: 12px; align-items: center; background: #1c2230; }
+        header a { color: #9cf; }
+        button, input, select { font: inherit; }
+        button { background: #2c3548; color: #fff; border: 1px solid #556; border-radius: 4px; padding: 6px 10px; cursor: pointer; }
+        button.on { background: #f1c40f; color: #241c04; }
+        input, select { background: #0e1218; color: #fff; border: 1px solid #456; border-radius: 4px; padding: 4px 6px; }
+        #login { max-width: 360px; }
+        #app { display: none; height: calc(100vh - 52px); grid-template-columns: 280px 1fr 300px; }
+        #app.open { display: grid; }
+        aside, #side { overflow: auto; padding: 12px; background: #181d28; }
+        #stage { position: relative; }
+        canvas { width: 100%; height: 100%; display: block; background: #0c1410; cursor: crosshair; }
+        h2 { margin: 0 0 8px; font-size: 16px; }
+        label { display: block; margin: 8px 0 4px; font-size: 12px; color: #bbb; }
+        .row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+        .zone { display: block; width: 100%; text-align: left; margin-bottom: 4px; }
+        .zone.on { outline: 2px solid #f1c40f; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        td { padding: 3px 2px; vertical-align: top; }
+        #note { min-height: 1.2em; color: #9cf; }
+        .tabs button { margin-right: 4px; }
+    </style>
+</head>
+<body>
+    <header>
+        <strong>World setup</strong>
+        <a href="/">Back to the game</a>
+        <span id="note"></span>
+    </header>
+    <form id="login">
+        <h2>Admin login</h2>
+        <p>This page is separate from the game. The first password is <b>admin</b> unless ADMIN_PASSWORD is set.</p>
+        <input id="password" type="password" autocomplete="current-password">
+        <button type="submit">Enter</button>
+        <p id="loginError"></p>
+    </form>
+    <div id="app">
+        <aside>
+            <div class="tabs">
+                <button type="button" id="tabMap" class="on">Map</button>
+                <button type="button" id="tabRules">Rules</button>
+                <button type="button" id="tabLoot">Loot</button>
+            </div>
+            <div id="panelMap">
+                <p>Draw an outline, then place camps and resource nodes inside it.</p>
+                <div class="row" id="tools"></div>
+                <button type="button" id="finish">Finish outline</button>
+                <button type="button" id="deleteZone">Delete zone</button>
+                <h2>Zones</h2>
+                <div id="zoneList"></div>
+            </div>
+            <div id="panelRules" hidden>
+                <label>Hit point base</label>
+                <input id="hpBase" type="number" min="1" max="80">
+                <label>Hit points added per mob level</label>
+                <input id="hpPerLevel" type="number" min="0" max="40">
+                <label>Levels below you that give no XP</label>
+                <input id="grayLevels" type="number" min="1" max="20">
+                <label>XP per mob level</label>
+                <input id="xpPerMobLevel" type="number" min="0" max="100">
+                <p>A zone can override hit points. Blank uses this formula.</p>
+                <label>New admin password</label>
+                <input id="newPassword" type="password" autocomplete="new-password">
+                <button type="button" id="savePassword">Change password</button>
+            </div>
+            <div id="panelLoot" hidden>
+                <label>Loot table</label>
+                <select id="lootPick"></select>
+                <button type="button" id="addTable">New table</button>
+                <table id="lootRows"></table>
+                <button type="button" id="addRow">Add drop</button>
+            </div>
+        </aside>
+        <div id="stage"><canvas id="map" width="900" height="900"></canvas></div>
+        <div id="side">
+            <h2>Selected zone</h2>
+            <div id="zoneFields">Select or draw a zone.</div>
+            <button type="button" id="save">Save world</button>
+        </div>
+    </div>
+    <script type="module">
+        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, zoneName } from './worldgen.js';
+
+        const MOBS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
+        const NODES = ['tree', 'rock', 'herb', 'sulfur'];
+        const KINDS = ['junk', 'coins', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor'];
+        const canvas = document.getElementById('map');
+        const ctx = canvas.getContext('2d');
+        let token = sessionStorage.getItem('ow-setup') || '';
+        let config = null;
+        let tool = 'draw';
+        let selected = -1;
+        let draft = [];
+        let drag = null;
+        const view = { x: 0, z: 0, scale: 0.42 };
+
+        function note(text) { document.getElementById('note').textContent = text || ''; }
+        async function api(path, options = {}) {
+            const headers = { ...(options.headers || {}) };
+            if (token) headers.authorization = 'Bearer ' + token;
+            if (options.body) headers['content-type'] = 'application/json';
+            const response = await fetch(path, { ...options, headers });
+            const data = await response.json().catch(() => ({}));
+            if (response.status === 401) {
+                token = '';
+                sessionStorage.removeItem('ow-setup');
+                showLogin('Login again');
+                throw new Error('Login required');
+            }
+            if (!response.ok) throw new Error(data.error || 'Request failed');
+            return data;
+        }
+        function showLogin(error) {
+            document.getElementById('login').hidden = false;
+            document.getElementById('app').classList.remove('open');
+            document.getElementById('loginError').textContent = error || '';
+        }
+        function showApp() {
+            document.getElementById('login').hidden = true;
+            document.getElementById('app').classList.add('open');
+        }
+        function worldFromEvent(event) {
+            const rect = canvas.getBoundingClientRect();
+            const px = (event.clientX - rect.left) * (canvas.width / rect.width);
+            const py = (event.clientY - rect.top) * (canvas.height / rect.height);
+            return {
+                x: (px - canvas.width / 2) / view.scale + view.x,
+                z: (py - canvas.height / 2) / view.scale + view.z
+            };
+        }
+        function toScreen(x, z) {
+            return {
+                px: canvas.width / 2 + (x - view.x) * view.scale,
+                py: canvas.height / 2 + (z - view.z) * view.scale
+            };
+        }
+        function inside(x, z, points) {
+            let hit = false;
+            for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+                const xi = points[i][0], zi = points[i][1], xj = points[j][0], zj = points[j][1];
+                const cross = (zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / ((zj - zi) || 1e-9) + xi;
+                if (cross) hit = !hit;
+            }
+            return hit;
+        }
+        function zone() { return selected >= 0 ? config.zones[selected] : null; }
+        function readFields() {
+            const current = zone();
+            if (!current) return;
+            current.name = document.getElementById('zName').value.slice(0, 32) || 'Zone';
+            current.mob = document.getElementById('zMob').value;
+            current.level = Math.max(1, Math.min(30, Number(document.getElementById('zLevel').value) || 1));
+            const hp = document.getElementById('zHp').value;
+            current.hp = hp === '' ? 0 : Math.max(1, Math.min(500, Number(hp) || 0));
+            current.loot = document.getElementById('zLoot').value;
+        }
+        function renderFields() {
+            const box = document.getElementById('zoneFields');
+            const current = zone();
+            if (!current) {
+                box.textContent = 'Select or draw a zone.';
+                return;
+            }
+            const lootNames = Object.keys(config.loot);
+            box.innerHTML = '';
+            const name = field('Name', 'zName', current.name);
+            const mob = document.createElement('select');
+            mob.id = 'zMob';
+            for (const id of MOBS) {
+                const option = document.createElement('option');
+                option.value = id;
+                option.textContent = id;
+                if (id === current.mob) option.selected = true;
+                mob.appendChild(option);
+            }
+            const level = field('Mob level', 'zLevel', current.level);
+            level.type = 'number';
+            const hp = field('Hit points override', 'zHp', current.hp || '');
+            const loot = document.createElement('select');
+            loot.id = 'zLoot';
+            for (const id of lootNames) {
+                const option = document.createElement('option');
+                option.value = id;
+                option.textContent = id;
+                if (id === current.loot) option.selected = true;
+                loot.appendChild(option);
+            }
+            box.append(labelWrap('Name', name), labelWrap('Mob', mob), labelWrap('Level', level), labelWrap('Hit points, blank for the formula', hp), labelWrap('Loot table', loot));
+            for (const el of [name, mob, level, hp, loot]) el.addEventListener('change', () => { readFields(); draw(); renderZones(); });
+        }
+        function field(caption, id, value) {
+            const input = document.createElement('input');
+            input.id = id;
+            input.value = value;
+            return input;
+        }
+        function labelWrap(caption, el) {
+            const wrap = document.createElement('label');
+            wrap.textContent = caption;
+            wrap.appendChild(el);
+            return wrap;
+        }
+        function renderZones() {
+            const list = document.getElementById('zoneList');
+            list.textContent = '';
+            config.zones.forEach((entry, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'zone' + (index === selected ? ' on' : '');
+                button.textContent = entry.name + ' · ' + entry.mob + ' ' + entry.level;
+                button.addEventListener('click', () => { selected = index; renderZones(); renderFields(); draw(); });
+                list.appendChild(button);
+            });
+        }
+        function renderLoot() {
+            const pick = document.getElementById('lootPick');
+            const current = pick.value;
+            pick.textContent = '';
+            for (const name of Object.keys(config.loot)) {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                pick.appendChild(option);
+            }
+            if (current && config.loot[current]) pick.value = current;
+            const rows = config.loot[pick.value] || [];
+            const table = document.getElementById('lootRows');
+            table.textContent = '';
+            rows.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                const kind = document.createElement('select');
+                for (const id of KINDS) {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = id;
+                    if (id === row.kind) option.selected = true;
+                    kind.appendChild(option);
+                }
+                kind.addEventListener('change', () => { row.kind = kind.value; });
+                const weight = document.createElement('input');
+                weight.type = 'number';
+                weight.value = row.weight;
+                weight.style.width = '52px';
+                weight.addEventListener('change', () => { row.weight = Math.max(1, Number(weight.value) || 1); });
+                const extra = document.createElement('input');
+                extra.value = row.kind === 'junk' ? (row.names || []).join(', ') : row.kind === 'recipe' ? (row.sets || []).join(', ') : '';
+                extra.placeholder = row.kind === 'recipe' ? 'sets' : 'junk names';
+                extra.addEventListener('change', () => {
+                    const parts = extra.value.split(',').map(part => part.trim()).filter(Boolean);
+                    if (row.kind === 'junk') row.names = parts;
+                    if (row.kind === 'recipe') row.sets = parts;
+                });
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.textContent = 'x';
+                remove.addEventListener('click', () => { rows.splice(index, 1); renderLoot(); });
+                for (const el of [kind, weight, extra, remove]) {
+                    const td = document.createElement('td');
+                    td.appendChild(el);
+                    tr.appendChild(td);
+                }
+                table.appendChild(tr);
+            });
+        }
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const bounds = worldBounds();
+            ctx.strokeStyle = '#5a4030';
+            ctx.lineWidth = 3;
+            const a = toScreen(bounds.min, bounds.min);
+            const b = toScreen(bounds.max, bounds.max);
+            ctx.strokeRect(a.px, a.py, b.px - a.px, b.py - a.py);
+            ctx.lineWidth = 1;
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+                for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+                    const x0 = zx * ZONE_SIZE - ZONE_SIZE / 2;
+                    const z0 = zz * ZONE_SIZE - ZONE_SIZE / 2;
+                    const p = toScreen(x0, z0);
+                    const q = toScreen(x0 + ZONE_SIZE, z0 + ZONE_SIZE);
+                    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+                    ctx.strokeRect(p.px, p.py, q.px - p.px, q.py - p.py);
+                    ctx.fillStyle = '#667';
+                    ctx.fillText(zoneName(zx, zz), (p.px + q.px) / 2, p.py + 14);
+                }
+            }
+            config.zones.forEach((entry, index) => {
+                strokeZone(entry.points, index === selected ? 'rgba(241,196,15,0.35)' : 'rgba(90,170,255,0.28)', index === selected ? '#f1c40f' : '#9cf');
+                for (const camp of entry.camps) mark(camp.x, camp.z, '#f1c40f', 5);
+                for (const node of entry.nodes) {
+                    const color = node.type === 'tree' ? '#2e8b57' : node.type === 'rock' ? '#888' : node.type === 'herb' ? '#7dff4a' : '#f4d03f';
+                    mark(node.x, node.z, color, 3);
+                }
+                if (entry.points.length) {
+                    const c = centroid(entry.points);
+                    const s = toScreen(c[0], c[1]);
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText(entry.level + ' ' + entry.mob, s.px, s.py);
+                }
+            });
+            if (draft.length) strokeZone(draft, 'rgba(255,255,255,0.15)', '#fff');
+        }
+        function centroid(points) {
+            const sum = points.reduce((acc, point) => [acc[0] + point[0], acc[1] + point[1]], [0, 0]);
+            return [sum[0] / points.length, sum[1] / points.length];
+        }
+        function strokeZone(points, fill, stroke) {
+            if (!points.length) return;
+            ctx.beginPath();
+            points.forEach((point, index) => {
+                const p = toScreen(point[0], point[1]);
+                if (index === 0) ctx.moveTo(p.px, p.py);
+                else ctx.lineTo(p.px, p.py);
+            });
+            ctx.closePath();
+            ctx.fillStyle = fill;
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = 2;
+            ctx.fill();
+            ctx.stroke();
+            for (const point of points) mark(point[0], point[1], stroke, 3);
+        }
+        function mark(x, z, color, r) {
+            const p = toScreen(x, z);
+            ctx.beginPath();
+            ctx.arc(p.px, p.py, r, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+        }
+        function nearest(points, x, z, limit) {
+            let best = -1;
+            let dist = limit;
+            points.forEach((point, index) => {
+                const d = Math.hypot(point[0] - x, point[1] - z);
+                if (d < dist) { dist = d; best = index; }
+            });
+            return best;
+        }
+        function addZone(points) {
+            const id = 'z' + Math.random().toString(36).slice(2, 7);
+            config.zones.push({ id, name: 'New zone', points, mob: 'boar', level: 1, hp: 0, loot: 'hide', camps: [], nodes: [] });
+            selected = config.zones.length - 1;
+            draft = [];
+            renderZones();
+            renderFields();
+            draw();
+        }
+        const toolNames = [['draw', 'Draw'], ['select', 'Select'], ['camp', 'Camp'], ['tree', 'Tree'], ['rock', 'Rock'], ['herb', 'Herb'], ['sulfur', 'Sulfur'], ['erase', 'Erase']];
+        const tools = document.getElementById('tools');
+        for (const [id, label] of toolNames) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = label;
+            button.className = id === tool ? 'on' : '';
+            button.addEventListener('click', () => {
+                tool = id;
+                for (const child of tools.children) child.classList.remove('on');
+                button.classList.add('on');
+            });
+            tools.appendChild(button);
+        }
+        document.getElementById('finish').addEventListener('click', () => {
+            if (draft.length < 3) { note('An outline needs at least 3 points'); return; }
+            addZone(draft.map(point => point.slice()));
+            note('Zone added. Set its mob, then save.');
+        });
+        document.getElementById('deleteZone').addEventListener('click', () => {
+            if (selected < 0) return;
+            config.zones.splice(selected, 1);
+            selected = config.zones.length - 1;
+            renderZones();
+            renderFields();
+            draw();
+        });
+        canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+        canvas.addEventListener('mousedown', (event) => {
+            const spot = worldFromEvent(event);
+            if (event.button === 2) { drag = { mode: 'pan', x: event.clientX, y: event.clientY, vx: view.x, vz: view.z }; return; }
+            const current = zone();
+            if (tool === 'select' && current) {
+                const index = nearest(current.points, spot.x, spot.z, 18 / view.scale);
+                if (index >= 0) drag = { mode: 'point', index };
+            }
+        });
+        window.addEventListener('mouseup', () => { drag = null; });
+        canvas.addEventListener('mousemove', (event) => {
+            if (!drag) return;
+            if (drag.mode === 'pan') {
+                view.x = drag.vx - (event.clientX - drag.x) / view.scale;
+                view.z = drag.vz - (event.clientY - drag.y) / view.scale;
+                draw();
+                return;
+            }
+            const current = zone();
+            if (drag.mode === 'point' && current) {
+                const spot = worldFromEvent(event);
+                current.points[drag.index] = [Math.round(spot.x), Math.round(spot.z)];
+                draw();
+            }
+        });
+        canvas.addEventListener('wheel', (event) => {
+            event.preventDefault();
+            view.scale = Math.max(0.12, Math.min(1.6, view.scale * (event.deltaY > 0 ? 0.9 : 1.1)));
+            draw();
+        }, { passive: false });
+        canvas.addEventListener('click', (event) => {
+            if (event.button !== 0) return;
+            const spot = worldFromEvent(event);
+            const point = [Math.round(spot.x), Math.round(spot.z)];
+            if (tool === 'draw') {
+                draft.push(point);
+                draw();
+                note(draft.length + ' points. Finish the outline when it is closed.');
+                return;
+            }
+            if (tool === 'select') {
+                selected = config.zones.findIndex(entry => inside(spot.x, spot.z, entry.points));
+                renderZones();
+                renderFields();
+                draw();
+                return;
+            }
+            const current = zone();
+            if (!current) { note('Select a zone first'); return; }
+            if (!inside(spot.x, spot.z, current.points)) { note('Place that inside the outline'); return; }
+            if (tool === 'camp') current.camps.push({ x: point[0], z: point[1], shop: 'Merchant', trainer: 'Trainer' });
+            else if (NODES.includes(tool)) current.nodes.push({ type: tool, x: point[0], z: point[1] });
+            else if (tool === 'erase') {
+                const node = current.nodes.findIndex(item => Math.hypot(item.x - spot.x, item.z - spot.z) < 12);
+                if (node >= 0) current.nodes.splice(node, 1);
+                else {
+                    const camp = current.camps.findIndex(item => Math.hypot(item.x - spot.x, item.z - spot.z) < 14);
+                    if (camp >= 0) current.camps.splice(camp, 1);
+                    else {
+                        const vertex = nearest(current.points, spot.x, spot.z, 14);
+                        if (vertex >= 0 && current.points.length > 3) current.points.splice(vertex, 1);
+                    }
+                }
+            }
+            draw();
+        });
+        document.getElementById('tabMap').addEventListener('click', () => showTab('Map'));
+        document.getElementById('tabRules').addEventListener('click', () => showTab('Rules'));
+        document.getElementById('tabLoot').addEventListener('click', () => { showTab('Loot'); renderLoot(); });
+        function showTab(name) {
+            document.getElementById('panelMap').hidden = name !== 'Map';
+            document.getElementById('panelRules').hidden = name !== 'Rules';
+            document.getElementById('panelLoot').hidden = name !== 'Loot';
+            document.getElementById('tabMap').classList.toggle('on', name === 'Map');
+            document.getElementById('tabRules').classList.toggle('on', name === 'Rules');
+            document.getElementById('tabLoot').classList.toggle('on', name === 'Loot');
+        }
+        document.getElementById('lootPick').addEventListener('change', renderLoot);
+        document.getElementById('addRow').addEventListener('click', () => {
+            const name = document.getElementById('lootPick').value;
+            config.loot[name].push({ kind: 'junk', weight: 10, names: ['Scrap'] });
+            renderLoot();
+        });
+        document.getElementById('addTable').addEventListener('click', () => {
+            const name = prompt('Table id, letters and numbers');
+            if (!name || !/^[a-z0-9-]{1,24}$/i.test(name) || config.loot[name]) return;
+            config.loot[name] = [{ kind: 'junk', weight: 10, names: ['Scrap'] }];
+            renderLoot();
+            document.getElementById('lootPick').value = name;
+            renderLoot();
+        });
+        document.getElementById('save').addEventListener('click', async () => {
+            readFields();
+            try {
+                const saved = await api('/api/setup/config', { method: 'PUT', body: JSON.stringify(config) });
+                config = saved.config;
+                note('Saved. Players already in the game receive it.');
+                renderZones();
+                renderFields();
+                draw();
+            } catch (err) {
+                note(err.message);
+            }
+        });
+        document.getElementById('savePassword').addEventListener('click', async () => {
+            try {
+                await api('/api/setup/password', { method: 'POST', body: JSON.stringify({ password: document.getElementById('newPassword').value }) });
+                note('Password changed');
+            } catch (err) {
+                note(err.message);
+            }
+        });
+        function fillRules() {
+            document.getElementById('hpBase').value = config.hpBase;
+            document.getElementById('hpPerLevel').value = config.hpPerLevel;
+            document.getElementById('grayLevels').value = config.grayLevels;
+            document.getElementById('xpPerMobLevel').value = config.xpPerMobLevel;
+            for (const id of ['hpBase', 'hpPerLevel', 'grayLevels', 'xpPerMobLevel']) {
+                document.getElementById(id).addEventListener('change', () => { config[id] = Number(document.getElementById(id).value); });
+            }
+        }
+        async function boot() {
+            if (!token) return showLogin('');
+            try {
+                config = await api('/api/setup/config');
+                showApp();
+                fillRules();
+                renderZones();
+                renderFields();
+                renderLoot();
+                draw();
+            } catch (err) {
+                showLogin(err.message);
+            }
+        }
+        document.getElementById('login').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const response = await fetch('/api/setup/login', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ password: document.getElementById('password').value })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                document.getElementById('loginError').textContent = data.error || 'Wrong password';
+                return;
+            }
+            token = data.token;
+            sessionStorage.setItem('ow-setup', token);
+            boot();
+        });
+        boot();
+    </script>
+</body>
+</html>

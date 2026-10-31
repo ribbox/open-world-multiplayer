@@ -15,7 +15,7 @@ All of them are served by the Node.js server (no embedding).
 docker-compose up --build
 ```
 
-Open http://localhost:9898 . The server serves the HTML and the model files.
+Open http://localhost:9898 for the game. World setup is a separate page at http://localhost:9898/setup . The first password is `admin`. Set `ADMIN_PASSWORD` on the container to lock it. From setup you can change mob hit points and XP, edit loot tables, draw zone outlines, and place camps plus trees, rocks, herbs, and sulfur. Save applies it to players already in the game.
 Host port 9898 is mapped to the app inside the container (port 3000) so it does not collide with anything already using 3000 or 8080. If 9898 is also taken, change the left side in `docker-compose.yml` (for example `"9900:3000"`) and open that port instead.
 
 ## Manual Node.js run
@@ -41,7 +41,7 @@ node server.js
 - Mouse wheel: zoom in/out on the character
 
 ## Notes
-- The world map shows each zone's mob level. Green is close to your level, orange and red are higher, and gray is 5 or more levels below you. Killing a gray mob gives no XP. Click a spot on the world map to teleport.
+- The world map shows each zone's mob level. Green is close to your level, orange and red are higher, and gray is too far below you to give XP. Outlines drawn in the setup page are shown on the world map. Click a spot on the world map to teleport.
 - A shop assistant buys bag items and supplies. The coin price is rarity times quality: armor, magic, and potion strength raise it. Shift-click sells a whole stack. Spell training still requires a trainer. A character can learn only 2 crafting skills.
 - Gathering and inventory are server-authoritative. Trees and rocks are shared, and a depleted node stays gone for everyone.
 - Hostile NPCs roam, chase nearby players, and show up as red squares on the minimap. Each kind is a different shape: boar, wolf, spider, bandit, ogre, wisp, knight, and cultist. Each zone has its own creatures. Camp Glade is wild boars at level 1–2. Neighboring zones are wolves, spiders, or bandits, and farther zones are ogres, knights, wisps, and cultists at higher levels. Their loot follows the creature: hides, silk, coins, ore, gems, plate, or magic patterns. NPC level sets their hit points. Armor reduces the damage they deal.
