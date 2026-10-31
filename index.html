@@ -963,6 +963,8 @@
             // Chunks
             const chunkSize = CHUNK_SIZE;
             const loadedChunks = new Map();
+            const terrainMeshes = [];
+            const cameraRaycaster = new THREE.Raycaster();
             const allColliders = [];
 
             function addTerrain(group, cx, cz) {
@@ -991,9 +993,11 @@
                 geo.computeVertexNormals();
                 const mesh = new THREE.Mesh(
                     geo,
-                    new THREE.MeshLambertMaterial({ vertexColors: true })
+                    new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.FrontSide })
                 );
                 mesh.receiveShadow = true;
+                mesh.userData.terrain = true;
+                terrainMeshes.push(mesh);
                 group.add(mesh);
 
                 if (!wet) return;
@@ -1817,6 +1821,10 @@
                     if (Math.abs(cx - currentCX) > keepDistance || Math.abs(cz - currentCZ) > keepDistance) {
                         scene.remove(data.group);
                         data.group.traverse(obj => {
+                            if (obj.userData && obj.userData.terrain) {
+                                const ti = terrainMeshes.indexOf(obj);
+                                if (ti !== -1) terrainMeshes.splice(ti, 1);
+                            }
                             if (obj.geometry) obj.geometry.dispose();
                             if (obj.material) {
                                 if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
@@ -3007,13 +3015,27 @@
                         : 'You are a ghost. Return to your body.';
                 }
 
-                const camTarget = characterGroup.position.clone().add(new THREE.Vector3(0, 1.5, 0));
-                const offset = new THREE.Vector3(
-                    Math.sin(cameraYaw) * cameraDistance,
-                    cameraHeight + Math.sin(cameraPitch) * 3,
-                    Math.cos(cameraYaw) * cameraDistance
+                const camTarget = characterGroup.position.clone().add(new THREE.Vector3(0, 1.55, 0));
+                const desired = new THREE.Vector3(
+                    characterGroup.position.x + Math.sin(cameraYaw) * cameraDistance,
+                    characterGroup.position.y + cameraHeight + Math.sin(cameraPitch) * 3,
+                    characterGroup.position.z + Math.cos(cameraYaw) * cameraDistance
                 );
-                camera.position.copy(characterGroup.position).add(offset);
+                const rayDir = desired.clone().sub(camTarget);
+                const rayLen = rayDir.length() || 1;
+                rayDir.multiplyScalar(1 / rayLen);
+                const cameraRay = cameraRaycaster;
+                for (let i = 0; i < terrainMeshes.length; i++) terrainMeshes[i].updateWorldMatrix(true, false);
+                cameraRay.set(camTarget, rayDir);
+                cameraRay.far = rayLen;
+                const blocked = cameraRay.intersectObjects(terrainMeshes, false);
+                let pull = rayLen;
+                if (blocked.length && blocked[0].distance < rayLen - 0.15) {
+                    pull = Math.max(0.8, blocked[0].distance - 0.45);
+                }
+                camera.position.copy(camTarget).addScaledVector(rayDir, pull);
+                const floorY = terrainHeight(camera.position.x, camera.position.z) + 1.05;
+                if (camera.position.y < floorY) camera.position.y = floorY;
                 camera.lookAt(camTarget);
 
                 updateChunks();
