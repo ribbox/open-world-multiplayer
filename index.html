@@ -53,6 +53,7 @@
         Space: Jump &nbsp; Shift: Sprint<br>
         1: Axe &nbsp; 2: Pickaxe &nbsp; 3: Sword<br>
         E: Swing / Gather / Attack<br>
+        F: Loot chest &nbsp; H: Health potion &nbsp; M: Mana potion<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
         <small>Player: human model &nbsp;|&nbsp; NPCs: minion model (served by server)</small>
@@ -61,6 +62,9 @@
         Tool: <span id="toolName">Axe</span><br>
         Lv <span id="levelCount">1</span> &nbsp; XP <span id="xpCount">0</span>/<span id="xpNext">50</span><br>
         HP <span id="hpCount">20</span>/<span id="maxHpCount">20</span><br>
+        MP <span id="manaCount">10</span>/<span id="maxManaCount">10</span> &nbsp; Armor <span id="armorCount">0</span><br>
+        Coins: <span id="coinCount">0</span> &nbsp; Junk: <span id="junkCount">0</span><br>
+        Potions: <span id="healthPotCount">0</span> HP / <span id="manaPotCount">0</span> MP<br>
         Wood: <span id="woodCount">0</span><br>
         Stone: <span id="stoneCount">0</span><br>
         <span id="playerColor" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span>
@@ -177,6 +181,7 @@
             let npcScale = 1;
             let npcFoot = 0;
             const worldNpcs = new Map();
+            const worldChests = new Map();
             let pendingNpcs = null;
 
             loader.load(
@@ -278,13 +283,16 @@
             }
             updateToolUI();
 
-            const stats = { level: 1, xp: 0, xpToNext: 50, hp: 20, maxHp: 20 };
+            const stats = { level: 1, xp: 0, xpToNext: 50, hp: 20, maxHp: 20, mana: 10, maxMana: 10, armor: 0 };
             function updateStatsUI() {
                 document.getElementById('levelCount').textContent = stats.level;
                 document.getElementById('xpCount').textContent = stats.xp;
                 document.getElementById('xpNext').textContent = stats.xpToNext;
                 document.getElementById('hpCount').textContent = stats.hp;
                 document.getElementById('maxHpCount').textContent = stats.maxHp;
+                document.getElementById('manaCount').textContent = stats.mana;
+                document.getElementById('maxManaCount').textContent = stats.maxMana;
+                document.getElementById('armorCount').textContent = stats.armor;
             }
             function applyStats(data) {
                 if (data.level != null) stats.level = data.level;
@@ -292,13 +300,28 @@
                 if (data.xpToNext != null) stats.xpToNext = data.xpToNext;
                 if (data.hp != null) stats.hp = data.hp;
                 if (data.maxHp != null) stats.maxHp = data.maxHp;
+                if (data.mana != null) stats.mana = data.mana;
+                if (data.maxMana != null) stats.maxMana = data.maxMana;
+                if (data.armor != null) stats.armor = data.armor;
                 updateStatsUI();
             }
 
-            const inventory = { wood: 0, stone: 0 };
+            const inventory = { wood: 0, stone: 0, coins: 0, junk: 0, armor: 0, healthPotions: 0, manaPotions: 0 };
             function updateInventoryUI() {
                 document.getElementById('woodCount').textContent = inventory.wood;
                 document.getElementById('stoneCount').textContent = inventory.stone;
+                document.getElementById('coinCount').textContent = inventory.coins;
+                document.getElementById('junkCount').textContent = inventory.junk;
+                document.getElementById('healthPotCount').textContent = inventory.healthPotions;
+                document.getElementById('manaPotCount').textContent = inventory.manaPotions;
+                document.getElementById('armorCount').textContent = inventory.armor;
+            }
+            function applyInventory(data) {
+                if (!data) return;
+                for (const key of Object.keys(inventory)) {
+                    if (data[key] != null) inventory[key] = data[key];
+                }
+                updateInventoryUI();
             }
 
             // Swing: play attack animation if available, plus a simple tool rotation
@@ -386,6 +409,16 @@
                     const mx = mapSize / 2 + dx * mapScale;
                     const mz = mapSize / 2 + dz * mapScale;
                     ctx.fillStyle = '#e74c3c';
+                    ctx.fillRect(mx - 3, mz - 3, 6, 6);
+                }
+
+                for (const chest of worldChests.values()) {
+                    const dx = chest.x - px;
+                    const dz = chest.z - pz;
+                    if (Math.abs(dx) > mapRange || Math.abs(dz) > mapRange) continue;
+                    const mx = mapSize / 2 + dx * mapScale;
+                    const mz = mapSize / 2 + dz * mapScale;
+                    ctx.fillStyle = '#f1c40f';
                     ctx.fillRect(mx - 3, mz - 3, 6, 6);
                 }
 
@@ -674,6 +707,81 @@
                 }
             }
 
+            function addChest(chest) {
+                if (!chest || worldChests.has(chest.id)) {
+                    if (chest && worldChests.has(chest.id)) worldChests.get(chest.id).items = chest.items;
+                    return;
+                }
+                const group = new THREE.Group();
+                const body = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.8, 0.45, 0.5),
+                    new THREE.MeshLambertMaterial({ color: 0x8B5A2B })
+                );
+                body.position.y = 0.28;
+                body.castShadow = true;
+                const lid = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.84, 0.16, 0.54),
+                    new THREE.MeshLambertMaterial({ color: 0xC4A35A })
+                );
+                lid.position.y = 0.56;
+                group.add(body);
+                group.add(lid);
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 64;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.fillRect(48, 8, 160, 48);
+                ctx.fillStyle = '#f1c40f';
+                ctx.font = 'bold 28px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('Lv ' + chest.level, 128, 32);
+                const tex = new THREE.CanvasTexture(canvas);
+                const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+                label.scale.set(1.6, 0.4, 1);
+                label.position.y = 1.15;
+                group.add(label);
+                group.position.set(chest.x, 0, chest.z);
+                scene.add(group);
+                worldChests.set(chest.id, { ...chest, group });
+            }
+
+            function removeChest(id) {
+                const chest = worldChests.get(id);
+                if (!chest) return;
+                scene.remove(chest.group);
+                worldChests.delete(id);
+            }
+
+            function tryLoot() {
+                let closest = null;
+                let closestDist = 2.6;
+                const px = characterGroup.position.x;
+                const pz = characterGroup.position.z;
+                for (const chest of worldChests.values()) {
+                    const dist = Math.hypot(chest.x - px, chest.z - pz);
+                    if (dist < closestDist) {
+                        closest = chest;
+                        closestDist = dist;
+                    }
+                }
+                if (!closest) {
+                    showMessage('No chest nearby');
+                    return;
+                }
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
+                    showMessage('Not connected');
+                    return;
+                }
+                gameSocket.send(JSON.stringify({ type: 'loot', id: closest.id, x: px, z: pz }));
+            }
+
+            function usePotion(item) {
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
+                gameSocket.send(JSON.stringify({ type: 'use', item }));
+            }
+
             function unloadDistantChunks(playerX, playerZ) {
                 const currentCX = Math.floor(playerX / chunkSize);
                 const currentCZ = Math.floor(playerZ / chunkSize);
@@ -728,6 +836,9 @@
                 if (e.key === '2') { currentTool = 'pickaxe'; updateToolUI(); }
                 if (e.key === '3') { currentTool = 'sword'; updateToolUI(); }
                 if (k === 'e') startSwing();
+                if (k === 'f') tryLoot();
+                if (k === 'h') usePotion('health');
+                if (k === 'm') usePotion('mana');
             });
             document.addEventListener('keyup', (e) => {
                 const k = e.key.toLowerCase();
@@ -993,13 +1104,10 @@
                         if (data.color) {
                             document.getElementById('playerColor').style.background = data.color;
                         }
-                        if (data.inventory) {
-                            inventory.wood = data.inventory.wood || 0;
-                            inventory.stone = data.inventory.stone || 0;
-                            updateInventoryUI();
-                        }
+                        if (data.inventory) applyInventory(data.inventory);
                         if (data.stats) applyStats(data.stats);
                         if (data.npcs) syncNpcs(data.npcs);
+                        if (data.chests) data.chests.forEach(addChest);
                         if (data.resources) {
                             for (const [id, hits] of Object.entries(data.resources)) {
                                 applyResourceState(id, hits);
@@ -1032,11 +1140,7 @@
                         applyResourceState(data.id, data.hits);
                     } else if (data.type === 'gatherResult') {
                         if (data.id != null && data.hits != null) applyResourceState(data.id, data.hits);
-                        if (data.inventory) {
-                            inventory.wood = data.inventory.wood || 0;
-                            inventory.stone = data.inventory.stone || 0;
-                            updateInventoryUI();
-                        }
+                        if (data.inventory) applyInventory(data.inventory);
                         if (!data.ok) showMessage(data.reason || 'Cannot gather');
                         else if (data.gained === 'wood') showMessage('+1 Wood');
                         else if (data.gained === 'stone') showMessage('+1 Stone');
@@ -1060,9 +1164,32 @@
                             if (data.reason && data.reason !== 'No target') showMessage(data.reason);
                         } else {
                             applyStats(data);
-                            if (data.killed) showMessage(data.leveled ? 'Level ' + data.level + '! +' + data.gained + ' XP' : '+' + data.gained + ' XP');
-                            else showMessage('Hit ' + data.damage);
+                            if (data.killed) {
+                                showMessage(data.leveled ? 'Level ' + data.level + '! +' + data.gained + ' XP' : '+' + data.gained + ' XP');
+                                if (data.chest) addChest(data.chest);
+                            } else showMessage('Hit ' + data.damage);
                         }
+                    } else if (data.type === 'chest') {
+                        addChest(data.chest);
+                    } else if (data.type === 'chestGone') {
+                        removeChest(data.id);
+                    } else if (data.type === 'lootResult') {
+                        if (!data.ok) showMessage(data.reason || 'Cannot loot');
+                        else {
+                            applyInventory(data.inventory);
+                            applyStats(data);
+                            const names = (data.items || []).map(item => (item.qty > 1 ? item.qty + ' ' : '') + item.name);
+                            showMessage(names.join(', ') || 'Empty');
+                        }
+                    } else if (data.type === 'useResult') {
+                        if (!data.ok) showMessage(data.reason || 'Cannot use');
+                        else {
+                            applyInventory(data.inventory);
+                            applyStats(data);
+                            showMessage(data.item === 'health' ? 'Health restored' : 'Mana restored');
+                        }
+                    } else if (data.type === 'stats') {
+                        applyStats(data);
                     }
                 };
 
