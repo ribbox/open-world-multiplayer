@@ -69,7 +69,17 @@
             position: fixed; inset: 0; pointer-events: none; z-index: 8;
             box-shadow: inset 0 0 0 rgba(160, 0, 0, 0);
         }
-        #hurtFlash.on { box-shadow: inset 0 0 120px rgba(180, 0, 0, 0.55); }
+        #ghostBanner {
+            position: absolute; top: 64px; left: 50%; transform: translateX(-50%);
+            z-index: 16; color: #d6ecff; background: rgba(10, 20, 40, 0.88);
+            border: 1px solid rgba(140, 190, 255, 0.7); border-radius: 8px;
+            padding: 10px 14px; text-align: center; min-width: 260px;
+        }
+        #ghostBanner[hidden] { display: none; }
+        #reclaimButton {
+            margin-top: 8px; padding: 6px 10px; cursor: pointer;
+            background: #1d4e89; color: white; border: 1px solid #9ecbff; border-radius: 4px;
+        }
         #message {
             position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%);
             color: #90EE90; background: rgba(0,0,0,0.7); padding: 8px 16px;
@@ -189,7 +199,7 @@
         1-8: Action bar &nbsp; [ ]: Change page<br>
         Right-click a slot to assign a trained action<br>
         E: Gather if something is close, otherwise attack your target<br>
-        Click an NPC or press Tab to target it<br>
+        Click an NPC or another player, or press Tab, to target them<br>
         B: Bag &nbsp; C: Character sheet &nbsp; F: Loot<br>
         H/M: first potion. Click a potion to use it<br>
         Hold Right Mouse: Rotate Camera<br>
@@ -226,6 +236,10 @@
     <div id="actionPicker" hidden></div>
     <canvas id="minimap" width="180" height="180"></canvas>
     <div id="hurtFlash"></div>
+    <div id="ghostBanner" hidden>
+        <div id="ghostText">You are a ghost. Return to your body.</div>
+        <button type="button" id="reclaimButton" hidden>Return to your body</button>
+    </div>
     <div id="targetFrame" hidden>
         <div id="targetName">Target</div>
         <div id="targetHp"><div id="targetHpFill"></div></div>
@@ -679,6 +693,18 @@
                     ctx.fillRect(mx - 3, mz - 3, 6, 6);
                 }
 
+                for (const marker of corpseMarkers.values()) {
+                    const dx = marker.position.x - px;
+                    const dz = marker.position.z - pz;
+                    if (Math.abs(dx) > mapRange || Math.abs(dz) > mapRange) continue;
+                    const mx = mapSize / 2 + dx * mapScale;
+                    const mz = mapSize / 2 + dz * mapScale;
+                    ctx.fillStyle = '#d6ecff';
+                    ctx.beginPath();
+                    ctx.arc(mx, mz, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
                 ctx.save();
                 ctx.translate(mapSize / 2, mapSize / 2);
                 ctx.rotate(facing);
@@ -846,17 +872,25 @@
                 }));
             }
 
+            let ghost = false;
+            let myCorpse = null;
+            const corpseMarkers = new Map();
+
             function tryAttack(ability) {
                 const action = ACTIONS[ability];
                 if (!action || !action.weapon) return;
-                if (ability !== 'mend' && !selectedNpcId) {
+                if (ghost) {
+                    showMessage('You are a ghost');
+                    return;
+                }
+                const aimed = currentTarget();
+                if (ability !== 'mend' && (!aimed || aimed.kind !== 'npc')) {
                     showMessage('Select a target');
                     return;
                 }
-                const entry = selectedNpcId ? worldNpcs.get(selectedNpcId) : null;
-                if (entry) {
-                    const dx = entry.group.position.x - characterGroup.position.x;
-                    const dz = entry.group.position.z - characterGroup.position.z;
+                if (aimed) {
+                    const dx = aimed.group.position.x - characterGroup.position.x;
+                    const dz = aimed.group.position.z - characterGroup.position.z;
                     characterGroup.rotation.y = Math.atan2(dx, dz);
                 }
                 equippedWeapon = action.weapon;
@@ -871,7 +905,7 @@
                 gameSocket.send(JSON.stringify({
                     type: 'attack',
                     ability,
-                    targetId: selectedNpcId,
+                    targetId: aimed ? aimed.id : null,
                     x: characterGroup.position.x,
                     z: characterGroup.position.z,
                     rotY: characterGroup.rotation.y,
@@ -879,21 +913,48 @@
                 }));
             }
 
+            function currentTarget() {
+                if (!selectedNpcId) return null;
+                const npc = worldNpcs.get(selectedNpcId);
+                if (npc && !npc.dying) {
+                    return { kind: 'npc', id: selectedNpcId, group: npc.group, name: 'Hostile', level: npc.level, hp: npc.hp, maxHp: npc.maxHp };
+                }
+                const remote = remotePlayers.get(selectedNpcId);
+                if (remote) {
+                    return {
+                        kind: 'player',
+                        id: selectedNpcId,
+                        group: remote.mesh,
+                        name: remote.data.name || 'Player',
+                        level: remote.data.level,
+                        hp: remote.data.hp,
+                        maxHp: remote.data.maxHp
+                    };
+                }
+                return null;
+            }
+
             function refreshTargetFrame() {
                 const frame = document.getElementById('targetFrame');
-                const entry = selectedNpcId ? worldNpcs.get(selectedNpcId) : null;
-                if (!entry) {
+                const aimed = currentTarget();
+                if (!aimed) {
                     selectedNpcId = null;
                     targetRing.visible = false;
                     frame.hidden = true;
                     return;
                 }
                 frame.hidden = false;
-                document.getElementById('targetName').textContent = 'Hostile  Lv ' + (entry.level || 1);
-                const pct = Math.max(0, Math.min(1, (entry.hp || 0) / (entry.maxHp || 1)));
-                document.getElementById('targetHpFill').style.width = (pct * 100) + '%';
+                frame.style.borderColor = aimed.kind === 'player' ? 'rgba(80,180,255,0.8)' : 'rgba(255,80,80,0.7)';
+                document.getElementById('targetName').textContent = aimed.kind === 'player'
+                    ? aimed.name
+                    : 'Hostile  Lv ' + (aimed.level || 1);
+                const pct = aimed.maxHp ? Math.max(0, Math.min(1, (aimed.hp || 0) / aimed.maxHp)) : 1;
+                const fill = document.getElementById('targetHpFill');
+                fill.style.width = (pct * 100) + '%';
+                fill.style.background = aimed.kind === 'player' ? '#3d9eff' : '#e74c3c';
+                targetRing.material.color.set(aimed.kind === 'player' ? 0x3d9eff : 0xff3333);
                 targetRing.visible = true;
-                targetRing.position.set(entry.group.position.x, 0.05, entry.group.position.z);
+                targetRing.position.set(aimed.group.position.x, 0.05, aimed.group.position.z);
             }
 
             function selectNpc(id) {
@@ -904,8 +965,15 @@
             function cycleTarget(step) {
                 const list = [];
                 for (const [id, entry] of worldNpcs) {
+                    if (entry.dying) continue;
                     const dx = entry.group.position.x - characterGroup.position.x;
                     const dz = entry.group.position.z - characterGroup.position.z;
+                    list.push({ id, d: dx * dx + dz * dz });
+                }
+                for (const [id, entry] of remotePlayers) {
+                    if (entry.data && entry.data.ghost) continue;
+                    const dx = entry.mesh.position.x - characterGroup.position.x;
+                    const dz = entry.mesh.position.z - characterGroup.position.z;
                     list.push({ id, d: dx * dx + dz * dz });
                 }
                 list.sort((a, b) => a.d - b.d);
@@ -946,11 +1014,12 @@
 
             function launchCast(cast) {
                 const color = cast.ability === 'arcane-surge' ? 0xd980ff : cast.ability === 'mend' ? 0x3ddc84 : 0x7ecbff;
-                if (cast.ability === 'mend') {
+                const selfMend = cast.ability === 'mend' && Math.hypot((cast.tx || 0) - cast.x, (cast.tz || 0) - cast.z) < 0.4;
+                if (selfMend) {
                     launchShot({ x: cast.x, y: 1.1, z: cast.z }, { x: cast.x, y: 2.5, z: cast.z }, color, 0, 0.45);
                     return;
                 }
-                if (cast.ability !== 'arcane-bolt' && cast.ability !== 'arcane-surge') return;
+                if (cast.ability !== 'arcane-bolt' && cast.ability !== 'arcane-surge' && cast.ability !== 'mend') return;
                 const n = cast.bolts || 1;
                 const duration = (cast.travel || 400) / 1000;
                 const angle = Math.atan2((cast.tx || 0) - cast.x, (cast.tz || 0) - cast.z);
@@ -2005,7 +2074,7 @@
             document.getElementById('pagePrev').addEventListener('click', () => changePage(-1));
             document.getElementById('pageNext').addEventListener('click', () => changePage(1));
             document.getElementById('bagButton').addEventListener('click', toggleBag);
-            document.getElementById('sheetButton').addEventListener('click', toggleSheet);
+            document.getElementById('reclaimButton').addEventListener('click', tryReclaim);
             document.getElementById('pagePrev').addEventListener('mousedown', (e) => e.preventDefault());
             document.getElementById('pageNext').addEventListener('mousedown', (e) => e.preventDefault());
             document.getElementById('bagButton').addEventListener('mousedown', (e) => e.preventDefault());
@@ -2052,6 +2121,7 @@
                 if (k === 'b' || k === 'i') toggleBag();
                 if (k === 'c') toggleSheet();
                 if (k === 'f') tryLoot();
+                if (k === 'r') tryReclaim();
                 if (k === 'h') usePotion('health');
                 if (k === 'm') usePotion('mana');
             });
@@ -2071,14 +2141,15 @@
                 raycaster.setFromCamera(pointer, camera);
                 const roots = [];
                 for (const entry of worldNpcs.values()) roots.push(entry.group);
+                for (const entry of remotePlayers.values()) roots.push(entry.mesh);
                 const hits = raycaster.intersectObjects(roots, true);
                 if (!hits.length) {
                     selectNpc(null);
                     return;
                 }
                 let obj = hits[0].object;
-                while (obj && !obj.userData.npcId) obj = obj.parent;
-                selectNpc(obj ? obj.userData.npcId : null);
+                while (obj && !obj.userData.npcId && !obj.userData.playerId) obj = obj.parent;
+                selectNpc(obj ? (obj.userData.playerId || obj.userData.npcId) : null);
             });
             renderer.domElement.addEventListener('mousedown', (e) => {
                 if (e.button === 2) {
@@ -2211,6 +2282,14 @@
                     cameraYaw = dampAngle(cameraYaw, characterGroup.rotation.y + Math.PI, 5, delta);
                 }
 
+                if (ghost && myCorpse) {
+                    const nearBody = Math.hypot(characterGroup.position.x - myCorpse.x, characterGroup.position.z - myCorpse.z) <= 3.2;
+                    document.getElementById('reclaimButton').hidden = !nearBody;
+                    document.getElementById('ghostText').textContent = nearBody
+                        ? 'You have reached your body.'
+                        : 'You are a ghost. Return to your body.';
+                }
+
                 const camTarget = characterGroup.position.clone().add(new THREE.Vector3(0, 1.5, 0));
                 const offset = new THREE.Vector3(
                     Math.sin(cameraYaw) * cameraDistance,
@@ -2298,6 +2377,7 @@
                 const label = makeNameSprite(p.name, p.color);
                 group.add(label);
                 group.userData.label = label;
+                group.userData.playerId = p.id;
                 scene.add(group);
                 return group;
             }
@@ -2325,6 +2405,85 @@
                 }
             }
 
+            function setGhostLook(root, on) {
+                if (!root) return;
+                root.traverse(obj => {
+                    if (!obj.isMesh || !obj.material) return;
+                    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+                    for (const mat of mats) {
+                        mat.transparent = true;
+                        mat.opacity = on ? 0.35 : 1;
+                        mat.depthWrite = !on;
+                    }
+                });
+            }
+
+            function removeCorpse(id) {
+                const marker = corpseMarkers.get(id);
+                if (!marker) return;
+                scene.remove(marker);
+                corpseMarkers.delete(id);
+            }
+
+            function placeCorpse(id, corpse, name, color) {
+                if (!corpse) {
+                    removeCorpse(id);
+                    return;
+                }
+                let marker = corpseMarkers.get(id);
+                if (!marker) {
+                    marker = new THREE.Group();
+                    if (playerTemplate) {
+                        const model = cloneSkinned(playerTemplate);
+                        model.rotation.z = Math.PI / 2;
+                        model.position.y = 0.45;
+                        setGhostLook(model, true);
+                        marker.add(model);
+                    } else {
+                        const body = new THREE.Mesh(
+                            new THREE.CapsuleGeometry(0.35, 0.8, 4, 8),
+                            new THREE.MeshBasicMaterial({ color: 0x9bb4d6, transparent: true, opacity: 0.45 })
+                        );
+                        body.rotation.z = Math.PI / 2;
+                        body.position.y = 0.4;
+                        marker.add(body);
+                    }
+                    const label = makeNameSprite((name || 'Body') + ' — body', color || '#c5d8f2');
+                    label.position.y = 1.1;
+                    marker.add(label);
+                    marker.userData.label = label;
+                    scene.add(marker);
+                    corpseMarkers.set(id, marker);
+                }
+                marker.position.set(corpse.x, 0, corpse.z);
+            }
+
+            function enterGhost(corpse) {
+                ghost = true;
+                myCorpse = corpse || myCorpse;
+                document.getElementById('ghostBanner').hidden = false;
+                setGhostLook(playerModel, true);
+                if (myId && myCorpse) placeCorpse(myId, myCorpse, playerName, '#9ecbff');
+            }
+
+            function leaveGhost() {
+                ghost = false;
+                myCorpse = null;
+                document.getElementById('ghostBanner').hidden = true;
+                document.getElementById('reclaimButton').hidden = true;
+                setGhostLook(playerModel, false);
+                if (myId) removeCorpse(myId);
+            }
+
+            function tryReclaim() {
+                if (!ghost || !gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
+                gameSocket.send(JSON.stringify({
+                    type: 'reclaim',
+                    x: characterGroup.position.x,
+                    z: characterGroup.position.z
+                }));
+            }
+
             function ensureRemote(p) {
                 let entry = remotePlayers.get(p.id);
                 if (!entry) {
@@ -2332,6 +2491,11 @@
                     entry = { mesh, data: p };
                     remotePlayers.set(p.id, entry);
                 }
+                entry.data = p;
+                entry.mesh.userData.playerId = p.id;
+                setGhostLook(entry.mesh, !!p.ghost);
+                if (p.corpse) placeCorpse(p.id, p.corpse, p.name, p.color);
+                else if (p.id !== myId) removeCorpse(p.id);
                 return entry;
             }
 
@@ -2437,6 +2601,32 @@
                         showHurt();
                         floatText(characterGroup.position.x, 1.8, characterGroup.position.z, '-' + data.damage, '#ff5a5a');
                         showMessage('-' + data.damage + ' HP');
+                    } else if (data.type === 'died') {
+                        characterGroup.position.set(data.x || 0, 0, data.z || 0);
+                        verticalVelocity = 0;
+                        onGround = true;
+                        applyStats(data);
+                        enterGhost(data.corpse);
+                        showMessage('You are a ghost. Return to your body.');
+                    } else if (data.type === 'reclaim') {
+                        if (!data.ok) showMessage(data.reason || 'Cannot return');
+                        else {
+                            applyStats(data);
+                            leaveGhost();
+                            showMessage('Returned to your body.');
+                        }
+                    } else if (data.type === 'healed') {
+                        applyStats(data);
+                        floatText(characterGroup.position.x, 2, characterGroup.position.z, '+' + data.amount, '#7dffb3');
+                        showMessage('+' + data.amount + ' HP');
+                    } else if (data.type === 'ghost') {
+                        if (data.id === myId) {
+                            if (data.ghost) enterGhost(data.corpse);
+                            else leaveGhost();
+                        } else if (data.id) {
+                            const entry = ensureRemote(data);
+                            entry.mesh.position.set(data.x || 0, data.y || 0, data.z || 0);
+                        }
                     } else if (data.type === 'respawn') {
                         characterGroup.position.set(data.x || 0, 0, data.z || 0);
                         verticalVelocity = 0;

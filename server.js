@@ -113,7 +113,11 @@ function publicPlayer(id, p) {
         rotY: p.rotY,
         tool: p.tool,
         name: p.name,
-        color: p.color
+        color: p.color,
+        hp: p.hp,
+        maxHp: p.maxHp,
+        ghost: !!p.ghost,
+        corpse: p.corpse || null
     };
 }
 
@@ -158,11 +162,24 @@ for (let i = 0; i < NPC_COUNT; i++) {
     npcs.set(npc.id, npc);
 }
 
+function becomeGhost(player, now) {
+    if (player.ghost) return;
+    player.ghost = true;
+    player.corpse = { x: player.x, z: player.z };
+    player.hp = 0;
+    player.x = 0;
+    player.y = 0;
+    player.z = 0;
+    player.invulnUntil = now + 1500;
+    send(player.ws, { type: 'died', x: 0, y: 0, z: 0, corpse: player.corpse, ...statsOf(player) });
+    broadcast({ type: 'ghost', ...publicPlayer(player.persistentId, player) });
+}
+
 function nearestPlayer(npc, range) {
     let best = null;
     let bestD = range * range;
     for (const player of players.values()) {
-        if (player.hp <= 0) continue;
+        if (player.hp <= 0 || player.ghost) continue;
         const dx = player.x - npc.x;
         const dz = player.z - npc.z;
         const d = dx * dx + dz * dz;
@@ -739,14 +756,7 @@ function tickNpcs() {
                 const damage = Math.max(1, 1 + npc.level - target.armor);
                 target.hp = Math.max(0, target.hp - damage);
                 send(target.ws, { type: 'hurt', damage, attacker: npc.level, ...statsOf(target) });
-                if (target.hp <= 0) {
-                    target.x = 0;
-                    target.y = 0;
-                    target.z = 0;
-                    target.hp = target.maxHp;
-                    target.invulnUntil = now + 2500;
-                    send(target.ws, { type: 'respawn', x: 0, y: 0, z: 0, ...statsOf(target) });
-                }
+                if (target.hp <= 0) becomeGhost(target, now);
             }
             continue;
         }
@@ -870,7 +880,10 @@ wss.on('connection', (ws) => {
                 actionbar: prof.actionbar,
                 invulnUntil: 0,
                 lastGather: 0,
-                lastAttack: 0
+                lastAttack: 0,
+                ghost: false,
+                corpse: null,
+                persistentId
             };
             players.set(persistentId, player);
             refreshDerived(player);
@@ -919,6 +932,10 @@ wss.on('connection', (ws) => {
         }
 
         if (data.type === 'gather') {
+            if (player.ghost) {
+                send(ws, { type: 'gatherResult', ok: false, reason: 'You are a ghost' });
+                return;
+            }
             const now = Date.now();
             if (now - player.lastGather < GATHER_COOLDOWN_MS) return;
             player.lastGather = now;
@@ -976,6 +993,10 @@ wss.on('connection', (ws) => {
         }
 
         if (data.type === 'attack') {
+            if (player.ghost) {
+                send(ws, { type: 'attackResult', ok: false, reason: 'You are a ghost' });
+                return;
+            }
             const now = Date.now();
             if (now - player.lastAttack < 500) return;
             player.lastAttack = now;
@@ -1002,21 +1023,48 @@ wss.on('connection', (ws) => {
             }
             player.mana -= spec.mana;
             if (spec.heal) {
+                let subject = player;
+                if (data.targetId && data.targetId !== player.persistentId) {
+                    const ally = players.get(data.targetId);
+                    if (!ally) {
+                        player.mana += spec.mana;
+                        send(ws, { type: 'attackResult', ok: false, reason: npcs.has(data.targetId) ? 'Select a player to heal' : 'No target', ...statsOf(player) });
+                        return;
+                    }
+                    if (ally.ghost) {
+                        player.mana += spec.mana;
+                        send(ws, { type: 'attackResult', ok: false, reason: 'Cannot heal a ghost', ...statsOf(player) });
+                        return;
+                    }
+                    if (Math.hypot(ally.x - player.x, ally.z - player.z) > 8) {
+                        player.mana += spec.mana;
+                        send(ws, { type: 'attackResult', ok: false, reason: 'Out of range', ...statsOf(player) });
+                        return;
+                    }
+                    subject = ally;
+                }
                 const healed = spec.heal(player.level);
-                player.hp = Math.min(player.maxHp, player.hp + healed);
+                subject.hp = Math.min(subject.maxHp, subject.hp + healed);
                 player.lastAttack = now;
                 broadcast({
                     type: 'cast',
                     casterId: sessionId,
                     ability: data.ability,
                     bolts: 1,
-                    travel: 0,
+                    travel: 280,
                     x: player.x,
                     z: player.z,
-                    tx: player.x,
-                    tz: player.z
+                    tx: subject.x,
+                    tz: subject.z
                 });
-                send(ws, { type: 'attackResult', ok: true, ability: data.ability, heal: healed, ...statsOf(player) });
+                if (subject !== player) send(subject.ws, { type: 'healed', amount: healed, from: player.name, ...statsOf(subject) });
+                send(ws, { type: 'attackResult', ok: true, ability: data.ability, heal: healed, targetId: subject.persistentId, ...statsOf(player) });
+                return;
+            }
+            const ally = players.get(data.targetId);
+            if (ally) {
+                player.mana += spec.mana;
+                send(ws, { type: 'attackResult', ok: false, reason: 'Cannot attack a player', ...statsOf(player) });
                 return;
             }
             const npc = npcs.get(data.targetId);
@@ -1112,6 +1160,27 @@ wss.on('connection', (ws) => {
                     if (hit.killed || landed >= bolts) report(hit);
                 }, travel + i * 90);
             }
+            return;
+        }
+
+        if (data.type === 'reclaim') {
+            if (!player.ghost || !player.corpse) {
+                send(ws, { type: 'reclaim', ok: false, reason: 'You are not a ghost' });
+                return;
+            }
+            if (typeof data.x === 'number') player.x = data.x;
+            if (typeof data.z === 'number') player.z = data.z;
+            if (Math.hypot(player.x - player.corpse.x, player.z - player.corpse.z) > 3.2) {
+                send(ws, { type: 'reclaim', ok: false, reason: 'Too far from your body' });
+                return;
+            }
+            player.ghost = false;
+            player.hp = player.maxHp;
+            player.mana = player.maxMana;
+            player.corpse = null;
+            player.invulnUntil = Date.now() + 2000;
+            broadcast({ type: 'ghost', ...publicPlayer(player.persistentId, player) });
+            send(ws, { type: 'reclaim', ok: true, ...statsOf(player) });
             return;
         }
 

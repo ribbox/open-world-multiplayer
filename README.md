@@ -27,7 +27,8 @@ node server.js
 - W/S: move, A/D: turn. Turning eases in, and the camera swings behind you unless the right mouse button is held.
 - Space: jump, Shift: sprint
 - 1-8 use the current action-bar page. [ and ] change page. The slots, bag, and character buttons are icons. Right-click a slot to assign a trained action.
-- Click an NPC, or press Tab, to select it. Attacks and spells hit that target only, and only while it is in range. A red ring and a health plate mark the selection.
+- Click an NPC or another player, or press Tab, to select them. Attacks hit the NPC. Mend heals the selected player, or you if nobody is selected.
+- When you die you become a ghost at the spawn. Your body stays where you fell. Walk back to it and press Return to your body, or R, when the prompt appears.
 - A hit flashes the NPC and pops a damage number. A killing blow tips the body over and bursts it apart. Damage you take reddens the screen.
 - B opens the bag. C opens the character sheet. Choose Warrior or Mage once.
 - The sheet equips a weapon and off hand around a body: head, neck, shoulders, cloak, chest, hands, waist, legs, and feet. Class spells are trained there. Each level after the first gives a talent point for that class's tree.
