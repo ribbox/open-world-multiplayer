@@ -155,13 +155,8 @@ function noteKill(player, npc) {
     return changed;
 }
 
-function coinRoom(player, amount) {
-    let room = 0;
-    for (const slot of player.slots) {
-        if (!slot) room += 99;
-        else if (slot.kind === 'coins' && slot.qty < 99) room += 99 - slot.qty;
-    }
-    return room >= amount;
+function coinRoom() {
+    return true;
 }
 
 function xpToNext(level) {
@@ -595,31 +590,36 @@ function publicCharacter(player) {
     };
 }
 
+const MATERIAL_KINDS = ['wood', 'stone', 'cloth', 'leather', 'ore', 'gem'];
+
+function blankMaterials() {
+    return { wood: 0, stone: 0, cloth: 0, leather: 0, ore: 0, gem: 0 };
+}
+
 function coinCount(player) {
-    return player.slots.reduce((sum, slot) => sum + (slot && slot.kind === 'coins' ? slot.qty : 0), 0);
+    return player.coins || 0;
 }
 
 function spendCoins(player, amount) {
     if (amount <= 0) return true;
     if (coinCount(player) < amount) return false;
-    let left = amount;
-    for (let i = 0; i < player.slots.length && left > 0; i++) {
-        const slot = player.slots[i];
-        if (!slot || slot.kind !== 'coins') continue;
-        const take = Math.min(slot.qty, left);
-        slot.qty -= take;
-        left -= take;
-        if (slot.qty <= 0) player.slots[i] = null;
-    }
-    return left === 0;
+    player.coins -= amount;
+    return true;
 }
 
 function countKind(player, kind) {
+    if (kind === 'coins') return player.coins || 0;
+    if (MATERIAL_KINDS.includes(kind)) return (player.materials && player.materials[kind]) || 0;
     return player.slots.reduce((sum, slot) => sum + (slot && slot.kind === kind ? slot.qty : 0), 0);
 }
 
 function takeKind(player, kind, amount) {
     if (countKind(player, kind) < amount) return false;
+    if (kind === 'coins') return spendCoins(player, amount);
+    if (MATERIAL_KINDS.includes(kind)) {
+        player.materials[kind] -= amount;
+        return true;
+    }
     let left = amount;
     for (let i = 0; i < player.slots.length && left > 0; i++) {
         const slot = player.slots[i];
@@ -811,6 +811,15 @@ function expandBag(player, extra) {
 }
 
 function addToSlots(player, source) {
+    if (!player.materials) player.materials = blankMaterials();
+    if (source.kind === 'coins') {
+        player.coins = (player.coins || 0) + (source.qty || 1);
+        return null;
+    }
+    if (MATERIAL_KINDS.includes(source.kind)) {
+        player.materials[source.kind] = (player.materials[source.kind] || 0) + (source.qty || 1);
+        return null;
+    }
     normalizeSlots(player);
     let qty = source.qty || 1;
     const limit = stackLimit(source);
@@ -847,39 +856,47 @@ function copySlot(slot) {
     return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0, weapon: slot.weapon || '', slot: slot.slot || '', style: slot.style || '', magic: !!slot.magic, recipe: slot.recipe || '' };
 }
 
+function absorbWallet(player) {
+    player.coins = Math.max(0, Number(player.coins) || 0);
+    const materials = blankMaterials();
+    const raw = player.materials || {};
+    for (const kind of MATERIAL_KINDS) materials[kind] = Math.max(0, Number(raw[kind]) || 0);
+    player.materials = materials;
+    if (!Array.isArray(player.slots)) player.slots = [];
+    for (let i = 0; i < player.slots.length; i++) {
+        const slot = player.slots[i];
+        if (!slot) continue;
+        if (slot.kind === 'coins') player.coins += slot.qty || 0;
+        else if (MATERIAL_KINDS.includes(slot.kind)) materials[slot.kind] += slot.qty || 0;
+        else continue;
+        player.slots[i] = null;
+    }
+    player.slots = player.slots.filter(Boolean);
+    while (player.slots.length > slotCapacity(player)) expandBag(player, 4);
+    normalizeSlots(player);
+}
+
 function loadInventory(prof) {
-    if (Array.isArray(prof.slots)) {
-        const player = {
-            bagSlots: prof.bagSlots || 0,
-            slots: prof.slots.map(copySlot)
-        };
-        while (player.slots.length > slotCapacity(player)) expandBag(player, 4);
-        normalizeSlots(player);
-        prof.slots = player.slots;
-        prof.bagSlots = player.bagSlots;
-        return;
+    const player = {
+        bagSlots: prof.bagSlots || 0,
+        slots: Array.isArray(prof.slots) ? prof.slots.map(copySlot) : [],
+        coins: prof.coins || 0,
+        materials: prof.materials || blankMaterials()
+    };
+    if (!Array.isArray(prof.slots)) {
+        player.materials.wood += prof.wood || 0;
+        player.materials.stone += prof.stone || 0;
+        if (prof.junk) player.slots.push({ kind: 'junk', name: 'Junk', qty: prof.junk });
+        for (const amount of prof.healthPotions || []) player.slots.push({ kind: 'health', name: 'Health potion', qty: 1, amount });
+        for (const amount of prof.manaPotions || []) player.slots.push({ kind: 'mana', name: 'Mana potion', qty: 1, amount });
     }
-    const pending = [];
-    const push = (item) => { if ((item.qty || 0) > 0) pending.push(item); };
-    push({ kind: 'wood', name: 'Wood', qty: prof.wood || 0 });
-    push({ kind: 'stone', name: 'Stone', qty: prof.stone || 0 });
-    push({ kind: 'coins', name: 'Coins', qty: prof.coins || 0 });
-    push({ kind: 'junk', name: 'Junk', qty: prof.junk || 0 });
-    for (const amount of prof.healthPotions || []) push({ kind: 'health', name: 'Health potion', qty: 1, amount });
-    for (const amount of prof.manaPotions || []) push({ kind: 'mana', name: 'Mana potion', qty: 1, amount });
-    const player = { slots: [], bagSlots: 0 };
-    for (const item of pending) {
-        let rest = addToSlots(player, item);
-        while (rest) {
-            expandBag(player, 4);
-            rest = addToSlots(player, rest);
-        }
-    }
+    absorbWallet(player);
     prof.slots = player.slots;
     prof.bagSlots = player.bagSlots;
+    prof.coins = player.coins;
+    prof.materials = player.materials;
     prof.wood = 0;
     prof.stone = 0;
-    prof.coins = 0;
     prof.junk = 0;
     prof.healthPotions = [];
     prof.manaPotions = [];
@@ -890,7 +907,9 @@ function inventoryOf(player) {
         slots: player.slots,
         capacity: slotCapacity(player),
         bagSlots: player.bagSlots || 0,
-        baseSlots: BASE_SLOTS
+        baseSlots: BASE_SLOTS,
+        coins: player.coins || 0,
+        materials: player.materials || blankMaterials()
     };
 }
 
@@ -909,9 +928,8 @@ function savePlayer(player) {
     prof.quests = player.quests || {};
     prof.level = player.level;
     prof.xp = player.xp;
-    prof.wood = 0;
-    prof.stone = 0;
-    prof.coins = 0;
+    prof.coins = player.coins || 0;
+    prof.materials = player.materials || blankMaterials();
     prof.junk = 0;
     prof.healthPotions = [];
     prof.manaPotions = [];
@@ -1216,6 +1234,8 @@ wss.on('connection', (ws) => {
                 recipes: Array.isArray(prof.recipes) ? prof.recipes.slice() : [],
                 quests: JSON.parse(JSON.stringify(prof.quests || {})),
                 bagSlots: prof.bagSlots || 0,
+                coins: prof.coins || 0,
+                materials: Object.assign(blankMaterials(), prof.materials || {}),
                 slots: prof.slots.map(copySlot),
                 actionbar: prof.actionbar,
                 invulnUntil: 0,
@@ -1597,7 +1617,7 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'quests', ok: false, reason: row.count + '/' + quest.count, quests: player.quests });
                 return;
             }
-            if (!coinRoom(player, quest.coins)) {
+            if (!coinRoom()) {
                 send(ws, { type: 'quests', ok: false, reason: 'Inventory full', quests: player.quests });
                 return;
             }
@@ -1622,6 +1642,24 @@ wss.on('connection', (ws) => {
             if (slot.qty <= 0) player.slots[index] = null;
             savePlayer(player);
             send(ws, { type: 'discardResult', ok: true, name, qty, inventory: inventoryOf(player) });
+            return;
+        }
+
+        if (data.type === 'discardMaterial') {
+            const kind = data.kind;
+            if (!MATERIAL_KINDS.includes(kind)) {
+                send(ws, { type: 'discardResult', ok: false, reason: 'Not a supply' });
+                return;
+            }
+            const have = player.materials[kind] || 0;
+            if (!have) {
+                send(ws, { type: 'discardResult', ok: false, reason: 'None left' });
+                return;
+            }
+            const qty = data.all ? have : 1;
+            player.materials[kind] = have - qty;
+            savePlayer(player);
+            send(ws, { type: 'discardResult', ok: true, name: MATERIAL_NAMES[kind] || kind, qty, inventory: inventoryOf(player) });
             return;
         }
 

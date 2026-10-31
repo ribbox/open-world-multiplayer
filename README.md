@@ -41,7 +41,7 @@ node server.js
 - Mouse wheel: zoom in/out on the character
 
 ## Notes
-- The bag has 16 slots. Extra bags can raise that later through `bagSlots`. Wood and stone stack to 20, coins to 99, junk to 10, potions and armor scraps to 5. A full bag will not take the last gather hit, and a chest keeps whatever does not fit.
+- The bag has 16 slots for gear, potions, junk, and patterns. Crafting supplies (wood, stone, cloth, leather, ore, gems) sit in their own section and do not count toward that total. Coins are a count, not a slot. A full bag will not take the last gather hit or chest item that needs a slot, and a chest keeps whatever does not fit.
 - Gathering and inventory are server-authoritative. Trees and rocks are shared, and a depleted node stays gone for everyone.
 - Hostile NPCs roam, chase nearby players, and show up as red squares on the minimap. Each kind is a different shape: boar, wolf, spider, bandit, ogre, wisp, knight, and cultist. Each zone has its own creatures. Camp Glade is wild boars at level 1–2. Neighboring zones are wolves, spiders, or bandits, and farther zones are ogres, knights, wisps, and cultists at higher levels. Their loot follows the creature: hides, silk, coins, ore, gems, plate, or magic patterns. NPC level sets their hit points. Armor reduces the damage they deal.
 - Friendly NPCs do not fight and use their own shapes. In Camp Glade, Mira sells crafting patterns, Bram trains spells, and Sela gives the boar quest. They are green on the minimap. Press T while standing next to one.

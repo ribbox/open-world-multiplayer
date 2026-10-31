@@ -40,6 +40,9 @@
             margin-top: 4px;
         }
         #bagHint { font-size: 11px; color: #ccc; margin-top: 6px; max-width: 176px; line-height: 1.3; }
+        #coinLine { color: #f1c40f; margin-top: 4px; }
+        #supplyLabel { margin-top: 8px; font-size: 12px; color: #ddd; }
+        #supplySlots { display: grid; grid-template-columns: repeat(4, 40px); gap: 3px; margin-top: 4px; }
         .slot {
             position: relative;
             width: 40px;
@@ -278,8 +281,11 @@
     <div id="inventory">
         <div id="bag">
             <span id="bagLabel">Bag 0/16</span>
+            <div id="coinLine">0 coins</div>
             <div id="bagSlots"></div>
-            <div id="bagHint">Right-click destroys one. Shift+right-click destroys the stack.</div>
+            <div id="supplyLabel">Supplies</div>
+            <div id="supplySlots"></div>
+            <div id="bagHint">Right-click destroys one bag item or supply. Shift+right-click destroys the stack. Supplies and coins do not use bag slots.</div>
         </div>
         <span id="playerColor" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span>
         <input id="playerName" maxlength="16" placeholder="Name">
@@ -292,6 +298,7 @@
             &nbsp; HP <span id="hpCount">20</span>/<span id="maxHpCount">20</span>
             &nbsp; MP <span id="manaCount">10</span>/<span id="maxManaCount">10</span>
             &nbsp; Ar <span id="armorCount">0</span>
+            &nbsp; Coins <span id="purse">0</span>
         </div>
         <div id="barRow">
             <button type="button" class="bar-nav" id="pagePrev">‹</button>
@@ -639,12 +646,15 @@
                 updateStatsUI();
             }
 
-            const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, baseSlots: 16 };
+            const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, baseSlots: 16, coins: 0, materials: {} };
+            const SUPPLY_KINDS = [['wood', 'Wood'], ['stone', 'Stone'], ['cloth', 'Cloth'], ['leather', 'Leather'], ['ore', 'Ore'], ['gem', 'Gem']];
             function updateInventoryUI() {
                 const slots = inventory.slots || [];
                 const used = slots.filter(Boolean).length;
                 const extra = inventory.bagSlots ? ' +' + inventory.bagSlots : '';
                 document.getElementById('bagLabel').textContent = 'Bag ' + used + '/' + inventory.capacity + extra;
+                document.getElementById('coinLine').textContent = inventory.coins + ' coins';
+                document.getElementById('purse').textContent = String(inventory.coins || 0);
                 const root = document.getElementById('bagSlots');
                 root.textContent = '';
                 slots.forEach((slot, index) => {
@@ -671,6 +681,27 @@
                     });
                     root.appendChild(cell);
                 });
+                const supplies = document.getElementById('supplySlots');
+                supplies.textContent = '';
+                const mats = inventory.materials || {};
+                for (const [kind, name] of SUPPLY_KINDS) {
+                    const qty = mats[kind] || 0;
+                    const cell = document.createElement('button');
+                    cell.type = 'button';
+                    cell.className = 'slot ' + kind;
+                    paintItem(cell, { kind, name, qty });
+                    const mark = document.createElement('div');
+                    mark.className = 'qty';
+                    mark.textContent = String(qty);
+                    cell.appendChild(mark);
+                    cell.title = name + ' x' + qty + ' — does not use a bag slot';
+                    cell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        if (!qty || !gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
+                        gameSocket.send(JSON.stringify({ type: 'discardMaterial', kind, all: e.shiftKey }));
+                    });
+                    supplies.appendChild(cell);
+                }
             }
             function applyInventory(data) {
                 if (!data || !Array.isArray(data.slots)) return;
@@ -678,6 +709,8 @@
                 inventory.capacity = data.capacity;
                 inventory.bagSlots = data.bagSlots || 0;
                 inventory.baseSlots = data.baseSlots || 16;
+                inventory.coins = data.coins || 0;
+                inventory.materials = data.materials || {};
                 updateInventoryUI();
             }
             function useSlot(index) {
@@ -2659,6 +2692,8 @@
             }
 
             function haveKind(kind) {
+                if (kind === 'coins') return inventory.coins || 0;
+                if (inventory.materials && inventory.materials[kind] != null) return inventory.materials[kind];
                 return (inventory.slots || []).reduce((sum, slot) => sum + (slot && slot.kind === kind ? slot.qty : 0), 0);
             }
 
