@@ -292,6 +292,70 @@ const TALENTS = {
     surge: { class: 'mage', name: 'Surge', max: 1, row: 2, requires: { 'arcane-power': 2 }, text: 'Unlocks Arcane Surge' }
 };
 
+const RECIPES = {
+    'cloth-hat': { name: 'Cloth Hat', set: 'cloth', slot: 'head', kind: 'armor', style: 'cloth', armor: 1, cost: { cloth: 2 } },
+    'cloth-robe': { name: 'Cloth Robe', set: 'cloth', slot: 'chest', kind: 'armor', style: 'cloth', armor: 2, cost: { cloth: 4 } },
+    'cloth-gloves': { name: 'Cloth Gloves', set: 'cloth', slot: 'hands', kind: 'armor', style: 'cloth', armor: 1, cost: { cloth: 2 } },
+    'cloth-pants': { name: 'Cloth Pants', set: 'cloth', slot: 'legs', kind: 'armor', style: 'cloth', armor: 1, cost: { cloth: 3 } },
+    'cloth-shoes': { name: 'Cloth Shoes', set: 'cloth', slot: 'feet', kind: 'armor', style: 'cloth', armor: 1, cost: { cloth: 2 } },
+    'cloth-shoulders': { name: 'Cloth Shoulders', set: 'cloth', slot: 'shoulders', kind: 'armor', style: 'cloth', armor: 1, cost: { cloth: 3 }, loot: true },
+    'cloth-sash': { name: 'Cloth Sash', set: 'cloth', slot: 'waist', kind: 'armor', style: 'cloth', armor: 1, cost: { cloth: 2 }, loot: true },
+    'cloth-cloak': { name: 'Cloth Cloak', set: 'cloth', slot: 'cloak', kind: 'armor', style: 'cloth', armor: 1, cost: { cloth: 3 }, loot: true },
+    'leather-cap': { name: 'Leather Cap', set: 'leather', slot: 'head', kind: 'armor', style: 'leather', armor: 2, cost: { leather: 2 } },
+    'leather-jerkin': { name: 'Leather Jerkin', set: 'leather', slot: 'chest', kind: 'armor', style: 'leather', armor: 3, cost: { leather: 4 } },
+    'leather-gloves': { name: 'Leather Gloves', set: 'leather', slot: 'hands', kind: 'armor', style: 'leather', armor: 2, cost: { leather: 2 } },
+    'leather-pants': { name: 'Leather Pants', set: 'leather', slot: 'legs', kind: 'armor', style: 'leather', armor: 2, cost: { leather: 3 } },
+    'leather-boots': { name: 'Leather Boots', set: 'leather', slot: 'feet', kind: 'armor', style: 'leather', armor: 2, cost: { leather: 2 } },
+    'leather-shoulders': { name: 'Leather Shoulders', set: 'leather', slot: 'shoulders', kind: 'armor', style: 'leather', armor: 2, cost: { leather: 3 }, loot: true },
+    'leather-belt': { name: 'Leather Belt', set: 'leather', slot: 'waist', kind: 'armor', style: 'leather', armor: 1, cost: { leather: 2 }, loot: true },
+    'plate-helm': { name: 'Plate Helm', set: 'plate', slot: 'head', kind: 'armor', style: 'plate', armor: 3, cost: { ore: 3, stone: 1 } },
+    'plate-breastplate': { name: 'Plate Breastplate', set: 'plate', slot: 'chest', kind: 'armor', style: 'plate', armor: 5, cost: { ore: 5, stone: 2 } },
+    'plate-gauntlets': { name: 'Plate Gauntlets', set: 'plate', slot: 'hands', kind: 'armor', style: 'plate', armor: 3, cost: { ore: 3 } },
+    'plate-greaves': { name: 'Plate Greaves', set: 'plate', slot: 'legs', kind: 'armor', style: 'plate', armor: 4, cost: { ore: 4, stone: 1 } },
+    'plate-sabatons': { name: 'Plate Sabatons', set: 'plate', slot: 'feet', kind: 'armor', style: 'plate', armor: 3, cost: { ore: 3, stone: 1 } },
+    'plate-pauldrons': { name: 'Plate Pauldrons', set: 'plate', slot: 'shoulders', kind: 'armor', style: 'plate', armor: 3, cost: { ore: 3 }, loot: true },
+    'plate-belt': { name: 'Plate Belt', set: 'plate', slot: 'waist', kind: 'armor', style: 'plate', armor: 2, cost: { ore: 2 }, loot: true },
+    'iron-sword': { name: 'Iron Sword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', armor: 0, cost: { ore: 2, wood: 1 } },
+    'oak-staff': { name: 'Oak Staff', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'staff', armor: 0, cost: { wood: 3 } },
+    'iron-buckler': { name: 'Iron Buckler', set: 'weapon', slot: 'offhand', kind: 'armor', style: 'plate', armor: 2, cost: { ore: 3 }, loot: true },
+    'rune-blade': { name: 'Rune Blade', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'sword', magic: true, armor: 0, cost: { ore: 2, wood: 1, gem: 1 } },
+    'arcane-staff': { name: 'Arcane Staff', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'staff', magic: true, armor: 0, cost: { wood: 2, gem: 1 } },
+    'greater-rune-blade': { name: 'Greater Rune Blade', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'sword', magic: true, armor: 0, cost: { ore: 4, wood: 1, gem: 2 }, loot: true },
+    'greater-arcane-staff': { name: 'Greater Arcane Staff', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'staff', magic: true, armor: 0, cost: { wood: 3, gem: 2 }, loot: true },
+    'spell-focus': { name: 'Spell Focus', set: 'magic', slot: 'offhand', kind: 'armor', style: 'cloth', magic: true, armor: 1, cost: { wood: 1, gem: 1 }, loot: true },
+    'gem-pendant': { name: 'Gem Pendant', set: 'magic', slot: 'neck', kind: 'armor', style: 'cloth', magic: true, armor: 1, cost: { cloth: 1, gem: 1 }, loot: true }
+};
+
+const CRAFT_SETS = {
+    cloth: { name: 'Clothworking', cost: 12, text: 'Hat, robe, gloves, pants, and shoes.' },
+    leather: { name: 'Leatherworking', cost: 20, text: 'Cap, jerkin, gloves, pants, and boots.' },
+    plate: { name: 'Armorsmithing', cost: 30, text: 'Helm, breastplate, gauntlets, greaves, and sabatons.' },
+    weapon: { name: 'Weaponsmithing', cost: 16, text: 'Iron sword and oak staff.' },
+    magic: { name: 'Spellforging', cost: 28, text: 'Rune blade and arcane staff.' }
+};
+
+const MATERIAL_NAMES = { cloth: 'Cloth', leather: 'Leather', ore: 'Ore', gem: 'Gem', wood: 'Wood', stone: 'Stone' };
+const LOOT_RECIPE_IDS = Object.keys(RECIPES).filter(id => RECIPES[id].loot);
+
+function publicCraft() {
+    const recipes = {};
+    for (const [id, recipe] of Object.entries(RECIPES)) {
+        recipes[id] = {
+            name: recipe.name,
+            set: recipe.set,
+            slot: recipe.slot,
+            kind: recipe.kind,
+            style: recipe.style || '',
+            armor: recipe.armor || 0,
+            weapon: recipe.weapon || '',
+            magic: !!recipe.magic,
+            cost: recipe.cost,
+            loot: !!recipe.loot
+        };
+    }
+    return { sets: CRAFT_SETS, recipes };
+}
+
 function emptyEquipment() {
     const gear = {};
     for (const slot of EQUIP_SLOTS) gear[slot] = null;
@@ -332,6 +396,12 @@ function loadCharacter(prof) {
         ranks[id] = Math.max(1, Math.min(maxRank, Number(rawRanks[id]) || 1));
     }
     prof.spellRanks = ranks;
+    const seen = new Set();
+    prof.recipes = (Array.isArray(prof.recipes) ? prof.recipes : []).filter(id => {
+        if (!RECIPES[id] || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+    });
 }
 
 function armorValue(player) {
@@ -378,6 +448,8 @@ function publicCharacter(player) {
         trained: player.trained,
         talents: player.talents,
         spellRanks: player.spellRanks || {},
+        recipes: player.recipes || [],
+        craft: publicCraft(),
         points: talentPoints(player),
         known: knownSpells(player),
         spells: SPELLS,
@@ -402,6 +474,78 @@ function spendCoins(player, amount) {
         if (slot.qty <= 0) player.slots[i] = null;
     }
     return left === 0;
+}
+
+function countKind(player, kind) {
+    return player.slots.reduce((sum, slot) => sum + (slot && slot.kind === kind ? slot.qty : 0), 0);
+}
+
+function takeKind(player, kind, amount) {
+    if (countKind(player, kind) < amount) return false;
+    let left = amount;
+    for (let i = 0; i < player.slots.length && left > 0; i++) {
+        const slot = player.slots[i];
+        if (!slot || slot.kind !== kind) continue;
+        const take = Math.min(slot.qty, left);
+        slot.qty -= take;
+        left -= take;
+        if (slot.qty <= 0) player.slots[i] = null;
+    }
+    return true;
+}
+
+function learnSet(player, setId) {
+    const set = CRAFT_SETS[setId];
+    if (!set) return 'Unknown set';
+    const ids = Object.keys(RECIPES).filter(id => RECIPES[id].set === setId && !RECIPES[id].loot);
+    if (ids.every(id => player.recipes.includes(id))) return 'Already learned';
+    if (!spendCoins(player, set.cost)) return 'Not enough coins';
+    for (const id of ids) if (!player.recipes.includes(id)) player.recipes.push(id);
+    savePlayer(player);
+    return null;
+}
+
+function learnPattern(player, index) {
+    const slot = player.slots[index];
+    if (!slot || slot.kind !== 'recipe') return 'Not a pattern';
+    const recipe = RECIPES[slot.recipe];
+    if (!recipe) return 'Unknown pattern';
+    if (player.recipes.includes(slot.recipe)) return 'Already known';
+    player.recipes.push(slot.recipe);
+    slot.qty -= 1;
+    if (slot.qty <= 0) player.slots[index] = null;
+    savePlayer(player);
+    return null;
+}
+
+function craftItem(player, id) {
+    const recipe = RECIPES[id];
+    if (!recipe) return 'Unknown recipe';
+    if (!player.recipes.includes(id)) return 'Recipe not learned';
+    for (const [kind, qty] of Object.entries(recipe.cost)) {
+        if (countKind(player, kind) < qty) return 'Need ' + qty + ' ' + (MATERIAL_NAMES[kind] || kind);
+    }
+    normalizeSlots(player);
+    if (!player.slots.some(slot => !slot)) return 'Inventory full';
+    for (const [kind, qty] of Object.entries(recipe.cost)) takeKind(player, kind, qty);
+    const rest = addToSlots(player, {
+        kind: recipe.kind,
+        name: recipe.name,
+        qty: 1,
+        armor: recipe.armor || 0,
+        weapon: recipe.weapon || '',
+        slot: recipe.slot || '',
+        style: recipe.style || '',
+        magic: !!recipe.magic
+    });
+    if (rest) {
+        for (const [kind, qty] of Object.entries(recipe.cost)) {
+            addToSlots(player, { kind, name: MATERIAL_NAMES[kind] || kind, qty });
+        }
+        return 'Inventory full';
+    }
+    savePlayer(player);
+    return null;
 }
 
 function chooseClass(player, className) {
@@ -502,8 +646,8 @@ const BASE_SLOTS = 16;
 
 function stackLimit(item) {
     if (item.kind === 'coins') return 99;
-    if (item.kind === 'wood' || item.kind === 'stone') return 20;
-    if (item.kind === 'junk') return 10;
+    if (item.kind === 'wood' || item.kind === 'stone' || item.kind === 'cloth' || item.kind === 'leather' || item.kind === 'ore') return 20;
+    if (item.kind === 'junk' || item.kind === 'gem' || item.kind === 'recipe') return 10;
     if (item.kind === 'health' || item.kind === 'mana' || item.kind === 'armor') return 5;
     return 1;
 }
@@ -549,17 +693,20 @@ function addToSlots(player, source) {
             amount: source.amount || 0,
             armor: source.armor || 0,
             weapon: source.weapon || '',
-            slot: source.slot || ''
+            slot: source.slot || '',
+            style: source.style || '',
+            magic: !!source.magic,
+            recipe: source.recipe || ''
         };
         qty -= take;
         if (qty <= 0) return null;
     }
-    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0, weapon: source.weapon || '', slot: source.slot || '' };
+    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0, weapon: source.weapon || '', slot: source.slot || '', style: source.style || '', magic: !!source.magic, recipe: source.recipe || '' };
 }
 
 function copySlot(slot) {
     if (!slot) return null;
-    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0, weapon: slot.weapon || '', slot: slot.slot || '' };
+    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0, weapon: slot.weapon || '', slot: slot.slot || '', style: slot.style || '', magic: !!slot.magic, recipe: slot.recipe || '' };
 }
 
 function loadInventory(prof) {
@@ -620,6 +767,7 @@ function savePlayer(player) {
     prof.trained = player.trained;
     prof.talents = player.talents;
     prof.spellRanks = player.spellRanks || {};
+    prof.recipes = player.recipes || [];
     prof.level = player.level;
     prof.xp = player.xp;
     prof.wood = 0;
@@ -632,11 +780,16 @@ function savePlayer(player) {
 }
 
 const LOOT_WEIGHTS = [
-    { kind: 'junk', weight: 46 },
-    { kind: 'coins', weight: 22 },
-    { kind: 'gather', weight: 14 },
-    { kind: 'health', weight: 9 },
-    { kind: 'mana', weight: 7 },
+    { kind: 'junk', weight: 28 },
+    { kind: 'coins', weight: 18 },
+    { kind: 'gather', weight: 12 },
+    { kind: 'cloth', weight: 8 },
+    { kind: 'leather', weight: 7 },
+    { kind: 'ore', weight: 7 },
+    { kind: 'health', weight: 7 },
+    { kind: 'mana', weight: 5 },
+    { kind: 'gem', weight: 3 },
+    { kind: 'recipe', weight: 3 },
     { kind: 'armor', weight: 2 }
 ];
 const JUNK_NAMES = ['Bent nail', 'Torn cloth', 'Cracked bead', 'Rusty buckle', 'Frayed rope'];
@@ -671,6 +824,11 @@ function rollLoot(level) {
             items.push({ kind, name: 'Health potion', qty: 1, amount: 8 + level * 3 });
         } else if (kind === 'mana') {
             items.push({ kind, name: 'Mana potion', qty: 1, amount: 6 + level * 2 });
+        } else if (kind === 'cloth' || kind === 'leather' || kind === 'ore' || kind === 'gem') {
+            items.push({ kind, name: MATERIAL_NAMES[kind], qty: kind === 'gem' ? 1 : 1 + Math.floor(level / 2) });
+        } else if (kind === 'recipe') {
+            const id = LOOT_RECIPE_IDS[Math.floor(Math.random() * LOOT_RECIPE_IDS.length)];
+            items.push({ kind: 'recipe', name: 'Pattern: ' + RECIPES[id].name, qty: 1, recipe: id });
         } else {
             const armorSlots = ['head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'waist', 'legs', 'feet', 'offhand'];
             const wear = armorSlots[Math.floor(Math.random() * armorSlots.length)];
@@ -875,6 +1033,7 @@ wss.on('connection', (ws) => {
                 trained: prof.trained.slice(),
                 talents: { ...prof.talents },
                 spellRanks: { ...prof.spellRanks },
+                recipes: Array.isArray(prof.recipes) ? prof.recipes.slice() : [],
                 bagSlots: prof.bagSlots || 0,
                 slots: prof.slots.map(copySlot),
                 actionbar: prof.actionbar,
@@ -1286,6 +1445,26 @@ wss.on('connection', (ws) => {
         if (data.type === 'talent') {
             const error = spendTalent(player, data.id);
             send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'learnSet') {
+            const error = learnSet(player, data.set);
+            const set = CRAFT_SETS[data.set];
+            send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : (set ? set.name + ' learned' : ''), character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'learnPattern') {
+            const error = learnPattern(player, data.slot);
+            send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : 'Pattern learned', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'craft') {
+            const recipe = RECIPES[data.recipe];
+            const error = craftItem(player, data.recipe);
+            send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : ('Crafted ' + (recipe ? recipe.name : 'item')), character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
             return;
         }
 

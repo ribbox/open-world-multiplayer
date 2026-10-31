@@ -33,6 +33,7 @@ node server.js
 - B opens the bag. C opens the character sheet. Choose Warrior or Mage once.
 - The sheet equips a weapon and off hand around a body: head, neck, shoulders, cloak, chest, hands, waist, legs, and feet. Class spells are trained there. Each level after the first gives a talent point for that class's tree.
 - Bag slots show an icon for the item. A count appears only when a stack is more than one. Right-click a slot to destroy one item. Shift+right-click destroys the whole stack, which frees room for new loot.
+- Crafting is on the character sheet. Core sets (cloth, leather, plate, weapons, and magic weapons) are bought with coins. Extra patterns, including shoulders, cloaks, belts, bucklers, and greater magic weapons, drop in chests. Click a pattern in the bag to learn it. Chests also drop cloth, leather, ore, and gems.
 - F: loot a chest. H and M use the first health or mana potion.
 - Hold Right Mouse + move: orbit camera
 - Mouse wheel: zoom in/out on the character
