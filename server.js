@@ -1004,62 +1004,114 @@ wss.on('connection', (ws) => {
             if (spec.heal) {
                 const healed = spec.heal(player.level);
                 player.hp = Math.min(player.maxHp, player.hp + healed);
+                player.lastAttack = now;
+                broadcast({
+                    type: 'cast',
+                    casterId: sessionId,
+                    ability: data.ability,
+                    bolts: 1,
+                    travel: 0,
+                    x: player.x,
+                    z: player.z,
+                    tx: player.x,
+                    tz: player.z
+                });
                 send(ws, { type: 'attackResult', ok: true, ability: data.ability, heal: healed, ...statsOf(player) });
                 return;
             }
-            let best = null;
-            let bestD = spec.range;
-            for (const npc of npcs.values()) {
-                if (!npc.alive) continue;
-                const dist = Math.hypot(npc.x - player.x, npc.z - player.z);
-                if (dist < bestD) {
-                    best = npc;
-                    bestD = dist;
-                }
-            }
-            if (!best) {
+            const npc = npcs.get(data.targetId);
+            if (!npc || !npc.alive) {
                 player.mana += spec.mana;
                 send(ws, { type: 'attackResult', ok: false, reason: 'No target', ...statsOf(player) });
                 return;
             }
+            const dist = Math.hypot(npc.x - player.x, npc.z - player.z);
+            if (dist > spec.range) {
+                player.mana += spec.mana;
+                send(ws, { type: 'attackResult', ok: false, reason: 'Out of range', ...statsOf(player) });
+                return;
+            }
+            player.lastAttack = now;
             const rank = (player.spellRanks && player.spellRanks[data.ability || 'sword']) || 1;
             const bolts = (data.ability === 'arcane-bolt') ? rank : 1;
-            const damage = (spec.damage(player.level) + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0)) * bolts;
-            best.hp -= damage;
-            let gained = 0;
-            let leveled = false;
-            let chest = null;
-            if (best.hp <= 0) {
-                best.hp = 0;
-                best.alive = false;
-                best.respawnAt = now + 8000;
-                gained = 20 * best.level;
-                leveled = grantXp(player, gained);
-                chest = spawnChest(best);
-            }
+            const per = spec.damage(player.level) + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0);
+            const projectile = data.ability === 'arcane-bolt' || data.ability === 'arcane-surge';
+            const travel = projectile ? Math.min(900, Math.max(220, Math.round(dist * 140))) : 0;
             broadcast({
-                type: 'npcHit',
-                id: best.id,
-                hp: best.hp,
-                maxHp: best.maxHp,
-                alive: best.alive,
-                x: best.x,
-                z: best.z,
-                level: best.level
-            });
-            send(ws, {
-                type: 'attackResult',
-                ok: true,
-                damage,
-                bolts,
-                npcId: best.id,
-                killed: !best.alive,
-                gained,
-                leveled,
+                type: 'cast',
+                casterId: sessionId,
                 ability: data.ability || 'sword',
-                chest: chest ? publicChest(chest) : null,
-                ...statsOf(player)
+                npcId: npc.id,
+                bolts,
+                travel,
+                x: player.x,
+                z: player.z,
+                tx: npc.x,
+                tz: npc.z
             });
+            const finish = (dealt, killed, gained, leveled, chest) => {
+                if (ws.readyState !== 1) return;
+                send(ws, {
+                    type: 'attackResult',
+                    ok: true,
+                    damage: dealt,
+                    bolts,
+                    npcId: npc.id,
+                    killed,
+                    gained,
+                    leveled,
+                    ability: data.ability || 'sword',
+                    chest: chest ? publicChest(chest) : null,
+                    ...statsOf(player)
+                });
+            };
+            const land = () => {
+                if (!npc.alive) return { dealt: 0, killed: false, gained: 0, leveled: false, chest: null };
+                npc.hp -= per;
+                let gained = 0;
+                let leveled = false;
+                let chest = null;
+                if (npc.hp <= 0) {
+                    npc.hp = 0;
+                    npc.alive = false;
+                    npc.respawnAt = Date.now() + 8000;
+                    gained = 20 * npc.level;
+                    leveled = grantXp(player, gained);
+                    chest = spawnChest(npc);
+                }
+                broadcast({
+                    type: 'npcHit',
+                    id: npc.id,
+                    hp: npc.hp,
+                    maxHp: npc.maxHp,
+                    alive: npc.alive,
+                    x: npc.x,
+                    z: npc.z,
+                    level: npc.level
+                });
+                return { dealt: per, killed: !npc.alive, gained, leveled, chest };
+            };
+            if (!projectile) {
+                const hit = land();
+                finish(hit.dealt * bolts, hit.killed, hit.gained, hit.leveled, hit.chest);
+                return;
+            }
+            let landed = 0;
+            let dealt = 0;
+            let reported = false;
+            const report = (hit) => {
+                if (reported) return;
+                reported = true;
+                finish(dealt, hit ? hit.killed : false, hit ? hit.gained : 0, hit ? hit.leveled : false, hit ? hit.chest : null);
+            };
+            for (let i = 0; i < bolts; i++) {
+                setTimeout(() => {
+                    const hit = land();
+                    dealt += hit.dealt;
+                    landed += 1;
+                    if (hit.killed || landed >= bolts) report(hit);
+                }, travel + i * 90);
+            }
             return;
         }
 

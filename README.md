@@ -27,7 +27,8 @@ node server.js
 - W/S: move, A/D: turn
 - Space: jump, Shift: sprint
 - 1-8 use the current action-bar page. [ and ] change page. The slots, bag, and character buttons are icons. Right-click a slot to assign a trained action.
-- Arcane Missile can be improved on the character sheet. Each rank fires another bolt, and the icon shows that many bolts.
+- Click an NPC, or press Tab, to select it. Attacks and spells hit that target only, and only while it is in range. A red ring and a health plate mark the selection.
+- Arcane Missile and Arcane Surge fly from the caster to the target. Extra missile ranks leave as extra bolts.
 - B opens the bag. C opens the character sheet. Choose Warrior or Mage once.
 - The sheet equips a weapon and off hand around a body: head, neck, shoulders, cloak, chest, hands, waist, legs, and feet. Class spells are trained there. Each level after the first gives a talent point for that class's tree.
 - Bag slots show an icon for the item. A count appears only when a stack is more than one.
