@@ -184,7 +184,7 @@
     <div id="info">
         <strong>Open World Prototype</strong><br>
         W/S: Forward / Back<br>
-        A/D: Turn<br>
+        A/D: Turn. The camera follows behind unless you are holding the right mouse button<br>
         Space: Jump &nbsp; Shift: Sprint<br>
         1-8: Action bar &nbsp; [ ]: Change page<br>
         Right-click a slot to assign a trained action<br>
@@ -289,6 +289,7 @@
             let idleAction = null;
             let attackAction = null;
             let modelLoaded = false;
+            let playerModel = null;
             let playerTemplate = null;
             let playerClips = [];
             const remoteMixers = [];
@@ -318,6 +319,7 @@
                     box.setFromObject(model);
                     model.position.y = -box.min.y;
                     characterGroup.add(model);
+                    playerModel = model;
                     playerTemplate = model;
                     playerClips = gltf.animations || [];
                     upgradeRemotePlayers();
@@ -705,7 +707,6 @@
             // Movement
             const keys = { w: false, a: false, s: false, d: false, shift: false, space: false, e: false };
             const baseSpeed = 10;
-            const turnSpeed = 2.2;
             const sprintMultiplier = 2;
             const jumpSpeed = 8;
             const gravity = 25;
@@ -2129,12 +2130,39 @@
             }
 
             const clock = new THREE.Clock();
+            let yawRate = 0;
+            const maxYawRate = 2.5;
+            const yawAccel = 9;
+
+            function damp(current, target, lambda, dt) {
+                return current + (target - current) * (1 - Math.exp(-lambda * dt));
+            }
+
+            function dampAngle(current, target, lambda, dt) {
+                const diff = Math.atan2(Math.sin(target - current), Math.cos(target - current));
+                return current + diff * (1 - Math.exp(-lambda * dt));
+            }
+
             function animate() {
                 requestAnimationFrame(animate);
                 const delta = Math.min(clock.getDelta(), 0.05);
 
-                if (keys.a) characterGroup.rotation.y += turnSpeed * delta;
-                if (keys.d) characterGroup.rotation.y -= turnSpeed * delta;
+                let turnInput = 0;
+                if (keys.a) turnInput -= 1;
+                if (keys.d) turnInput += 1;
+                const moving = keys.w || keys.s;
+                const rateLimit = moving ? maxYawRate * 0.82 : maxYawRate;
+                const targetRate = turnInput * rateLimit;
+                const rateError = targetRate - yawRate;
+                const step = yawAccel * delta;
+                yawRate += Math.max(-step, Math.min(step, rateError));
+                if (!turnInput && Math.abs(yawRate) < 0.05) yawRate = 0;
+                characterGroup.rotation.y += yawRate * delta;
+
+                if (playerModel) {
+                    const lean = Math.max(-0.2, Math.min(0.2, -yawRate * 0.07));
+                    playerModel.rotation.z = damp(playerModel.rotation.z, lean, 8, delta);
+                }
 
                 const angle = characterGroup.rotation.y;
                 const forward = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
@@ -2178,6 +2206,10 @@
                 }
                 if (selectedNpcId) refreshTargetFrame();
                 drawMinimap();
+
+                if (!isOrbiting) {
+                    cameraYaw = dampAngle(cameraYaw, characterGroup.rotation.y + Math.PI, 5, delta);
+                }
 
                 const camTarget = characterGroup.position.clone().add(new THREE.Vector3(0, 1.5, 0));
                 const offset = new THREE.Vector3(

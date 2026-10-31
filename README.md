@@ -24,7 +24,7 @@ node server.js
 ```
 
 ## Controls
-- W/S: move, A/D: turn
+- W/S: move, A/D: turn. Turning eases in, and the camera swings behind you unless the right mouse button is held.
 - Space: jump, Shift: sprint
 - 1-8 use the current action-bar page. [ and ] change page. The slots, bag, and character buttons are icons. Right-click a slot to assign a trained action.
 - Click an NPC, or press Tab, to select it. Attacks and spells hit that target only, and only while it is in range. A red ring and a health plate mark the selection.
