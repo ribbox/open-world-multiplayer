@@ -86,6 +86,23 @@ function hitsFor(id) {
 }
 
 const players = new Map();
+const npcs = new Map();
+const NPC_COUNT = 8;
+const AGGRO_RANGE = 9;
+const ATTACK_RANGE = 2.6;
+const NPC_HIT_RANGE = 1.55;
+
+function xpToNext(level) {
+    return 50 * level;
+}
+
+function maxHpFor(level) {
+    return 20 + (level - 1) * 4;
+}
+
+function npcMaxHp(level) {
+    return 6 + level * 4;
+}
 
 function publicPlayer(id, p) {
     return {
@@ -99,6 +116,159 @@ function publicPlayer(id, p) {
         color: p.color
     };
 }
+
+function publicNpc(n) {
+    return {
+        id: n.id,
+        x: n.x,
+        z: n.z,
+        rotY: n.rotY,
+        level: n.level,
+        hp: n.hp,
+        maxHp: n.maxHp
+    };
+}
+
+function placeNpc(npc) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 18 + Math.random() * 55;
+    npc.x = Math.cos(angle) * dist;
+    npc.z = Math.sin(angle) * dist;
+    npc.level = 1 + Math.floor(Math.random() * 5);
+    npc.maxHp = npcMaxHp(npc.level);
+    npc.hp = npc.maxHp;
+    npc.alive = true;
+    npc.homeX = npc.x;
+    npc.homeZ = npc.z;
+    npc.attackAt = 0;
+    pickWander(npc);
+}
+
+function pickWander(npc) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 4 + Math.random() * 14;
+    npc.wanderX = npc.homeX + Math.cos(angle) * dist;
+    npc.wanderZ = npc.homeZ + Math.sin(angle) * dist;
+    npc.wanderUntil = Date.now() + 3000 + Math.random() * 4000;
+}
+
+for (let i = 0; i < NPC_COUNT; i++) {
+    const npc = { id: 'n' + i };
+    placeNpc(npc);
+    npcs.set(npc.id, npc);
+}
+
+function nearestPlayer(npc, range) {
+    let best = null;
+    let bestD = range * range;
+    for (const player of players.values()) {
+        if (player.hp <= 0) continue;
+        const dx = player.x - npc.x;
+        const dz = player.z - npc.z;
+        const d = dx * dx + dz * dz;
+        if (d < bestD) {
+            bestD = d;
+            best = player;
+        }
+    }
+    return best;
+}
+
+function grantXp(player, amount) {
+    player.xp += amount;
+    let leveled = false;
+    while (player.xp >= xpToNext(player.level)) {
+        player.xp -= xpToNext(player.level);
+        player.level += 1;
+        player.maxHp = maxHpFor(player.level);
+        player.hp = player.maxHp;
+        leveled = true;
+    }
+    const prof = save.players[player.persistentId];
+    prof.xp = player.xp;
+    prof.level = player.level;
+    scheduleSave();
+    return leveled;
+}
+
+function statsOf(player) {
+    return {
+        level: player.level,
+        xp: player.xp,
+        xpToNext: xpToNext(player.level),
+        hp: player.hp,
+        maxHp: player.maxHp
+    };
+}
+
+let lastNpcTick = Date.now();
+let lastNpcBroadcast = 0;
+
+function tickNpcs() {
+    const now = Date.now();
+    const dt = Math.min(0.1, (now - lastNpcTick) / 1000);
+    lastNpcTick = now;
+
+    for (const npc of npcs.values()) {
+        if (!npc.alive) {
+            if (now >= npc.respawnAt) placeNpc(npc);
+            continue;
+        }
+        const target = nearestPlayer(npc, AGGRO_RANGE);
+        let tx = npc.wanderX;
+        let tz = npc.wanderZ;
+        let speed = 1.7;
+        if (target) {
+            tx = target.x;
+            tz = target.z;
+            speed = 3.8;
+        } else if (now > npc.wanderUntil) {
+            pickWander(npc);
+            tx = npc.wanderX;
+            tz = npc.wanderZ;
+        }
+        const dx = tx - npc.x;
+        const dz = tz - npc.z;
+        const dist = Math.hypot(dx, dz) || 0;
+        if (target && dist <= NPC_HIT_RANGE) {
+            npc.rotY = Math.atan2(dx, dz);
+            if (now >= npc.attackAt && now >= target.invulnUntil) {
+                npc.attackAt = now + 1300;
+                const damage = 1 + npc.level;
+                target.hp = Math.max(0, target.hp - damage);
+                send(target.ws, { type: 'hurt', damage, attacker: npc.level, ...statsOf(target) });
+                if (target.hp <= 0) {
+                    target.x = 0;
+                    target.y = 0;
+                    target.z = 0;
+                    target.hp = target.maxHp;
+                    target.invulnUntil = now + 2500;
+                    send(target.ws, { type: 'respawn', x: 0, y: 0, z: 0, ...statsOf(target) });
+                }
+            }
+            continue;
+        }
+        if (dist < 0.4) {
+            if (!target) pickWander(npc);
+            continue;
+        }
+        const step = Math.min(speed * dt, dist);
+        npc.x += (dx / dist) * step;
+        npc.z += (dz / dist) * step;
+        npc.rotY = Math.atan2(dx, dz);
+    }
+
+    if (now - lastNpcBroadcast > 100) {
+        lastNpcBroadcast = now;
+        const living = [];
+        for (const npc of npcs.values()) {
+            if (npc.alive) living.push(publicNpc(npc));
+        }
+        if (wss.clients.size) broadcast({ type: 'npcs', npcs: living });
+    }
+}
+
+setInterval(tickNpcs, 50);
 
 function broadcast(data, excludeWs = null) {
     const msg = JSON.stringify(data);
@@ -130,12 +300,14 @@ wss.on('connection', (ws) => {
             }
             const name = sanitizeName(data.name);
             if (!save.players[persistentId]) {
-                save.players[persistentId] = { name, wood: 0, stone: 0, color: colorFor(persistentId) };
+                save.players[persistentId] = { name, wood: 0, stone: 0, color: colorFor(persistentId), level: 1, xp: 0 };
             } else if (data.name) {
                 save.players[persistentId].name = name;
             }
             const prof = save.players[persistentId];
             if (!prof.color) prof.color = colorFor(persistentId);
+            prof.level = prof.level || 1;
+            prof.xp = prof.xp || 0;
 
             const existing = players.get(persistentId);
             if (existing && existing.ws !== ws) {
@@ -155,7 +327,13 @@ wss.on('connection', (ws) => {
                 color: prof.color,
                 wood: prof.wood || 0,
                 stone: prof.stone || 0,
-                lastGather: 0
+                level: prof.level,
+                xp: prof.xp,
+                maxHp: maxHpFor(prof.level),
+                hp: maxHpFor(prof.level),
+                invulnUntil: 0,
+                lastGather: 0,
+                lastAttack: 0
             };
             players.set(persistentId, player);
             sessionId = persistentId;
@@ -167,6 +345,8 @@ wss.on('connection', (ws) => {
                 name: player.name,
                 color: player.color,
                 inventory: { wood: player.wood, stone: player.stone },
+                stats: statsOf(player),
+                npcs: Array.from(npcs.values()).filter(n => n.alive).map(publicNpc),
                 resources: save.resources,
                 players: Array.from(players.entries())
                     .filter(([pid]) => pid !== persistentId)
@@ -184,7 +364,7 @@ wss.on('connection', (ws) => {
             if (typeof data.y === 'number') player.y = data.y;
             if (typeof data.z === 'number') player.z = data.z;
             if (typeof data.rotY === 'number') player.rotY = data.rotY;
-            if (data.tool === 'axe' || data.tool === 'pickaxe') player.tool = data.tool;
+            if (data.tool === 'axe' || data.tool === 'pickaxe' || data.tool === 'sword') player.tool = data.tool;
             broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
             return;
         }
@@ -250,6 +430,66 @@ wss.on('connection', (ws) => {
                 hits: next,
                 gained,
                 inventory: { wood: player.wood, stone: player.stone }
+            });
+            return;
+        }
+
+        if (data.type === 'attack') {
+            const now = Date.now();
+            if (now - player.lastAttack < 500) return;
+            player.lastAttack = now;
+            if (typeof data.x === 'number') player.x = data.x;
+            if (typeof data.z === 'number') player.z = data.z;
+            if (typeof data.rotY === 'number') player.rotY = data.rotY;
+            if (data.tool === 'sword') player.tool = 'sword';
+            if (player.tool !== 'sword') {
+                send(ws, { type: 'attackResult', ok: false, reason: 'Need a sword' });
+                return;
+            }
+            let best = null;
+            let bestD = ATTACK_RANGE;
+            for (const npc of npcs.values()) {
+                if (!npc.alive) continue;
+                const dist = Math.hypot(npc.x - player.x, npc.z - player.z);
+                if (dist < bestD) {
+                    best = npc;
+                    bestD = dist;
+                }
+            }
+            if (!best) {
+                send(ws, { type: 'attackResult', ok: false, reason: 'No target' });
+                return;
+            }
+            const damage = 4 + player.level;
+            best.hp -= damage;
+            let gained = 0;
+            let leveled = false;
+            if (best.hp <= 0) {
+                best.hp = 0;
+                best.alive = false;
+                best.respawnAt = now + 8000;
+                gained = 20 * best.level;
+                leveled = grantXp(player, gained);
+            }
+            broadcast({
+                type: 'npcHit',
+                id: best.id,
+                hp: best.hp,
+                maxHp: best.maxHp,
+                alive: best.alive,
+                x: best.x,
+                z: best.z,
+                level: best.level
+            });
+            send(ws, {
+                type: 'attackResult',
+                ok: true,
+                damage,
+                npcId: best.id,
+                killed: !best.alive,
+                gained,
+                leveled,
+                ...statsOf(player)
             });
         }
     });

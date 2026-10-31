@@ -51,14 +51,16 @@
         W/S: Forward / Back<br>
         A/D: Turn<br>
         Space: Jump &nbsp; Shift: Sprint<br>
-        1: Axe &nbsp; 2: Pickaxe<br>
-        E: Swing / Gather<br>
+        1: Axe &nbsp; 2: Pickaxe &nbsp; 3: Sword<br>
+        E: Swing / Gather / Attack<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
         <small>Player: human model &nbsp;|&nbsp; NPCs: minion model (served by server)</small>
     </div>
     <div id="inventory">
         Tool: <span id="toolName">Axe</span><br>
+        Lv <span id="levelCount">1</span> &nbsp; XP <span id="xpCount">0</span>/<span id="xpNext">50</span><br>
+        HP <span id="hpCount">20</span>/<span id="maxHpCount">20</span><br>
         Wood: <span id="woodCount">0</span><br>
         Stone: <span id="stoneCount">0</span><br>
         <span id="playerColor" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span>
@@ -169,29 +171,28 @@
                 (err) => showError('Failed to load player model: ' + err.message)
             );
 
-            // Load NPC model and spawn a few minions
+            // Load NPC model. The server decides where hostile NPCs roam.
+            let npcTemplate = null;
+            let npcClips = [];
+            let npcScale = 1;
+            let npcFoot = 0;
+            const worldNpcs = new Map();
+            let pendingNpcs = null;
+
             loader.load(
                 '/models/npc.glb',
                 (gltf) => {
-                    for (let i = 0; i < 5; i++) {
-                        const npc = cloneSkinned(gltf.scene);
-                        const box = new THREE.Box3().setFromObject(npc);
-                        const size = box.getSize(new THREE.Vector3());
-                        const scale = 1.4 / size.y;
-                        npc.scale.setScalar(scale);
-                        box.setFromObject(npc);
-                        npc.position.y = -box.min.y;
-                        npc.position.x = (Math.random() - 0.5) * 40;
-                        npc.position.z = (Math.random() - 0.5) * 40;
-                        npc.rotation.y = Math.random() * Math.PI * 2;
-                        scene.add(npc);
-                        if (gltf.animations && gltf.animations.length) {
-                            const m = new THREE.AnimationMixer(npc);
-                            m.clipAction(gltf.animations[0]).play();
-                            remoteMixers.push(m);
-                        }
-                    }
-                    console.log('NPCs spawned');
+                    npcTemplate = gltf.scene;
+                    npcClips = gltf.animations || [];
+                    const probe = cloneSkinned(npcTemplate);
+                    const box = new THREE.Box3().setFromObject(probe);
+                    const size = box.getSize(new THREE.Vector3());
+                    npcScale = 1.4 / (size.y || 1);
+                    probe.scale.setScalar(npcScale);
+                    box.setFromObject(probe);
+                    npcFoot = -box.min.y;
+                    if (pendingNpcs) syncNpcs(pendingNpcs);
+                    console.log('NPC model loaded');
                 },
                 undefined,
                 (err) => console.warn('NPC load failed', err)
@@ -234,19 +235,65 @@
                 return group;
             }
 
+            function createSword() {
+                const group = new THREE.Group();
+                const handle = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.035, 0.04, 0.28, 8),
+                    new THREE.MeshLambertMaterial({ color: 0x5c3317 })
+                );
+                handle.position.y = 0.14;
+                group.add(handle);
+                const guard = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.28, 0.04, 0.06),
+                    new THREE.MeshLambertMaterial({ color: 0xc0c0c0 })
+                );
+                guard.position.y = 0.3;
+                group.add(guard);
+                const blade = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.06, 0.7, 0.02),
+                    new THREE.MeshLambertMaterial({ color: 0xdfe6e9 })
+                );
+                blade.position.y = 0.66;
+                group.add(blade);
+                group.position.set(0.35, 1.1, 0.2);
+                return group;
+            }
+
             const axe = createAxe();
             const pickaxe = createPickaxe();
+            const sword = createSword();
             characterGroup.add(axe);
             characterGroup.add(pickaxe);
+            characterGroup.add(sword);
             pickaxe.visible = false;
+            sword.visible = false;
 
             let currentTool = 'axe';
             function updateToolUI() {
-                document.getElementById('toolName').textContent = currentTool === 'axe' ? 'Axe' : 'Pickaxe';
+                const names = { axe: 'Axe', pickaxe: 'Pickaxe', sword: 'Sword' };
+                document.getElementById('toolName').textContent = names[currentTool] || currentTool;
                 axe.visible = currentTool === 'axe';
                 pickaxe.visible = currentTool === 'pickaxe';
+                sword.visible = currentTool === 'sword';
             }
             updateToolUI();
+
+            const stats = { level: 1, xp: 0, xpToNext: 50, hp: 20, maxHp: 20 };
+            function updateStatsUI() {
+                document.getElementById('levelCount').textContent = stats.level;
+                document.getElementById('xpCount').textContent = stats.xp;
+                document.getElementById('xpNext').textContent = stats.xpToNext;
+                document.getElementById('hpCount').textContent = stats.hp;
+                document.getElementById('maxHpCount').textContent = stats.maxHp;
+            }
+            function applyStats(data) {
+                if (data.level != null) stats.level = data.level;
+                if (data.xp != null) stats.xp = data.xp;
+                if (data.xpToNext != null) stats.xpToNext = data.xpToNext;
+                if (data.hp != null) stats.hp = data.hp;
+                if (data.maxHp != null) stats.maxHp = data.maxHp;
+                updateStatsUI();
+            }
 
             const inventory = { wood: 0, stone: 0 };
             function updateInventoryUI() {
@@ -268,7 +315,8 @@
                     attackAction.setLoop(THREE.LoopOnce);
                     attackAction.clampWhenFinished = true;
                 }
-                tryGather();
+                if (currentTool === 'sword') tryAttack();
+                else tryGather();
             }
 
             function updateSwing(delta) {
@@ -276,10 +324,13 @@
                 swingTime += delta;
                 const t = Math.min(swingTime / swingDuration, 1);
                 const swingT = Math.sin(t * Math.PI);
-                const tool = currentTool === 'axe' ? axe : pickaxe;
+                const tool = currentTool === 'axe' ? axe : currentTool === 'pickaxe' ? pickaxe : sword;
                 if (currentTool === 'axe') {
                     tool.rotation.x = -1.2 * swingT;
                     tool.rotation.z = -0.6 * swingT;
+                } else if (currentTool === 'sword') {
+                    tool.rotation.z = -1.5 * swingT;
+                    tool.rotation.x = -0.35 * swingT;
                 } else {
                     tool.rotation.x = 0.8 - 1.6 * swingT;
                 }
@@ -326,6 +377,16 @@
                     ctx.arc(mx, mz, c.type === 'tree' ? 3 : 2.5, 0, Math.PI * 2);
                     ctx.fillStyle = c.type === 'tree' ? '#228B22' : '#888888';
                     ctx.fill();
+                }
+
+                for (const entry of worldNpcs.values()) {
+                    const dx = entry.group.position.x - px;
+                    const dz = entry.group.position.z - pz;
+                    if (Math.abs(dx) > mapRange || Math.abs(dz) > mapRange) continue;
+                    const mx = mapSize / 2 + dx * mapScale;
+                    const mz = mapSize / 2 + dz * mapScale;
+                    ctx.fillStyle = '#e74c3c';
+                    ctx.fillRect(mx - 3, mz - 3, 6, 6);
                 }
 
                 ctx.save();
@@ -494,6 +555,125 @@
                 }));
             }
 
+            function tryAttack() {
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
+                    showMessage('Not connected');
+                    return;
+                }
+                gameSocket.send(JSON.stringify({
+                    type: 'attack',
+                    x: characterGroup.position.x,
+                    z: characterGroup.position.z,
+                    rotY: characterGroup.rotation.y,
+                    tool: 'sword'
+                }));
+            }
+
+            function makeNpcSprite(level, hp, maxHp) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 96;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(28, 6, 200, 34);
+                ctx.fillStyle = '#ff6666';
+                ctx.font = 'bold 24px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('Lv ' + level, 128, 23);
+                ctx.fillStyle = '#222';
+                ctx.fillRect(28, 50, 200, 14);
+                const width = Math.max(0, Math.min(200, 200 * (hp / (maxHp || 1))));
+                ctx.fillStyle = '#e74c3c';
+                ctx.fillRect(28, 50, width, 14);
+                const tex = new THREE.CanvasTexture(canvas);
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+                sprite.scale.set(1.8, 0.68, 1);
+                sprite.position.y = 2.35;
+                sprite.userData.texture = tex;
+                return sprite;
+            }
+
+            function tintHostile(root) {
+                const tint = new THREE.Color('#c0392b');
+                root.traverse(obj => {
+                    if (!obj.isMesh || !obj.material) return;
+                    const source = Array.isArray(obj.material) ? obj.material : [obj.material];
+                    const cloned = source.map(mat => {
+                        const next = mat.clone();
+                        if (next.color) next.color.lerp(tint, 0.45);
+                        return next;
+                    });
+                    obj.material = Array.isArray(obj.material) ? cloned : cloned[0];
+                });
+            }
+
+            function removeWorldNpc(id) {
+                const entry = worldNpcs.get(id);
+                if (!entry) return;
+                scene.remove(entry.group);
+                if (entry.group.userData.label) {
+                    const label = entry.group.userData.label;
+                    if (label.material) label.material.dispose();
+                    if (label.userData.texture) label.userData.texture.dispose();
+                }
+                worldNpcs.delete(id);
+            }
+
+            function setNpcLabel(entry, state) {
+                const old = entry.group.userData.label;
+                if (old) {
+                    entry.group.remove(old);
+                    if (old.material) old.material.dispose();
+                    if (old.userData.texture) old.userData.texture.dispose();
+                }
+                const label = makeNpcSprite(state.level, state.hp, state.maxHp);
+                entry.group.add(label);
+                entry.group.userData.label = label;
+                entry.level = state.level;
+                entry.hp = state.hp;
+            }
+
+            function upsertNpc(state) {
+                let entry = worldNpcs.get(state.id);
+                if (!entry) {
+                    if (!npcTemplate) return;
+                    const group = new THREE.Group();
+                    const model = cloneSkinned(npcTemplate);
+                    model.scale.setScalar(npcScale);
+                    model.position.y = npcFoot;
+                    tintHostile(model);
+                    group.add(model);
+                    if (npcClips.length) {
+                        const remoteMixer = new THREE.AnimationMixer(model);
+                        remoteMixer.clipAction(npcClips[0]).play();
+                        remoteMixers.push(remoteMixer);
+                    }
+                    group.position.set(state.x, 0, state.z);
+                    scene.add(group);
+                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, level: -1, hp: -1 };
+                    worldNpcs.set(state.id, entry);
+                }
+                entry.tx = state.x;
+                entry.tz = state.z;
+                entry.rotY = state.rotY || 0;
+                if (entry.level !== state.level || entry.hp !== state.hp) setNpcLabel(entry, state);
+            }
+
+            function syncNpcs(list) {
+                pendingNpcs = list;
+                if (!npcTemplate) return;
+                const seen = new Set();
+                for (const state of list) {
+                    if (!state || state.hp <= 0) continue;
+                    seen.add(state.id);
+                    upsertNpc(state);
+                }
+                for (const id of worldNpcs.keys()) {
+                    if (!seen.has(id)) removeWorldNpc(id);
+                }
+            }
+
             function unloadDistantChunks(playerX, playerZ) {
                 const currentCX = Math.floor(playerX / chunkSize);
                 const currentCZ = Math.floor(playerZ / chunkSize);
@@ -546,6 +726,7 @@
                 }
                 if (e.key === '1') { currentTool = 'axe'; updateToolUI(); }
                 if (e.key === '2') { currentTool = 'pickaxe'; updateToolUI(); }
+                if (e.key === '3') { currentTool = 'sword'; updateToolUI(); }
                 if (k === 'e') startSwing();
             });
             document.addEventListener('keyup', (e) => {
@@ -645,6 +826,11 @@
                 updateSwing(delta);
                 if (mixer) mixer.update(delta);
                 for (const remoteMixer of remoteMixers) remoteMixer.update(delta);
+                for (const entry of worldNpcs.values()) {
+                    entry.group.position.x += (entry.tx - entry.group.position.x) * Math.min(1, delta * 10);
+                    entry.group.position.z += (entry.tz - entry.group.position.z) * Math.min(1, delta * 10);
+                    entry.group.rotation.y = entry.rotY;
+                }
                 drawMinimap();
 
                 const camTarget = characterGroup.position.clone().add(new THREE.Vector3(0, 1.5, 0));
@@ -812,6 +998,8 @@
                             inventory.stone = data.inventory.stone || 0;
                             updateInventoryUI();
                         }
+                        if (data.stats) applyStats(data.stats);
+                        if (data.npcs) syncNpcs(data.npcs);
                         if (data.resources) {
                             for (const [id, hits] of Object.entries(data.resources)) {
                                 applyResourceState(id, hits);
@@ -853,6 +1041,28 @@
                         else if (data.gained === 'wood') showMessage('+1 Wood');
                         else if (data.gained === 'stone') showMessage('+1 Stone');
                         else showMessage('Hit');
+                    } else if (data.type === 'npcs') {
+                        syncNpcs(data.npcs || []);
+                    } else if (data.type === 'npcHit') {
+                        if (data.alive) upsertNpc(data);
+                        else removeWorldNpc(data.id);
+                    } else if (data.type === 'hurt') {
+                        applyStats(data);
+                        showMessage('-' + data.damage + ' HP');
+                    } else if (data.type === 'respawn') {
+                        characterGroup.position.set(data.x || 0, 0, data.z || 0);
+                        verticalVelocity = 0;
+                        onGround = true;
+                        applyStats(data);
+                        showMessage('Defeated. Respawned.');
+                    } else if (data.type === 'attackResult') {
+                        if (!data.ok) {
+                            if (data.reason && data.reason !== 'No target') showMessage(data.reason);
+                        } else {
+                            applyStats(data);
+                            if (data.killed) showMessage(data.leveled ? 'Level ' + data.level + '! +' + data.gained + ' XP' : '+' + data.gained + ' XP');
+                            else showMessage('Hit ' + data.damage);
+                        }
                     }
                 };
 

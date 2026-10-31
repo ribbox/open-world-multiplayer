@@ -26,13 +26,15 @@ node server.js
 ## Controls
 - W/S: move, A/D: turn
 - Space: jump, Shift: sprint
-- 1/2: switch tool, E: swing/gather
+- 1/2/3: axe, pickaxe, sword. E: swing, gather, or attack
 - Hold Right Mouse + move: orbit camera
 - Mouse wheel: zoom in/out on the character
 
 ## Notes
 - Gathering and inventory are server-authoritative. Trees and rocks are shared, and a depleted node stays gone for everyone.
-- Inventory and node state are saved in the Docker volume `game-data` (`/app/data/save.json`).
-- Each browser keeps a player id in localStorage, so wood, stone, name, and color come back after a refresh.
+- Hostile NPCs roam, chase nearby players, and show up as red squares on the minimap. Their level sets their hit points.
+- Press 3 for the sword, then E while close to an NPC to attack. A kill grants XP. The XP needed for the next level is 50 times the current level.
+- Level, XP, inventory, and node state are saved in the Docker volume `game-data` (`/app/data/save.json`).
+- Each browser keeps a player id in localStorage, so wood, stone, name, color, and level come back after a refresh.
 - Other players use a SkeletonUtils clone of the human model, tinted, with a name above them.
 - Change your name in the inventory panel. It is stored with your inventory.
