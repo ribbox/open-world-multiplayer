@@ -68,6 +68,12 @@
             border: 2px solid rgba(255,255,255,0.7); border-radius: 8px;
             background: rgba(0,0,0,0.4); z-index: 10;
         }
+        #mapReadout {
+            position: absolute; bottom: 202px; left: 15px; width: 180px;
+            text-align: center; color: white; font-size: 12px; line-height: 1.25;
+            text-shadow: 0 1px 2px #000; pointer-events: none; z-index: 10;
+        }
+        #zoneName { font-weight: bold; }
         #targetFrame {
             position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
             width: 220px; color: white; background: rgba(0,0,0,0.72);
@@ -217,6 +223,7 @@
         H/M: first potion. Click a potion to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
+        Minimap: zone name and 0–100 coordinates<br>
         <small>Player: human model &nbsp;|&nbsp; NPCs: minion model (served by server)</small>
     </div>
     <button type="button" id="showInfo" hidden>Help</button>
@@ -248,6 +255,7 @@
     </div>
     <div id="sheet"></div>
     <div id="actionPicker" hidden></div>
+    <div id="mapReadout"><div id="zoneName">Camp Glade</div><div id="zoneCoords">50.0, 50.0</div></div>
     <canvas id="minimap" width="180" height="180"></canvas>
     <div id="hurtFlash"></div>
     <div id="ghostBanner" hidden>
@@ -264,7 +272,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL } from './worldgen.js';
+        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, zoneAt } from './worldgen.js';
 
         const infoBox = document.getElementById('info');
         const showInfo = document.getElementById('showInfo');
@@ -662,6 +670,8 @@
             const mapSize = 180;
             const mapScale = 1.8;
             const remotePlayers = new Map();
+            const zoneNameEl = document.getElementById('zoneName');
+            const zoneCoordsEl = document.getElementById('zoneCoords');
 
             function drawMinimap() {
                 const ctx = minimapCtx;
@@ -681,21 +691,58 @@
                 const cos = Math.cos(facing);
                 const radius = mapSize / 2 - 4;
 
-                function place(x, z) {
+                function project(x, z) {
                     const dx = x - px;
                     const dz = z - pz;
                     const right = dx * cos - dz * sin;
                     const ahead = dx * sin + dz * cos;
-                    const mx = mapSize / 2 + right * mapScale;
-                    const mz = mapSize / 2 - ahead * mapScale;
-                    if ((mx - mapSize / 2) ** 2 + (mz - mapSize / 2) ** 2 > radius * radius) return null;
-                    return { mx, mz };
+                    return {
+                        mx: mapSize / 2 + right * mapScale,
+                        mz: mapSize / 2 - ahead * mapScale
+                    };
                 }
+
+                function place(x, z) {
+                    const p = project(x, z);
+                    if ((p.mx - mapSize / 2) ** 2 + (p.mz - mapSize / 2) ** 2 > radius * radius) return null;
+                    return p;
+                }
+
+                const here = zoneAt(px, pz);
+                zoneNameEl.textContent = here.name;
+                zoneCoordsEl.textContent = here.x.toFixed(1) + ',  ' + here.z.toFixed(1);
 
                 ctx.save();
                 ctx.beginPath();
                 ctx.arc(mapSize / 2, mapSize / 2, radius, 0, Math.PI * 2);
                 ctx.clip();
+
+                const span = 90;
+                for (let ox = -1; ox <= 1; ox++) {
+                    for (let oz = -1; oz <= 1; oz++) {
+                        const originX = (here.zx + ox) * ZONE_SIZE - ZONE_SIZE / 2;
+                        const originZ = (here.zz + oz) * ZONE_SIZE - ZONE_SIZE / 2;
+                        for (let i = 0; i <= 4; i++) {
+                            const edge = i === 0 || i === 4;
+                            ctx.strokeStyle = edge ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.22)';
+                            ctx.lineWidth = edge ? 2 : 1;
+                            const gx = originX + (i / 4) * ZONE_SIZE;
+                            const gz = originZ + (i / 4) * ZONE_SIZE;
+                            let a = project(gx, pz - span);
+                            let b = project(gx, pz + span);
+                            ctx.beginPath();
+                            ctx.moveTo(a.mx, a.mz);
+                            ctx.lineTo(b.mx, b.mz);
+                            ctx.stroke();
+                            a = project(px - span, gz);
+                            b = project(px + span, gz);
+                            ctx.beginPath();
+                            ctx.moveTo(a.mx, a.mz);
+                            ctx.lineTo(b.mx, b.mz);
+                            ctx.stroke();
+                        }
+                    }
+                }
 
                 for (const c of allColliders) {
                     if (!c.type) continue;

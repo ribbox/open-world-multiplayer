@@ -103,3 +103,28 @@ export function chunkResources(cx, cz) {
     }
     return items;
 }
+
+export const ZONE_SIZE = 200;
+
+const ZONE_A = ['Ash', 'Briar', 'Cedar', 'Fern', 'Moss', 'Oak', 'Willow', 'Yarrow', 'Heath', 'Glen'];
+const ZONE_B = ['Fields', 'Reach', 'Hollow', 'Ridge', 'Vale', 'Wood', 'March', 'Shore', 'Hills', 'Watch'];
+
+export function zoneName(zx, zz) {
+    if (zx === 0 && zz === 0) return 'Camp Glade';
+    const rand = mulberry32(chunkSeed(zx + 17, zz - 3));
+    return ZONE_A[Math.floor(rand() * ZONE_A.length)] + ' ' + ZONE_B[Math.floor(rand() * ZONE_B.length)];
+}
+
+export function zoneAt(x, z) {
+    const zx = Math.floor((x + ZONE_SIZE / 2) / ZONE_SIZE);
+    const zz = Math.floor((z + ZONE_SIZE / 2) / ZONE_SIZE);
+    const originX = zx * ZONE_SIZE - ZONE_SIZE / 2;
+    const originZ = zz * ZONE_SIZE - ZONE_SIZE / 2;
+    return {
+        zx,
+        zz,
+        name: zoneName(zx, zz),
+        x: ((x - originX) / ZONE_SIZE) * 100,
+        z: ((z - originZ) / ZONE_SIZE) * 100
+    };
+}
