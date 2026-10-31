@@ -723,7 +723,7 @@
 
                 ctx.save();
                 ctx.translate(mapSize / 2, mapSize / 2);
-                ctx.rotate(facing);
+                ctx.rotate(Math.PI - facing);
                 ctx.beginPath();
                 ctx.moveTo(0, -8);
                 ctx.lineTo(5, 6);
