@@ -142,6 +142,15 @@ function nearCivilian(player, id) {
     return civ;
 }
 
+function nearRole(player, role) {
+    return CIVILIANS.find(civ => civ.role === role && Math.hypot(civ.x - player.x, civ.z - player.z) <= 3.6) || null;
+}
+
+function placePlayer(player, data) {
+    if (typeof data.x === 'number' && Number.isFinite(data.x)) player.x = data.x;
+    if (typeof data.z === 'number' && Number.isFinite(data.z)) player.z = data.z;
+}
+
 function noteKill(player, npc) {
     let changed = false;
     for (const [id, quest] of Object.entries(QUESTS)) {
@@ -679,6 +688,7 @@ function learnPattern(player, index) {
     if (!recipe) return 'Unknown pattern';
     const blocked = craftRoom(player, recipe.set);
     if (blocked) return blocked;
+    if (!learnedCraftSets(player).has(recipe.set) && !nearRole(player, 'shop')) return 'Learn new skills from a shop assistant';
     if (player.recipes.includes(slot.recipe)) return 'Already known';
     player.recipes.push(slot.recipe);
     slot.qty -= 1;
@@ -1798,6 +1808,11 @@ wss.on('connection', (ws) => {
         }
 
         if (data.type === 'train') {
+            placePlayer(player, data);
+            if (!nearRole(player, 'trainer')) {
+                send(ws, { type: 'character', ok: false, reason: 'See a trainer', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+                return;
+            }
             const error = trainSpell(player, data.spell);
             send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
             return;
@@ -1810,6 +1825,11 @@ wss.on('connection', (ws) => {
         }
 
         if (data.type === 'learnSet') {
+            placePlayer(player, data);
+            if (!nearRole(player, 'shop')) {
+                send(ws, { type: 'character', ok: false, reason: 'See a shop assistant', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+                return;
+            }
             const error = learnSet(player, data.set);
             const set = CRAFT_SETS[data.set];
             send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : (set ? set.name + ' learned' : ''), character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
@@ -1817,6 +1837,7 @@ wss.on('connection', (ws) => {
         }
 
         if (data.type === 'learnPattern') {
+            placePlayer(player, data);
             const error = learnPattern(player, data.slot);
             send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : 'Pattern learned', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
             return;

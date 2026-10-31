@@ -271,7 +271,8 @@
         B: Bag &nbsp; C: Character sheet &nbsp; F: Loot &nbsp; T: Talk<br>
         Character sheet Craft tab makes gear. The gold Shop button buys recipe sets<br>
         Farther zones hold stronger creatures with their own loot<br>
-        You can learn 2 crafting skills. Gather herbs by hand and sulfur with a pickaxe<br>
+        You can learn 2 crafting skills, and only while standing at a shop assistant<br>
+        Train spells only while standing at a trainer. Gather herbs by hand and sulfur with a pickaxe<br>
         H/M: first potion. Click a potion to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
@@ -2449,7 +2450,24 @@
                     showMessage('Not connected');
                     return;
                 }
-                gameSocket.send(JSON.stringify({ type, ...extra }));
+                gameSocket.send(JSON.stringify({
+                    type,
+                    x: characterGroup.position.x,
+                    z: characterGroup.position.z,
+                    ...extra
+                }));
+            }
+
+            function nearestRole(role, range = 3.6) {
+                let best = null;
+                const px = characterGroup.position.x;
+                const pz = characterGroup.position.z;
+                for (const civ of worldCivs.values()) {
+                    if (civ.role !== role) continue;
+                    const dist = Math.hypot(civ.group.position.x - px, civ.group.position.z - pz);
+                    if (dist <= range && (!best || dist < best.dist)) best = { civ, dist };
+                }
+                return best && best.civ;
             }
 
             function applyCharacter(data) {
@@ -2587,6 +2605,10 @@
 
             function toggleShop() {
                 const panel = document.getElementById('shop');
+                if (!panel.classList.contains('open') && !nearestRole('shop')) {
+                    showMessage('Talk to a shop assistant');
+                    return;
+                }
                 panel.classList.toggle('open');
                 document.getElementById('shopButton').classList.toggle('open', panel.classList.contains('open'));
                 if (panel.classList.contains('open')) renderShop();
@@ -2612,7 +2634,7 @@
                 }
                 const coins = haveKind('coins');
                 const note = document.createElement('p');
-                note.textContent = 'Coins ' + coins + '. You can learn 2 crafting skills. A purchase teaches the core recipes in that skill.';
+                note.textContent = 'Coins ' + coins + '. Stand next to a shop assistant. You can learn 2 crafting skills.';
                 panel.appendChild(note);
                 const sets = Object.entries(craft.sets || {});
                 if (!sets.length) {
@@ -2634,6 +2656,9 @@
                     button.className = 'text-btn gold-btn';
                     if (owned) {
                         button.textContent = 'Owned';
+                        button.disabled = true;
+                    } else if (!nearestRole('shop')) {
+                        button.textContent = 'Shop';
                         button.disabled = true;
                     } else if (!learnedSets.has(id) && learnedSets.size >= 2) {
                         button.textContent = 'Limit';
@@ -2740,6 +2765,10 @@
             }
 
             function renderSpellList(body) {
+                const atTrainer = !!nearestRole('trainer');
+                const where = document.createElement('div');
+                where.textContent = atTrainer ? 'The trainer can teach your spells.' : 'Stand next to a trainer to train spells.';
+                body.appendChild(where);
                 const spells = character.spells || {};
                 for (const [id, spell] of Object.entries(spells)) {
                     if (spell.class !== character.class) continue;
@@ -2760,6 +2789,9 @@
                         button.disabled = true;
                     } else if (spell.talent && !(character.talents[spell.talent] > 0)) {
                         button.textContent = 'Talent';
+                        button.disabled = true;
+                    } else if (!atTrainer) {
+                        button.textContent = 'Trainer';
                         button.disabled = true;
                     } else {
                         button.textContent = rank > 0 ? 'Improve' : 'Train';
@@ -2801,7 +2833,7 @@
                 const craft = character.craft || { sets: {}, recipes: {} };
                 const known = new Set(character.recipes || []);
                 const note = document.createElement('div');
-                note.textContent = 'Known recipes. You can learn 2 crafting skills. Buy them from the Shop, or click a pattern in your bag.';
+                note.textContent = 'Known recipes. Buy a new skill from a shop assistant. You can learn 2. Click a pattern in your bag while standing there.';
                 body.appendChild(note);
                 const groups = {};
                 for (const [id, recipe] of Object.entries(craft.recipes || {})) {
