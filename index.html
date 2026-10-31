@@ -70,8 +70,22 @@
         #minimap {
             position: absolute; bottom: 15px; left: 15px;
             border: 2px solid rgba(255,255,255,0.7); border-radius: 8px;
-            background: rgba(0,0,0,0.4); z-index: 10;
+            background: rgba(0,0,0,0.4); z-index: 10; cursor: pointer;
         }
+        #mapHint { font-size: 10px; opacity: 0.8; }
+        #worldmap {
+            display: none; position: absolute; inset: 0; z-index: 40;
+            align-items: center; justify-content: center; background: rgba(0,0,0,0.55);
+        }
+        #worldmap.open { display: flex; }
+        #worldmapPanel {
+            background: rgba(12, 18, 14, 0.96); color: white;
+            border: 2px solid rgba(255,255,255,0.35); border-radius: 8px; padding: 12px;
+            pointer-events: auto;
+        }
+        #worldmap canvas { display: block; background: #102016; }
+        #worldmapReadout { margin-top: 8px; font-size: 13px; text-align: center; }
+        #worldmapPanel .text-btn { margin-top: 8px; }
         #mapReadout {
             position: absolute; bottom: 202px; left: 15px; width: 180px;
             text-align: center; color: white; font-size: 12px; line-height: 1.25;
@@ -273,6 +287,7 @@
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
         Train spells only while standing at a trainer. Gather herbs by hand and sulfur with a pickaxe<br>
+        Click the minimap for the world map. Camps with a trainer and a shop sit in every zone<br>
         H/M: first potion. Click a potion to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
@@ -317,8 +332,15 @@
     <div id="talkHint"></div>
     <div id="talk"></div>
     <div id="actionPicker" hidden></div>
-    <div id="mapReadout"><div id="zoneName">Camp Glade</div><div id="zoneCoords">50.0, 50.0</div></div>
+    <div id="mapReadout"><div id="zoneName">Camp Glade</div><div id="zoneCoords">50.0, 50.0</div><div id="mapHint">Click the map</div></div>
     <canvas id="minimap" width="180" height="180"></canvas>
+    <div id="worldmap">
+        <div id="worldmapPanel">
+            <canvas id="worldmapCanvas" width="648" height="648"></canvas>
+            <div id="worldmapReadout">World</div>
+            <button type="button" class="text-btn" id="worldmapClose">Close</button>
+        </div>
+    </div>
     <button type="button" id="mapLayersButton" title="Choose what the minimap shows">Map</button>
     <div id="mapLayers" hidden>
         <label><input type="checkbox" data-layer="grid" checked> <i style="background:#fff"></i> Grid</label>
@@ -344,7 +366,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, zoneAt } from './worldgen.js';
+        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneCamp, clampWorld, worldBounds, sellPrice } from './worldgen.js';
 
         const infoBox = document.getElementById('info');
         const showInfo = document.getElementById('showInfo');
@@ -391,6 +413,27 @@
             directionalLight.position.set(50, 100, 50);
             directionalLight.castShadow = true;
             scene.add(directionalLight);
+
+            function addWorldEdge() {
+                const { min, max } = worldBounds();
+                const step = 18;
+                const spots = [];
+                for (let t = min; t <= max; t += step) spots.push([t, min], [t, max], [min, t], [max, t]);
+                const posts = new THREE.InstancedMesh(
+                    new THREE.BoxGeometry(2.4, 5.5, 2.4),
+                    new THREE.MeshLambertMaterial({ color: 0x4e342e }),
+                    spots.length
+                );
+                const dummy = new THREE.Object3D();
+                spots.forEach(([x, z], i) => {
+                    dummy.position.set(x, terrainHeight(x, z) + 2.6, z);
+                    dummy.updateMatrix();
+                    posts.setMatrixAt(i, dummy.matrix);
+                });
+                posts.instanceMatrix.needsUpdate = true;
+                scene.add(posts);
+            }
+            addWorldEdge();
 
             // Character group (model will be loaded into it)
             const characterGroup = new THREE.Group();
@@ -949,7 +992,80 @@
                 ctx.closePath();
                 ctx.fillStyle = '#4169E1';
                 ctx.fill();
+                if (!document.getElementById('worldmap').classList.contains('open')) return;
+                drawWorldMap();
             }
+
+            const worldCanvas = document.getElementById('worldmapCanvas');
+            const worldCtx = worldCanvas.getContext('2d');
+            function drawWorldMap() {
+                const size = worldCanvas.width;
+                const zones = WORLD_RADIUS * 2 + 1;
+                const cell = Math.floor((size - 16) / zones);
+                const origin = (size - cell * zones) / 2;
+                const ctx = worldCtx;
+                ctx.clearRect(0, 0, size, size);
+                ctx.fillStyle = '#102016';
+                ctx.fillRect(0, 0, size, size);
+                const px = characterGroup.position.x;
+                const pz = characterGroup.position.z;
+                const here = zoneAt(px, pz);
+                const min = worldBounds().min;
+                const span = zones * ZONE_SIZE;
+                function toMap(x, z) {
+                    return {
+                        mx: origin + ((x - min) / span) * cell * zones,
+                        mz: origin + ((z - min) / span) * cell * zones
+                    };
+                }
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+                    for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+                        const x0 = origin + (zx + WORLD_RADIUS) * cell;
+                        const y0 = origin + (zz + WORLD_RADIUS) * cell;
+                        const ring = Math.max(Math.abs(zx), Math.abs(zz));
+                        const current = zx === here.zx && zz === here.zz;
+                        ctx.fillStyle = current ? '#2f6b34' : ring === 0 ? '#245c30' : ring < 3 ? '#1c4a28' : '#16361f';
+                        ctx.fillRect(x0 + 1, y0 + 1, cell - 2, cell - 2);
+                        ctx.strokeStyle = current ? '#f1c40f' : 'rgba(255,255,255,0.22)';
+                        ctx.strokeRect(x0 + 1, y0 + 1, cell - 2, cell - 2);
+                        ctx.fillStyle = '#f4f4f4';
+                        ctx.font = '11px sans-serif';
+                        ctx.fillText(zoneName(zx, zz), x0 + cell / 2, y0 + 16, cell - 10);
+                        const camp = toMap(zoneCamp(zx, zz).x, zoneCamp(zx, zz).z);
+                        ctx.fillStyle = '#f1c40f';
+                        ctx.fillRect(camp.mx - 3, camp.mz - 3, 6, 6);
+                    }
+                }
+                if (mapLayers.players) for (const entry of remotePlayers.values()) {
+                    const rp = toMap(entry.mesh.position.x, entry.mesh.position.z);
+                    ctx.beginPath();
+                    ctx.arc(rp.mx, rp.mz, 4, 0, Math.PI * 2);
+                    ctx.fillStyle = (entry.data && entry.data.color) || '#5dade2';
+                    ctx.fill();
+                }
+                const me = toMap(px, pz);
+                ctx.beginPath();
+                ctx.arc(me.mx, me.mz, 5, 0, Math.PI * 2);
+                ctx.fillStyle = '#4169E1';
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+                document.getElementById('worldmapReadout').textContent = here.name + '  ' + here.x.toFixed(0) + ', ' + here.z.toFixed(0) + '   ·   gold squares are camps';
+            }
+            function toggleWorldMap(force) {
+                const panel = document.getElementById('worldmap');
+                const open = typeof force === 'boolean' ? force : !panel.classList.contains('open');
+                panel.classList.toggle('open', open);
+                if (open) drawWorldMap();
+            }
+            document.getElementById('minimap').addEventListener('click', () => toggleWorldMap(true));
+            document.getElementById('worldmapClose').addEventListener('click', () => toggleWorldMap(false));
+            document.getElementById('worldmap').addEventListener('click', (e) => {
+                if (e.target.id === 'worldmap') toggleWorldMap(false);
+            });
 
             // Camera orbit
             let cameraYaw = Math.PI;
@@ -1051,6 +1167,10 @@
             }
 
             function generateChunk(cx, cz) {
+                const edge = worldBounds();
+                const wx = cx * chunkSize;
+                const wz = cz * chunkSize;
+                if (wx < edge.min - chunkSize || wx > edge.max + chunkSize || wz < edge.min - chunkSize || wz > edge.max + chunkSize) return;
                 const key = `${cx},${cz}`;
                 if (loadedChunks.has(key)) return;
 
@@ -1565,8 +1685,30 @@
 
             function spawnCivilians(list) {
                 pendingCivilians = list || [];
-                if (!npcModelsReady) return;
-                for (const civ of pendingCivilians) ensureCivilian(civ);
+                refreshCivilians(true);
+            }
+
+            let civZoneKey = '';
+            function refreshCivilians(force) {
+                if (!npcModelsReady || !pendingCivilians) return;
+                const here = zoneAt(characterGroup.position.x, characterGroup.position.z);
+                const key = here.zx + ',' + here.zz;
+                if (!force && key === civZoneKey) return;
+                civZoneKey = key;
+                const keep = new Set();
+                for (const civ of pendingCivilians) {
+                    const there = zoneAt(civ.x, civ.z);
+                    const near = Math.abs(there.zx - here.zx) <= 1 && Math.abs(there.zz - here.zz) <= 1;
+                    if (!near && civ.id !== talkingId) continue;
+                    keep.add(civ.id);
+                    ensureCivilian(civ);
+                }
+                for (const id of [...worldCivs.keys()]) {
+                    if (keep.has(id)) continue;
+                    const entry = worldCivs.get(id);
+                    scene.remove(entry.group);
+                    worldCivs.delete(id);
+                }
             }
 
             function removeWorldNpc(id) {
@@ -2671,6 +2813,42 @@
                     line.appendChild(button);
                     panel.appendChild(line);
                 }
+                const sellTitle = document.createElement('h2');
+                sellTitle.textContent = 'Sell';
+                sellTitle.style.marginTop = '14px';
+                panel.appendChild(sellTitle);
+                const sellNote = document.createElement('p');
+                sellNote.textContent = nearestRole('shop')
+                    ? 'Price follows rarity and quality. Shift-click sells the stack.'
+                    : 'Stand next to a shop assistant to sell.';
+                panel.appendChild(sellNote);
+                const atShop = !!nearestRole('shop');
+                function addSellRow(labelText, send) {
+                    const line = document.createElement('div');
+                    line.className = 'spell-row';
+                    const label = document.createElement('div');
+                    label.textContent = labelText;
+                    line.appendChild(label);
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn gold-btn';
+                    button.textContent = 'Sell';
+                    button.disabled = !atShop;
+                    button.addEventListener('click', (e) => send(e.shiftKey));
+                    line.appendChild(button);
+                    panel.appendChild(line);
+                }
+                (inventory.slots || []).forEach((slot, index) => {
+                    if (!slot) return;
+                    const unit = sellPrice(slot);
+                    addSellRow(slot.name + ' x' + slot.qty + ' · ' + unit + ' each', (all) => sendCharacter('sell', { slot: index, all }));
+                });
+                for (const [kind, name] of SUPPLY_KINDS) {
+                    const qty = (inventory.materials && inventory.materials[kind]) || 0;
+                    if (!qty) continue;
+                    const unit = sellPrice({ kind });
+                    addSellRow(name + ' x' + qty + ' · ' + unit + ' each', (all) => sendCharacter('sell', { supply: true, kind, all }));
+                }
             }
 
             function toggleSheet() {
@@ -2910,6 +3088,10 @@
 
             // Input
             document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && document.getElementById('worldmap').classList.contains('open')) {
+                    toggleWorldMap(false);
+                    return;
+                }
                 if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
                 const k = e.key.toLowerCase();
                 if (k in keys) keys[k] = true;
@@ -3072,6 +3254,9 @@
                 }
 
                 resolveCollisions(characterGroup.position);
+                const edge = clampWorld(characterGroup.position.x, characterGroup.position.z, 2.2);
+                characterGroup.position.x = edge.x;
+                characterGroup.position.z = edge.z;
 
                 const groundY = terrainHeight(characterGroup.position.x, characterGroup.position.z);
                 if (keys.space && onGround) {
@@ -3125,6 +3310,7 @@
                     entry.mesh.position.y = reported > gy + 0.35 ? reported : gy;
                 }
                 if (selectedNpcId) refreshTargetFrame();
+                refreshCivilians(false);
                 drawMinimap();
 
                 if (!isOrbiting) {
@@ -3539,6 +3725,13 @@
                         else {
                             applyInventory(data.inventory);
                             showMessage('Destroyed ' + (data.qty > 1 ? data.qty + ' ' : '') + data.name);
+                        }
+                    } else if (data.type === 'sellResult') {
+                        if (!data.ok) showMessage(data.reason || 'Cannot sell');
+                        else {
+                            if (data.inventory) applyInventory(data.inventory);
+                            showMessage('Sold ' + data.name + ' for ' + data.price);
+                            if (document.getElementById('shop').classList.contains('open')) renderShop();
                         }
                     } else if (data.type === 'useResult') {
                         if (!data.ok) showMessage(data.reason || 'Cannot use');

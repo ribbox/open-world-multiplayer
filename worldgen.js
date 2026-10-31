@@ -158,6 +158,73 @@ const ZONE_PACKS = [
     ['cultist', 'knight', 'wisp']
 ];
 
+export const WORLD_RADIUS = 4;
+
+export function worldBounds() {
+    const edge = WORLD_RADIUS * ZONE_SIZE + ZONE_SIZE / 2;
+    return { min: -edge, max: edge };
+}
+
+export function clampWorld(x, z, margin = 2) {
+    const { min, max } = worldBounds();
+    const lo = min + margin;
+    const hi = max - margin;
+    return {
+        x: Math.max(lo, Math.min(hi, x)),
+        z: Math.max(lo, Math.min(hi, z))
+    };
+}
+
+export function zoneInWorld(zx, zz) {
+    return Math.abs(zx) <= WORLD_RADIUS && Math.abs(zz) <= WORLD_RADIUS;
+}
+
+export function zoneCamp(zx, zz) {
+    if (zx === 0 && zz === 0) return { x: 0, z: 6 };
+    const rand = mulberry32(chunkSeed(zx + 53, zz + 91));
+    let x = zx * ZONE_SIZE + (rand() - 0.5) * ZONE_SIZE * 0.36;
+    let z = zz * ZONE_SIZE + (rand() - 0.5) * ZONE_SIZE * 0.36;
+    for (let i = 0; i < 5; i++) {
+        if (terrainHeight(x, z) > WATER_LEVEL + 0.8) break;
+        x += 14;
+        z -= 10;
+    }
+    const half = ZONE_SIZE / 2 - 28;
+    x = Math.max(zx * ZONE_SIZE - half, Math.min(zx * ZONE_SIZE + half, x));
+    z = Math.max(zz * ZONE_SIZE - half, Math.min(zz * ZONE_SIZE + half, z));
+    return clampWorld(x, z, 24);
+}
+
+const CAMP_NAMES = ['Ada', 'Bex', 'Cal', 'Dax', 'Eve', 'Faye', 'Gil', 'Hana', 'Ivo', 'Jem', 'Kit', 'Len', 'Mae', 'Nim', 'Ora', 'Pim', 'Quill', 'Ren', 'Siv', 'Tor', 'Una', 'Vik', 'Wyn', 'Yara', 'Zed'];
+
+export function zoneCampFolk(zx, zz) {
+    const camp = zoneCamp(zx, zz);
+    const place = zoneName(zx, zz);
+    const h = chunkSeed(zx + 3, zz + 9);
+    const shopName = CAMP_NAMES[h % CAMP_NAMES.length];
+    let trainName = CAMP_NAMES[(h >>> 8) % CAMP_NAMES.length];
+    if (trainName === shopName) trainName = CAMP_NAMES[(h + 7) % CAMP_NAMES.length];
+    return [
+        { id: 'shop-' + zx + '-' + zz, name: shopName, role: 'shop', title: 'Shop', tint: '#f1c40f', x: camp.x + 2.4, z: camp.z - 1.2, text: 'I buy goods and sell crafting skills in ' + place + '.' },
+        { id: 'train-' + zx + '-' + zz, name: trainName, role: 'trainer', title: 'Trainer', tint: '#5dade2', x: camp.x - 2.4, z: camp.z - 1.2, text: 'I train spells in ' + place + '.' }
+    ];
+}
+
+const SELL_RARITY = {
+    junk: 1, wood: 1, stone: 1, herb: 1, powder: 1,
+    cloth: 2, leather: 2, health: 2, mana: 2, bomb: 2,
+    ore: 3, armor: 3, weapon: 3, recipe: 4, gem: 5
+};
+
+export function sellPrice(item) {
+    if (!item) return 0;
+    const rarity = SELL_RARITY[item.kind] || 1;
+    let quality = 1 + (item.armor || 0);
+    if (item.magic) quality += 2;
+    if (item.amount) quality += Math.floor(item.amount / 12);
+    return Math.max(1, rarity * quality);
+}
+
 export function zoneNpc(zx, zz) {
     const ring = Math.max(Math.abs(zx), Math.abs(zz));
     const row = ZONE_PACKS[Math.min(ring, ZONE_PACKS.length - 1)];

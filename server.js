@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { chunkResources, zoneAt, zoneNpc, ZONE_SIZE } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampFolk, zoneInWorld, clampWorld, sellPrice, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -104,10 +104,16 @@ const NPC_KINDS = {
 };
 
 const CIVILIANS = [
-    { id: 'mira', name: 'Mira', role: 'shop', title: 'Shop assistant', tint: '#f1c40f', x: 10, z: 4, text: 'I sell the core crafting patterns. Bring coins.' },
+    { id: 'mira', name: 'Mira', role: 'shop', title: 'Shop assistant', tint: '#f1c40f', x: 10, z: 4, text: 'I buy what you carry and sell crafting skills. Bring coins.' },
     { id: 'bram', name: 'Bram', role: 'trainer', title: 'Trainer', tint: '#5dade2', x: -10, z: 4, text: 'Choose a class, then train your spells with me.' },
     { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' }
 ];
+for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+    for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+        if (zx === 0 && zz === 0) continue;
+        CIVILIANS.push(...zoneCampFolk(zx, zz));
+    }
+}
 
 const QUESTS = {
     'boar-tusks': { name: 'Boar Tusks', text: 'Kill 3 wild boars in Camp Glade.', kind: 'boar', count: 3, coins: 20, xp: 50 }
@@ -149,6 +155,9 @@ function nearRole(player, role) {
 function placePlayer(player, data) {
     if (typeof data.x === 'number' && Number.isFinite(data.x)) player.x = data.x;
     if (typeof data.z === 'number' && Number.isFinite(data.z)) player.z = data.z;
+    const edge = clampWorld(player.x, player.z, 2.2);
+    player.x = edge.x;
+    player.z = edge.z;
 }
 
 function noteKill(player, npc) {
@@ -238,6 +247,11 @@ function placeNpc(npc) {
         if (Math.hypot(x, z) > 16) break;
     }
     if (Math.hypot(x, z) < 16) x += 18;
+    const camp = zoneCamp(npc.zx, npc.zz);
+    if (Math.hypot(x - camp.x, z - camp.z) < 16) {
+        x = camp.x + 22;
+        z = camp.z + 8;
+    }
     const placed = clampToZone(npc, x, z);
     npc.x = placed.x;
     npc.z = placed.z;
@@ -265,6 +279,7 @@ function pickWander(npc) {
 }
 
 function ensureZone(zx, zz) {
+    if (!zoneInWorld(zx, zz)) return;
     const key = zoneKey(zx, zz);
     if (seededZones.has(key)) return;
     seededZones.add(key);
@@ -1323,6 +1338,9 @@ wss.on('connection', (ws) => {
             if (typeof data.x === 'number') player.x = data.x;
             if (typeof data.y === 'number') player.y = data.y;
             if (typeof data.z === 'number') player.z = data.z;
+            const edge = clampWorld(player.x, player.z, 2.2);
+            player.x = edge.x;
+            player.z = edge.z;
             if (typeof data.rotY === 'number') player.rotY = data.rotY;
             if (data.tool === 'axe' || data.tool === 'pickaxe' || data.tool === 'sword' || data.tool === 'staff') player.tool = data.tool;
             broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
@@ -1709,6 +1727,49 @@ wss.on('connection', (ws) => {
             player.materials[kind] = have - qty;
             savePlayer(player);
             send(ws, { type: 'discardResult', ok: true, name: MATERIAL_NAMES[kind] || kind, qty, inventory: inventoryOf(player) });
+            return;
+        }
+
+        if (data.type === 'sell') {
+            placePlayer(player, data);
+            if (!nearRole(player, 'shop')) {
+                send(ws, { type: 'sellResult', ok: false, reason: 'See a shop assistant' });
+                return;
+            }
+            let price = 0;
+            let qty = 0;
+            let name = '';
+            if (data.supply) {
+                const kind = data.kind;
+                if (!MATERIAL_KINDS.includes(kind)) {
+                    send(ws, { type: 'sellResult', ok: false, reason: 'Not a supply' });
+                    return;
+                }
+                const have = player.materials[kind] || 0;
+                qty = data.all ? have : Math.min(1, have);
+                if (!qty) {
+                    send(ws, { type: 'sellResult', ok: false, reason: 'Nothing to sell' });
+                    return;
+                }
+                price = sellPrice({ kind }) * qty;
+                player.materials[kind] = have - qty;
+                name = MATERIAL_NAMES[kind] || kind;
+            } else {
+                const index = Number.isInteger(data.slot) ? data.slot : -1;
+                const slot = player.slots[index];
+                if (!slot) {
+                    send(ws, { type: 'sellResult', ok: false, reason: 'Empty slot' });
+                    return;
+                }
+                qty = data.all ? slot.qty : 1;
+                price = sellPrice(slot) * qty;
+                name = slot.name;
+                slot.qty -= qty;
+                if (slot.qty <= 0) player.slots[index] = null;
+            }
+            player.coins += price;
+            savePlayer(player);
+            send(ws, { type: 'sellResult', ok: true, name, qty, price, inventory: inventoryOf(player) });
             return;
         }
 

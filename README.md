@@ -41,7 +41,8 @@ node server.js
 - Mouse wheel: zoom in/out on the character
 
 ## Notes
-- The bag has 16 slots for gear, potions, bombs, junk, and patterns. Crafting supplies sit in their own section and do not count toward that total. Coins are a count. A character can learn only 2 crafting skills, and only while standing next to a shop assistant. Spell training only works next to a trainer. Alchemy uses gathered herbs. Explosives use powder from yellow sulfur. Click a bomb in the bag while a hostile is targeted.
+- Click the minimap to open the world map. The world is a 9 by 9 block of zones with a post fence on the edge. Players and creatures cannot walk past it. Every zone has a camp, marked in gold, with a trainer and a shop. Camp Glade keeps Mira, Bram, and Sela.
+- A shop assistant buys bag items and supplies. The coin price is rarity times quality: armor, magic, and potion strength raise it. Shift-click sells a whole stack. Spell training still requires a trainer. A character can learn only 2 crafting skills.
 - Gathering and inventory are server-authoritative. Trees and rocks are shared, and a depleted node stays gone for everyone.
 - Hostile NPCs roam, chase nearby players, and show up as red squares on the minimap. Each kind is a different shape: boar, wolf, spider, bandit, ogre, wisp, knight, and cultist. Each zone has its own creatures. Camp Glade is wild boars at level 1–2. Neighboring zones are wolves, spiders, or bandits, and farther zones are ogres, knights, wisps, and cultists at higher levels. Their loot follows the creature: hides, silk, coins, ore, gems, plate, or magic patterns. NPC level sets their hit points. Armor reduces the damage they deal.
 - Friendly NPCs do not fight and use their own shapes. In Camp Glade, Mira sells crafting patterns, Bram trains spells, and Sela gives the boar quest. They are green on the minimap. Press T while standing next to one.
