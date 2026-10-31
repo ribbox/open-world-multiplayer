@@ -203,29 +203,128 @@ function statsOf(player) {
     };
 }
 
+const BASE_SLOTS = 16;
+
+function stackLimit(item) {
+    if (item.kind === 'coins') return 99;
+    if (item.kind === 'wood' || item.kind === 'stone') return 20;
+    if (item.kind === 'junk') return 10;
+    if (item.kind === 'health' || item.kind === 'mana' || item.kind === 'armor') return 5;
+    return 1;
+}
+
+function sameStack(a, b) {
+    return a && b && a.kind === b.kind && a.name === b.name && (a.amount || 0) === (b.amount || 0) && (a.armor || 0) === (b.armor || 0);
+}
+
+function slotCapacity(player) {
+    return BASE_SLOTS + (player.bagSlots || 0);
+}
+
+function normalizeSlots(player) {
+    if (!Array.isArray(player.slots)) player.slots = [];
+    const cap = slotCapacity(player);
+    while (player.slots.length < cap) player.slots.push(null);
+    while (player.slots.length > cap && !player.slots[player.slots.length - 1]) player.slots.pop();
+}
+
+function expandBag(player, extra) {
+    player.bagSlots = (player.bagSlots || 0) + extra;
+    normalizeSlots(player);
+}
+
+function addToSlots(player, source) {
+    normalizeSlots(player);
+    let qty = source.qty || 1;
+    const limit = stackLimit(source);
+    for (const slot of player.slots) {
+        if (!sameStack(slot, source) || slot.qty >= limit) continue;
+        const take = Math.min(limit - slot.qty, qty);
+        slot.qty += take;
+        qty -= take;
+        if (qty <= 0) return null;
+    }
+    for (let i = 0; i < player.slots.length; i++) {
+        if (player.slots[i]) continue;
+        const take = Math.min(limit, qty);
+        player.slots[i] = {
+            kind: source.kind,
+            name: source.name,
+            qty: take,
+            amount: source.amount || 0,
+            armor: source.armor || 0
+        };
+        qty -= take;
+        if (qty <= 0) return null;
+    }
+    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0 };
+}
+
+function copySlot(slot) {
+    if (!slot) return null;
+    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0 };
+}
+
+function loadInventory(prof) {
+    if (Array.isArray(prof.slots)) {
+        const player = {
+            bagSlots: prof.bagSlots || 0,
+            slots: prof.slots.map(copySlot)
+        };
+        while (player.slots.length > slotCapacity(player)) expandBag(player, 4);
+        normalizeSlots(player);
+        prof.slots = player.slots;
+        prof.bagSlots = player.bagSlots;
+        return;
+    }
+    const pending = [];
+    const push = (item) => { if ((item.qty || 0) > 0) pending.push(item); };
+    push({ kind: 'wood', name: 'Wood', qty: prof.wood || 0 });
+    push({ kind: 'stone', name: 'Stone', qty: prof.stone || 0 });
+    push({ kind: 'coins', name: 'Coins', qty: prof.coins || 0 });
+    push({ kind: 'junk', name: 'Junk', qty: prof.junk || 0 });
+    for (const amount of prof.healthPotions || []) push({ kind: 'health', name: 'Health potion', qty: 1, amount });
+    for (const amount of prof.manaPotions || []) push({ kind: 'mana', name: 'Mana potion', qty: 1, amount });
+    const player = { slots: [], bagSlots: 0 };
+    for (const item of pending) {
+        let rest = addToSlots(player, item);
+        while (rest) {
+            expandBag(player, 4);
+            rest = addToSlots(player, rest);
+        }
+    }
+    prof.slots = player.slots;
+    prof.bagSlots = player.bagSlots;
+    prof.wood = 0;
+    prof.stone = 0;
+    prof.coins = 0;
+    prof.junk = 0;
+    prof.healthPotions = [];
+    prof.manaPotions = [];
+}
+
 function inventoryOf(player) {
     return {
-        wood: player.wood,
-        stone: player.stone,
-        coins: player.coins,
-        junk: player.junk,
-        armor: player.armor,
-        healthPotions: player.healthPotions.length,
-        manaPotions: player.manaPotions.length
+        slots: player.slots,
+        capacity: slotCapacity(player),
+        bagSlots: player.bagSlots || 0,
+        baseSlots: BASE_SLOTS
     };
 }
 
 function savePlayer(player) {
     const prof = save.players[player.persistentId];
-    prof.wood = player.wood;
-    prof.stone = player.stone;
-    prof.coins = player.coins;
-    prof.junk = player.junk;
+    prof.slots = player.slots;
+    prof.bagSlots = player.bagSlots || 0;
     prof.armor = player.armor;
-    prof.healthPotions = player.healthPotions;
-    prof.manaPotions = player.manaPotions;
     prof.level = player.level;
     prof.xp = player.xp;
+    prof.wood = 0;
+    prof.stone = 0;
+    prof.coins = 0;
+    prof.junk = 0;
+    prof.healthPotions = [];
+    prof.manaPotions = [];
     scheduleSave();
 }
 
@@ -261,10 +360,9 @@ function rollLoot(level) {
         } else if (kind === 'gather') {
             const wood = Math.random() < 0.5;
             items.push({
-                kind,
-                name: wood ? 'Wood bundle' : 'Stone bundle',
-                qty: 1 + Math.floor(level / 2),
-                resource: wood ? 'wood' : 'stone'
+                kind: wood ? 'wood' : 'stone',
+                name: wood ? 'Wood' : 'Stone',
+                qty: 1 + Math.floor(level / 2)
             });
         } else if (kind === 'health') {
             items.push({ kind, name: 'Health potion', qty: 1, amount: 8 + level * 3 });
@@ -299,22 +397,17 @@ function spawnChest(npc) {
 }
 
 function giveLoot(player, items) {
+    const taken = [];
+    const leftover = [];
     for (const item of items) {
         const qty = item.qty || 1;
-        if (item.kind === 'junk') player.junk += qty;
-        else if (item.kind === 'coins') player.coins += qty;
-        else if (item.kind === 'gather') {
-            if (item.resource === 'stone') player.stone += qty;
-            else player.wood += qty;
-        } else if (item.kind === 'health') {
-            for (let i = 0; i < qty && player.healthPotions.length < 20; i++) player.healthPotions.push(item.amount || 10);
-        } else if (item.kind === 'mana') {
-            for (let i = 0; i < qty && player.manaPotions.length < 20; i++) player.manaPotions.push(item.amount || 8);
-        } else if (item.kind === 'armor') {
-            player.armor += item.armor || 1;
-        }
+        const rest = addToSlots(player, item);
+        const left = rest ? rest.qty : 0;
+        if (qty - left > 0) taken.push({ ...item, qty: qty - left });
+        if (rest) leftover.push(rest);
     }
-    savePlayer(player);
+    if (taken.length) savePlayer(player);
+    return { taken, leftover };
 }
 
 let lastNpcTick = Date.now();
@@ -443,11 +536,8 @@ wss.on('connection', (ws) => {
             if (!prof.color) prof.color = colorFor(persistentId);
             prof.level = prof.level || 1;
             prof.xp = prof.xp || 0;
-            prof.coins = prof.coins || 0;
-            prof.junk = prof.junk || 0;
             prof.armor = prof.armor || 0;
-            prof.healthPotions = Array.isArray(prof.healthPotions) ? prof.healthPotions.filter(n => typeof n === 'number' && n > 0).slice(0, 20) : [];
-            prof.manaPotions = Array.isArray(prof.manaPotions) ? prof.manaPotions.filter(n => typeof n === 'number' && n > 0).slice(0, 20) : [];
+            loadInventory(prof);
 
             const existing = players.get(persistentId);
             if (existing && existing.ws !== ws) {
@@ -465,8 +555,6 @@ wss.on('connection', (ws) => {
                 tool: 'axe',
                 name: prof.name,
                 color: prof.color,
-                wood: prof.wood || 0,
-                stone: prof.stone || 0,
                 level: prof.level,
                 xp: prof.xp,
                 maxHp: maxHpFor(prof.level),
@@ -475,11 +563,9 @@ wss.on('connection', (ws) => {
                 mana: 10 + (prof.level - 1) * 4,
                 manaShown: -1,
                 manaSent: 0,
-                coins: prof.coins,
-                junk: prof.junk,
                 armor: prof.armor,
-                healthPotions: prof.healthPotions.slice(),
-                manaPotions: prof.manaPotions.slice(),
+                bagSlots: prof.bagSlots || 0,
+                slots: prof.slots.map(copySlot),
                 invulnUntil: 0,
                 lastGather: 0,
                 lastAttack: 0
@@ -543,7 +629,7 @@ wss.on('connection', (ws) => {
             }
             const hits = hitsFor(node.id);
             if (hits <= 0) {
-                send(ws, { type: 'gatherResult', ok: false, reason: 'Already gone', id: node.id, hits: 0, inventory: { wood: player.wood, stone: player.stone } });
+                send(ws, { type: 'gatherResult', ok: false, reason: 'Already gone', id: node.id, hits: 0, inventory: inventoryOf(player) });
                 return;
             }
             const dx = player.x - node.x;
@@ -558,19 +644,19 @@ wss.on('connection', (ws) => {
             }
 
             const next = hits - 1;
-            save.resources[node.id] = next;
             let gained = null;
             if (next <= 0) {
-                if (node.type === 'tree') {
-                    player.wood += 1;
-                    gained = 'wood';
-                } else {
-                    player.stone += 1;
-                    gained = 'stone';
+                const item = node.type === 'tree'
+                    ? { kind: 'wood', name: 'Wood', qty: 1 }
+                    : { kind: 'stone', name: 'Stone', qty: 1 };
+                if (addToSlots(player, item)) {
+                    send(ws, { type: 'gatherResult', ok: false, reason: 'Inventory full', id: node.id, hits, inventory: inventoryOf(player) });
+                    return;
                 }
-                save.players[player.persistentId].wood = player.wood;
-                save.players[player.persistentId].stone = player.stone;
+                gained = item.kind;
+                savePlayer(player);
             }
+            save.resources[node.id] = next;
             scheduleSave();
             broadcast({ type: 'resource', id: node.id, hits: next });
             send(ws, {
@@ -579,7 +665,7 @@ wss.on('connection', (ws) => {
                 id: node.id,
                 hits: next,
                 gained,
-                inventory: { wood: player.wood, stone: player.stone }
+                inventory: inventoryOf(player)
             });
             return;
         }
@@ -664,34 +750,53 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'lootResult', ok: false, reason: 'Too far' });
                 return;
             }
-            const items = chest.items;
-            chests.delete(chest.id);
-            giveLoot(player, items);
-            broadcast({ type: 'chestGone', id: chest.id });
-            send(ws, { type: 'lootResult', ok: true, items, inventory: inventoryOf(player), ...statsOf(player) });
+            const { taken, leftover } = giveLoot(player, chest.items);
+            if (!taken.length) {
+                send(ws, { type: 'lootResult', ok: false, reason: 'Inventory full', inventory: inventoryOf(player) });
+                return;
+            }
+            if (leftover.length) {
+                chest.items = leftover;
+                broadcast({ type: 'chest', chest: publicChest(chest) });
+            } else {
+                chests.delete(chest.id);
+                broadcast({ type: 'chestGone', id: chest.id });
+            }
+            send(ws, {
+                type: 'lootResult',
+                ok: true,
+                items: taken,
+                leftover: leftover.length,
+                inventory: inventoryOf(player),
+                ...statsOf(player)
+            });
             return;
         }
 
         if (data.type === 'use') {
-            if (data.item === 'health') {
-                const amount = player.healthPotions.shift();
-                if (!amount) {
-                    send(ws, { type: 'useResult', ok: false, reason: 'No health potion' });
-                    return;
-                }
-                player.hp = Math.min(player.maxHp, player.hp + amount);
-            } else if (data.item === 'mana') {
-                const amount = player.manaPotions.shift();
-                if (!amount) {
-                    send(ws, { type: 'useResult', ok: false, reason: 'No mana potion' });
-                    return;
-                }
-                player.mana = Math.min(player.maxMana, player.mana + amount);
-            } else {
+            let index = Number.isInteger(data.slot) ? data.slot : -1;
+            if (index < 0 || !player.slots[index]) {
+                index = player.slots.findIndex(slot => slot && (slot.kind === data.item));
+            }
+            const slot = player.slots[index];
+            if (!slot) {
+                send(ws, { type: 'useResult', ok: false, reason: 'Nothing to use' });
                 return;
             }
+            if (slot.kind === 'health') {
+                player.hp = Math.min(player.maxHp, player.hp + (slot.amount || 10));
+            } else if (slot.kind === 'mana') {
+                player.mana = Math.min(player.maxMana, player.mana + (slot.amount || 8));
+            } else if (slot.kind === 'armor') {
+                player.armor += slot.armor || 1;
+            } else {
+                send(ws, { type: 'useResult', ok: false, reason: 'Cannot use that' });
+                return;
+            }
+            slot.qty -= 1;
+            if (slot.qty <= 0) player.slots[index] = null;
             savePlayer(player);
-            send(ws, { type: 'useResult', ok: true, item: data.item, inventory: inventoryOf(player), ...statsOf(player) });
+            send(ws, { type: 'useResult', ok: true, item: slot.kind, inventory: inventoryOf(player), ...statsOf(player) });
         }
     });
 

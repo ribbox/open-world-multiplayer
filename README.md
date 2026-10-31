@@ -27,11 +27,12 @@ node server.js
 - W/S: move, A/D: turn
 - Space: jump, Shift: sprint
 - 1/2/3: axe, pickaxe, sword. E: swing, gather, or attack (sword swings spend 2 mana)
-- F: loot a chest. H: drink a health potion. M: drink a mana potion
+- F: loot a chest. H and M use the first health or mana potion. Click a health, mana, or armor slot to use that stack.
 - Hold Right Mouse + move: orbit camera
 - Mouse wheel: zoom in/out on the character
 
 ## Notes
+- The bag has 16 slots. Extra bags can raise that later through `bagSlots`. Wood and stone stack to 20, coins to 99, junk to 10, potions and armor scraps to 5. A full bag will not take the last gather hit, and a chest keeps whatever does not fit.
 - Gathering and inventory are server-authoritative. Trees and rocks are shared, and a depleted node stays gone for everyone.
 - Hostile NPCs roam, chase nearby players, and show up as red squares on the minimap. Their level sets their hit points. Armor reduces the damage they deal.
 - A kill drops a chest at the body, shown in gold on the minimap. It lasts 60 seconds. Loot is rolled from the NPC level: junk is the most common drop, then coins, gathered wood or stone, health potions, mana potions, and armor scraps are the rarest.

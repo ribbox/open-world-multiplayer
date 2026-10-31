@@ -15,11 +15,34 @@
             background: rgba(0,0,0,0.6); padding: 12px; border-radius: 6px;
             font-size: 14px; pointer-events: none; z-index: 10;
         }
-        #playerName {
+        #bag {
             pointer-events: auto;
-            width: 96px;
             margin-top: 6px;
         }
+        #bagSlots {
+            display: grid;
+            grid-template-columns: repeat(4, 36px);
+            gap: 3px;
+            margin-top: 4px;
+        }
+        .slot {
+            width: 36px;
+            height: 36px;
+            padding: 1px;
+            border: 1px solid rgba(255,255,255,0.35);
+            background: rgba(0,0,0,0.35);
+            color: white;
+            font-size: 9px;
+            line-height: 1.15;
+            cursor: pointer;
+        }
+        .slot.wood { background: #6b4f2a; }
+        .slot.stone { background: #5f6368; }
+        .slot.coins { background: #8a6d1f; }
+        .slot.junk { background: #4a4a4a; }
+        .slot.health { background: #7a2430; }
+        .slot.mana { background: #1d4e89; }
+        .slot.armor { background: #3d4f6f; }
         #minimap {
             position: absolute; bottom: 15px; left: 15px;
             border: 2px solid rgba(255,255,255,0.7); border-radius: 8px;
@@ -53,7 +76,8 @@
         Space: Jump &nbsp; Shift: Sprint<br>
         1: Axe &nbsp; 2: Pickaxe &nbsp; 3: Sword<br>
         E: Swing / Gather / Attack<br>
-        F: Loot chest &nbsp; H: Health potion &nbsp; M: Mana potion<br>
+        F: Loot chest &nbsp; H/M: first potion<br>
+        Click a health, mana, or armor slot to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
         <small>Player: human model &nbsp;|&nbsp; NPCs: minion model (served by server)</small>
@@ -63,10 +87,10 @@
         Lv <span id="levelCount">1</span> &nbsp; XP <span id="xpCount">0</span>/<span id="xpNext">50</span><br>
         HP <span id="hpCount">20</span>/<span id="maxHpCount">20</span><br>
         MP <span id="manaCount">10</span>/<span id="maxManaCount">10</span> &nbsp; Armor <span id="armorCount">0</span><br>
-        Coins: <span id="coinCount">0</span> &nbsp; Junk: <span id="junkCount">0</span><br>
-        Potions: <span id="healthPotCount">0</span> HP / <span id="manaPotCount">0</span> MP<br>
-        Wood: <span id="woodCount">0</span><br>
-        Stone: <span id="stoneCount">0</span><br>
+        <div id="bag">
+            <span id="bagLabel">Bag 0/16</span>
+            <div id="bagSlots"></div>
+        </div>
         <span id="playerColor" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span>
         <input id="playerName" maxlength="16" placeholder="Name">
     </div>
@@ -306,23 +330,49 @@
                 updateStatsUI();
             }
 
-            const inventory = { wood: 0, stone: 0, coins: 0, junk: 0, armor: 0, healthPotions: 0, manaPotions: 0 };
+            const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, baseSlots: 16 };
+            const SLOT_LETTER = { wood: 'Wd', stone: 'St', coins: 'C', junk: 'J', health: 'HP', mana: 'MP', armor: 'Ar' };
             function updateInventoryUI() {
-                document.getElementById('woodCount').textContent = inventory.wood;
-                document.getElementById('stoneCount').textContent = inventory.stone;
-                document.getElementById('coinCount').textContent = inventory.coins;
-                document.getElementById('junkCount').textContent = inventory.junk;
-                document.getElementById('healthPotCount').textContent = inventory.healthPotions;
-                document.getElementById('manaPotCount').textContent = inventory.manaPotions;
-                document.getElementById('armorCount').textContent = inventory.armor;
+                const slots = inventory.slots || [];
+                const used = slots.filter(Boolean).length;
+                const extra = inventory.bagSlots ? ' +' + inventory.bagSlots : '';
+                document.getElementById('bagLabel').textContent = 'Bag ' + used + '/' + inventory.capacity + extra;
+                const root = document.getElementById('bagSlots');
+                root.textContent = '';
+                slots.forEach((slot, index) => {
+                    const cell = document.createElement('button');
+                    cell.type = 'button';
+                    cell.className = 'slot' + (slot ? ' ' + slot.kind : '');
+                    if (slot) {
+                        const name = document.createElement('div');
+                        name.textContent = SLOT_LETTER[slot.kind] || '?';
+                        const qty = document.createElement('div');
+                        qty.textContent = 'x' + slot.qty;
+                        cell.appendChild(name);
+                        cell.appendChild(qty);
+                        cell.title = slot.name + ' x' + slot.qty;
+                    } else {
+                        cell.title = 'Empty';
+                    }
+                    cell.addEventListener('click', () => useSlot(index));
+                    root.appendChild(cell);
+                });
             }
             function applyInventory(data) {
-                if (!data) return;
-                for (const key of Object.keys(inventory)) {
-                    if (data[key] != null) inventory[key] = data[key];
-                }
+                if (!data || !Array.isArray(data.slots)) return;
+                inventory.slots = data.slots;
+                inventory.capacity = data.capacity;
+                inventory.bagSlots = data.bagSlots || 0;
+                inventory.baseSlots = data.baseSlots || 16;
                 updateInventoryUI();
             }
+            function useSlot(index) {
+                const slot = inventory.slots[index];
+                if (!slot || !gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
+                if (slot.kind !== 'health' && slot.kind !== 'mana' && slot.kind !== 'armor') return;
+                gameSocket.send(JSON.stringify({ type: 'use', slot: index }));
+            }
+            updateInventoryUI();
 
             // Swing: play attack animation if available, plus a simple tool rotation
             let swinging = false;
@@ -1179,14 +1229,14 @@
                             applyInventory(data.inventory);
                             applyStats(data);
                             const names = (data.items || []).map(item => (item.qty > 1 ? item.qty + ' ' : '') + item.name);
-                            showMessage(names.join(', ') || 'Empty');
+                            showMessage((names.join(', ') || 'Empty') + (data.leftover ? ' (bag full)' : ''));
                         }
                     } else if (data.type === 'useResult') {
                         if (!data.ok) showMessage(data.reason || 'Cannot use');
                         else {
                             applyInventory(data.inventory);
                             applyStats(data);
-                            showMessage(data.item === 'health' ? 'Health restored' : 'Mana restored');
+                            showMessage(data.item === 'health' ? 'Health restored' : data.item === 'armor' ? 'Armor equipped' : 'Mana restored');
                         }
                     } else if (data.type === 'stats') {
                         applyStats(data);
