@@ -644,6 +644,7 @@
             const mapSize = 180;
             const mapScale = 1.8;
             const mapRange = 50;
+            const remotePlayers = new Map();
 
             function drawMinimap() {
                 const ctx = minimapCtx;
@@ -703,6 +704,21 @@
                     ctx.beginPath();
                     ctx.arc(mx, mz, 4, 0, Math.PI * 2);
                     ctx.fill();
+                }
+
+                for (const entry of remotePlayers.values()) {
+                    const dx = entry.mesh.position.x - px;
+                    const dz = entry.mesh.position.z - pz;
+                    if (Math.abs(dx) > mapRange || Math.abs(dz) > mapRange) continue;
+                    const mx = mapSize / 2 + dx * mapScale;
+                    const mz = mapSize / 2 + dz * mapScale;
+                    ctx.beginPath();
+                    ctx.arc(mx, mz, entry.data && entry.data.ghost ? 3.5 : 4.5, 0, Math.PI * 2);
+                    ctx.fillStyle = entry.data && entry.data.ghost ? '#d6ecff' : (entry.data && entry.data.color) || '#5dade2';
+                    ctx.fill();
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.stroke();
                 }
 
                 ctx.save();
@@ -2307,7 +2323,6 @@
             console.log('Open World Prototype with external GLB character started');
 
             // --- Multiplayer ---
-            const remotePlayers = new Map();
             let myId = null;
 
             function makeNameSprite(name, color) {
