@@ -4,4 +4,8 @@ services:
     build: .
     ports:
       - "9898:3000"
+    volumes:
+      - game-data:/app/data
     restart: unless-stopped
+volumes:
+  game-data:

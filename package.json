@@ -2,6 +2,7 @@
   "name": "open-world-multiplayer",
   "version": "1.0.0",
   "description": "Browser-based open world multiplayer prototype",
+  "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

@@ -31,6 +31,8 @@ node server.js
 - Mouse wheel: zoom in/out on the character
 
 ## Notes
-- Gathering is currently client-side (each player sees their own inventory).
-- Remote players are shown as simple capsule characters for reliability.
-- For production, add authentication, persistence, and server-authoritative gathering.
+- Gathering and inventory are server-authoritative. Trees and rocks are shared, and a depleted node stays gone for everyone.
+- Inventory and node state are saved in the Docker volume `game-data` (`/app/data/save.json`).
+- Each browser keeps a player id in localStorage, so wood, stone, name, and color come back after a refresh.
+- Other players use a SkeletonUtils clone of the human model, tinted, with a name above them.
+- Change your name in the inventory panel. It is stored with your inventory.

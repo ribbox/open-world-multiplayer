@@ -4,3 +4,4 @@ npm-debug.log
 .grok
 searched_images
 *.log
+data/

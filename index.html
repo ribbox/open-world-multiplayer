@@ -15,6 +15,11 @@
             background: rgba(0,0,0,0.6); padding: 12px; border-radius: 6px;
             font-size: 14px; pointer-events: none; z-index: 10;
         }
+        #playerName {
+            pointer-events: auto;
+            width: 96px;
+            margin-top: 6px;
+        }
         #minimap {
             position: absolute; bottom: 15px; left: 15px;
             border: 2px solid rgba(255,255,255,0.7); border-radius: 8px;
@@ -55,7 +60,9 @@
     <div id="inventory">
         Tool: <span id="toolName">Axe</span><br>
         Wood: <span id="woodCount">0</span><br>
-        Stone: <span id="stoneCount">0</span>
+        Stone: <span id="stoneCount">0</span><br>
+        <span id="playerColor" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span>
+        <input id="playerName" maxlength="16" placeholder="Name">
     </div>
     <canvas id="minimap" width="180" height="180"></canvas>
     <div id="message"></div>
@@ -63,6 +70,8 @@
     <script type="module">
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+        import { chunkResources, CHUNK_SIZE } from './worldgen.js';
 
         function showError(msg) {
             const el = document.getElementById('error');
@@ -115,6 +124,21 @@
             let idleAction = null;
             let attackAction = null;
             let modelLoaded = false;
+            let playerTemplate = null;
+            let playerClips = [];
+            const remoteMixers = [];
+            const resourceHits = new Map();
+            const colliderById = new Map();
+
+            let persistentId = localStorage.getItem('ow-id');
+            if (!persistentId) {
+                persistentId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+                localStorage.setItem('ow-id', persistentId);
+            }
+            let playerName = localStorage.getItem('ow-name') || 'Player';
+            let gameSocket = null;
+            const nameInput = document.getElementById('playerName');
+            nameInput.value = playerName;
 
             // Load player model from server
             const loader = new GLTFLoader();
@@ -129,6 +153,9 @@
                     box.setFromObject(model);
                     model.position.y = -box.min.y;
                     characterGroup.add(model);
+                    playerTemplate = model;
+                    playerClips = gltf.animations || [];
+                    upgradeRemotePlayers();
 
                     if (gltf.animations && gltf.animations.length) {
                         mixer = new THREE.AnimationMixer(model);
@@ -147,7 +174,7 @@
                 '/models/npc.glb',
                 (gltf) => {
                     for (let i = 0; i < 5; i++) {
-                        const npc = gltf.scene.clone();
+                        const npc = cloneSkinned(gltf.scene);
                         const box = new THREE.Box3().setFromObject(npc);
                         const size = box.getSize(new THREE.Vector3());
                         const scale = 1.4 / size.y;
@@ -160,9 +187,8 @@
                         scene.add(npc);
                         if (gltf.animations && gltf.animations.length) {
                             const m = new THREE.AnimationMixer(npc);
-                            const act = m.clipAction(gltf.animations[0]);
-                            act.play();
-                            // store mixer for update later if desired
+                            m.clipAction(gltf.animations[0]).play();
+                            remoteMixers.push(m);
                         }
                     }
                     console.log('NPCs spawned');
@@ -339,7 +365,7 @@
             const characterRadius = 0.6;
 
             // Chunks
-            const chunkSize = 50;
+            const chunkSize = CHUNK_SIZE;
             const loadedChunks = new Map();
             const allColliders = [];
 
@@ -351,20 +377,17 @@
                 group.position.set(cx * chunkSize, 0, cz * chunkSize);
 
                 const colliders = [];
-                const numObjects = 6 + Math.floor(Math.random() * 7);
-                for (let i = 0; i < numObjects; i++) {
-                    const type = Math.random() > 0.65 ? 'tree' : 'rock';
-                    const px = (Math.random() - 0.5) * chunkSize * 0.85;
-                    const pz = (Math.random() - 0.5) * chunkSize * 0.85;
-                    const worldX = cx * chunkSize + px;
-                    const worldZ = cz * chunkSize + pz;
+                for (const item of chunkResources(cx, cz)) {
+                    const hits = resourceHits.has(item.id) ? resourceHits.get(item.id) : item.hits;
+                    if (hits <= 0) continue;
 
-                    if (type === 'tree') {
+                    const meshes = [];
+                    if (item.type === 'tree') {
                         const trunk = new THREE.Mesh(
                             new THREE.CylinderGeometry(0.3, 0.45, 3, 8),
                             new THREE.MeshLambertMaterial({ color: 0x8B4513 })
                         );
-                        trunk.position.set(px, 1.5, pz);
+                        trunk.position.set(item.px, 1.5, item.pz);
                         trunk.castShadow = true;
                         group.add(trunk);
 
@@ -372,32 +395,33 @@
                             new THREE.ConeGeometry(1.6, 3.2, 8),
                             new THREE.MeshLambertMaterial({ color: 0x2E8B57 })
                         );
-                        leaves.position.set(px, 4.2, pz);
+                        leaves.position.set(item.px, 4.2, item.pz);
                         leaves.castShadow = true;
                         group.add(leaves);
-
-                        colliders.push({
-                            x: worldX, z: worldZ, r: 0.5 + characterRadius,
-                            type: 'tree', hits: 3,
-                            meshes: [trunk, leaves],
-                            parent: group
-                        });
+                        meshes.push(trunk, leaves);
                     } else {
                         const rock = new THREE.Mesh(
-                            new THREE.BoxGeometry(0.8 + Math.random() * 1.2, 0.4 + Math.random() * 0.8, 0.8 + Math.random() * 1.2),
+                            new THREE.BoxGeometry(item.sx, item.sy, item.sz),
                             new THREE.MeshLambertMaterial({ color: 0x696969 })
                         );
-                        rock.position.set(px, 0.4, pz);
+                        rock.position.set(item.px, item.sy / 2, item.pz);
                         rock.castShadow = true;
                         group.add(rock);
-
-                        colliders.push({
-                            x: worldX, z: worldZ, r: 0.9 + characterRadius,
-                            type: 'rock', hits: 4,
-                            meshes: [rock],
-                            parent: group
-                        });
+                        meshes.push(rock);
                     }
+
+                    const collider = {
+                        id: item.id,
+                        x: item.x,
+                        z: item.z,
+                        r: (item.type === 'tree' ? 0.5 : 0.9) + characterRadius,
+                        type: item.type,
+                        hits,
+                        meshes,
+                        parent: group
+                    };
+                    colliders.push(collider);
+                    colliderById.set(item.id, collider);
                 }
 
                 scene.add(group);
@@ -408,27 +432,30 @@
             function removeCollider(c) {
                 const idx = allColliders.indexOf(c);
                 if (idx !== -1) allColliders.splice(idx, 1);
+                colliderById.delete(c.id);
                 for (const data of loadedChunks.values()) {
                     const ci = data.colliders.indexOf(c);
                     if (ci !== -1) data.colliders.splice(ci, 1);
                 }
             }
 
-            function harvest(c) {
+            function removeNode(c) {
                 c.meshes.forEach(m => {
                     c.parent.remove(m);
                     if (m.geometry) m.geometry.dispose();
                     if (m.material) m.material.dispose();
                 });
                 removeCollider(c);
-                if (c.type === 'tree') {
-                    inventory.wood += 1;
-                    showMessage('+1 Wood');
-                } else {
-                    inventory.stone += 1;
-                    showMessage('+1 Stone');
+            }
+
+            function applyResourceState(id, hits) {
+                resourceHits.set(id, hits);
+                const c = colliderById.get(id);
+                if (hits <= 0) {
+                    if (c) removeNode(c);
+                } else if (c) {
+                    c.hits = hits;
                 }
-                updateInventoryUI();
             }
 
             function tryGather() {
@@ -452,11 +479,19 @@
                     }
                 }
 
-                if (closest) {
-                    closest.hits--;
-                    if (closest.hits <= 0) harvest(closest);
-                    else showMessage(closest.type === 'tree' ? 'Chopping...' : 'Mining...');
+                if (!closest) return;
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
+                    showMessage('Not connected');
+                    return;
                 }
+                gameSocket.send(JSON.stringify({
+                    type: 'gather',
+                    id: closest.id,
+                    x: px,
+                    y: characterGroup.position.y,
+                    z: pz,
+                    tool: currentTool
+                }));
             }
 
             function unloadDistantChunks(playerX, playerZ) {
@@ -477,6 +512,7 @@
                         data.colliders.forEach(c => {
                             const idx = allColliders.indexOf(c);
                             if (idx !== -1) allColliders.splice(idx, 1);
+                            colliderById.delete(c.id);
                         });
                         loadedChunks.delete(key);
                     }
@@ -500,6 +536,7 @@
 
             // Input
             document.addEventListener('keydown', (e) => {
+                if (e.target && e.target.tagName === 'INPUT') return;
                 const k = e.key.toLowerCase();
                 if (k in keys) keys[k] = true;
                 if (e.key === 'Shift') keys.shift = true;
@@ -607,6 +644,7 @@
 
                 updateSwing(delta);
                 if (mixer) mixer.update(delta);
+                for (const remoteMixer of remoteMixers) remoteMixer.update(delta);
                 drawMinimap();
 
                 const camTarget = characterGroup.position.clone().add(new THREE.Vector3(0, 1.5, 0));
@@ -626,82 +664,199 @@
             console.log('Open World Prototype with external GLB character started');
 
             // --- Multiplayer ---
-            const remotePlayers = new Map(); // id -> { mesh, data }
+            const remotePlayers = new Map();
             let myId = null;
-            let lastSend = 0;
 
-            function createRemoteMesh(id, color = 0xff4444) {
+            function makeNameSprite(name, color) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 64;
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, 256, 64);
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.fillRect(16, 8, 224, 48);
+                ctx.fillStyle = color || '#ffffff';
+                ctx.font = 'bold 28px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText((name || 'Player').slice(0, 16), 128, 32);
+                const tex = new THREE.CanvasTexture(canvas);
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+                sprite.scale.set(2.4, 0.6, 1);
+                sprite.position.y = 2.6;
+                sprite.userData.texture = tex;
+                return sprite;
+            }
+
+            function tintModel(root, color) {
+                const tint = new THREE.Color(color || '#ffffff');
+                root.traverse(obj => {
+                    if (!obj.isMesh || !obj.material) return;
+                    const source = Array.isArray(obj.material) ? obj.material : [obj.material];
+                    const cloned = source.map(mat => {
+                        const next = mat.clone();
+                        if (next.color) next.color.lerp(tint, 0.35);
+                        return next;
+                    });
+                    obj.material = Array.isArray(obj.material) ? cloned : cloned[0];
+                });
+            }
+
+            function attachPlayerModel(group, color) {
+                if (!playerTemplate) return false;
+                const model = cloneSkinned(playerTemplate);
+                tintModel(model, color);
+                group.add(model);
+                if (playerClips.length) {
+                    const remoteMixer = new THREE.AnimationMixer(model);
+                    remoteMixer.clipAction(playerClips[0]).play();
+                    remoteMixers.push(remoteMixer);
+                    group.userData.mixer = remoteMixer;
+                }
+                group.userData.hasModel = true;
+                return true;
+            }
+
+            function createRemotePlayer(p) {
                 const group = new THREE.Group();
-                const body = new THREE.Mesh(
-                    new THREE.CapsuleGeometry(0.4, 1.0, 4, 8),
-                    new THREE.MeshLambertMaterial({ color })
-                );
-                body.position.y = 1.0;
-                body.castShadow = true;
-                group.add(body);
-                const head = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.3, 12, 12),
-                    new THREE.MeshLambertMaterial({ color: 0xFFDBAC })
-                );
-                head.position.y = 1.9;
-                group.add(head);
+                group.position.set(p.x || 0, p.y || 0, p.z || 0);
+                group.rotation.y = p.rotY || 0;
+                if (!attachPlayerModel(group, p.color)) {
+                    const body = new THREE.Mesh(
+                        new THREE.CapsuleGeometry(0.4, 1.0, 4, 8),
+                        new THREE.MeshLambertMaterial({ color: p.color || 0xff4444 })
+                    );
+                    body.position.y = 1.0;
+                    body.castShadow = true;
+                    group.add(body);
+                    group.userData.fallback = body;
+                }
+                const label = makeNameSprite(p.name, p.color);
+                group.add(label);
+                group.userData.label = label;
                 scene.add(group);
                 return group;
             }
 
+            function setRemoteLabel(entry, name, color) {
+                const old = entry.mesh.userData.label;
+                if (old) {
+                    entry.mesh.remove(old);
+                    if (old.material) old.material.dispose();
+                    if (old.userData.texture) old.userData.texture.dispose();
+                }
+                const label = makeNameSprite(name, color || entry.data.color);
+                entry.mesh.add(label);
+                entry.mesh.userData.label = label;
+            }
+
+            function upgradeRemotePlayers() {
+                for (const entry of remotePlayers.values()) {
+                    if (entry.mesh.userData.hasModel) continue;
+                    if (entry.mesh.userData.fallback) {
+                        entry.mesh.remove(entry.mesh.userData.fallback);
+                        entry.mesh.userData.fallback = null;
+                    }
+                    attachPlayerModel(entry.mesh, entry.data.color);
+                }
+            }
+
+            function ensureRemote(p) {
+                let entry = remotePlayers.get(p.id);
+                if (!entry) {
+                    const mesh = createRemotePlayer(p);
+                    entry = { mesh, data: p };
+                    remotePlayers.set(p.id, entry);
+                }
+                return entry;
+            }
+
+            nameInput.addEventListener('change', () => {
+                playerName = nameInput.value.trim().slice(0, 16) || 'Player';
+                nameInput.value = playerName;
+                localStorage.setItem('ow-name', playerName);
+                if (gameSocket && gameSocket.readyState === WebSocket.OPEN) {
+                    gameSocket.send(JSON.stringify({ type: 'rename', name: playerName }));
+                }
+            });
+
             function connectMultiplayer() {
                 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const ws = new WebSocket(`${protocol}//${location.host}`);
+                gameSocket = ws;
 
                 ws.onopen = () => {
                     console.log('Connected to multiplayer server');
                     showMessage('Connected to server');
+                    ws.send(JSON.stringify({ type: 'hello', persistentId, name: playerName }));
                 };
 
                 ws.onmessage = (ev) => {
                     const data = JSON.parse(ev.data);
                     if (data.type === 'welcome') {
                         myId = data.id;
-                        data.players.forEach(p => {
-                            if (p.id !== myId && !remotePlayers.has(p.id)) {
-                                const mesh = createRemoteMesh(p.id);
-                                mesh.position.set(p.x, p.y, p.z);
-                                mesh.rotation.y = p.rotY;
-                                remotePlayers.set(p.id, { mesh, data: p });
+                        if (data.id && data.id !== persistentId) {
+                            persistentId = data.id;
+                            localStorage.setItem('ow-id', persistentId);
+                        }
+                        if (data.name) {
+                            playerName = data.name;
+                            nameInput.value = data.name;
+                            localStorage.setItem('ow-name', data.name);
+                        }
+                        if (data.color) {
+                            document.getElementById('playerColor').style.background = data.color;
+                        }
+                        if (data.inventory) {
+                            inventory.wood = data.inventory.wood || 0;
+                            inventory.stone = data.inventory.stone || 0;
+                            updateInventoryUI();
+                        }
+                        if (data.resources) {
+                            for (const [id, hits] of Object.entries(data.resources)) {
+                                applyResourceState(id, hits);
                             }
+                        }
+                        (data.players || []).forEach(p => {
+                            if (p.id !== myId) ensureRemote(p);
                         });
                     } else if (data.type === 'join' && data.id !== myId) {
-                        if (!remotePlayers.has(data.id)) {
-                            const mesh = createRemoteMesh(data.id);
-                            mesh.position.set(data.x || 0, data.y || 0, data.z || 0);
-                            remotePlayers.set(data.id, { mesh, data });
-                        }
+                        ensureRemote(data);
                     } else if (data.type === 'update' && data.id !== myId) {
-                        let entry = remotePlayers.get(data.id);
-                        if (!entry) {
-                            const mesh = createRemoteMesh(data.id);
-                            entry = { mesh, data };
-                            remotePlayers.set(data.id, entry);
-                        }
+                        const entry = ensureRemote(data);
                         entry.mesh.position.set(data.x, data.y, data.z);
                         entry.mesh.rotation.y = data.rotY;
                         entry.data = data;
+                    } else if (data.type === 'rename' && data.id !== myId) {
+                        const entry = remotePlayers.get(data.id);
+                        if (entry) {
+                            entry.data.name = data.name;
+                            entry.data.color = data.color || entry.data.color;
+                            setRemoteLabel(entry, data.name, entry.data.color);
+                        }
                     } else if (data.type === 'leave') {
                         const entry = remotePlayers.get(data.id);
                         if (entry) {
                             scene.remove(entry.mesh);
                             remotePlayers.delete(data.id);
                         }
+                    } else if (data.type === 'resource') {
+                        applyResourceState(data.id, data.hits);
+                    } else if (data.type === 'gatherResult') {
+                        if (data.id != null && data.hits != null) applyResourceState(data.id, data.hits);
+                        if (data.inventory) {
+                            inventory.wood = data.inventory.wood || 0;
+                            inventory.stone = data.inventory.stone || 0;
+                            updateInventoryUI();
+                        }
+                        if (!data.ok) showMessage(data.reason || 'Cannot gather');
+                        else if (data.gained === 'wood') showMessage('+1 Wood');
+                        else if (data.gained === 'stone') showMessage('+1 Stone');
+                        else showMessage('Hit');
                     }
                 };
 
-                ws.onclose = () => {
-                    showMessage('Disconnected from server');
-                    setTimeout(connectMultiplayer, 3000);
-                };
-
-                // Send updates
-                setInterval(() => {
+                const sendTimer = setInterval(() => {
                     if (ws.readyState === WebSocket.OPEN && myId) {
                         ws.send(JSON.stringify({
                             type: 'update',
@@ -713,9 +868,15 @@
                         }));
                     }
                 }, 100);
+
+                ws.onclose = () => {
+                    clearInterval(sendTimer);
+                    if (gameSocket === ws) gameSocket = null;
+                    showMessage('Disconnected from server');
+                    setTimeout(connectMultiplayer, 3000);
+                };
             }
 
-            // Start multiplayer after a short delay so scene is ready
             setTimeout(connectMultiplayer, 500);
         } catch (err) {
             showError(err.message || err);
