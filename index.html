@@ -152,6 +152,20 @@
         }
         #shop.open { display: block; }
         #shop h2 { margin: 0 0 8px; font-size: 18px; color: #f1c40f; }
+        #talkHint {
+            display: none; position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%);
+            z-index: 12; color: #e8ffe8; background: rgba(0,0,0,0.72); border: 1px solid rgba(46,204,113,0.7);
+            border-radius: 6px; padding: 6px 12px; pointer-events: none;
+        }
+        #talkHint.on { display: block; }
+        #talk {
+            display: none; position: absolute; left: 50%; top: 72px; transform: translateX(-50%);
+            width: min(420px, calc(100vw - 24px)); max-height: calc(100vh - 180px); overflow: auto;
+            background: rgba(16, 18, 24, 0.94); color: white; border: 1px solid rgba(46,204,113,0.8);
+            border-radius: 8px; padding: 14px 16px; z-index: 25; pointer-events: auto;
+        }
+        #talk.open { display: block; }
+        #talk h2 { margin: 0 0 6px; font-size: 18px; }
         .bar-slot { background-repeat: no-repeat; background-position: center 16px; background-size: 30px 30px; }
         #actionPicker canvas, .spell-row canvas { width: 28px; height: 28px; }
         #sheet {
@@ -251,7 +265,7 @@
         Right-click a slot to assign a trained action<br>
         E: Gather if something is close, otherwise attack your target<br>
         Click an NPC or another player, or press Tab, to target them<br>
-        B: Bag &nbsp; C: Character sheet &nbsp; F: Loot<br>
+        B: Bag &nbsp; C: Character sheet &nbsp; F: Loot &nbsp; T: Talk<br>
         Character sheet Craft tab makes gear. The gold Shop button buys recipe sets<br>
         Farther zones hold stronger creatures with their own loot<br>
         H/M: first potion. Click a potion to use it<br>
@@ -291,6 +305,8 @@
     </div>
     <div id="sheet"></div>
     <div id="shop"></div>
+    <div id="talkHint"></div>
+    <div id="talk"></div>
     <div id="actionPicker" hidden></div>
     <div id="mapReadout"><div id="zoneName">Camp Glade</div><div id="zoneCoords">50.0, 50.0</div></div>
     <canvas id="minimap" width="180" height="180"></canvas>
@@ -429,8 +445,13 @@
             let npcScale = 1;
             let npcFoot = 0;
             const worldNpcs = new Map();
+            const worldCivs = new Map();
             const worldChests = new Map();
             let pendingNpcs = null;
+            let pendingCivilians = null;
+            let quests = {};
+            let questDefs = {};
+            let talkingId = null;
             let selectedNpcId = null;
             const shots = [];
             const combatFx = [];
@@ -457,6 +478,7 @@
                     box.setFromObject(probe);
                     npcFoot = -box.min.y;
                     if (pendingNpcs) syncNpcs(pendingNpcs);
+                    if (pendingCivilians) spawnCivilians(pendingCivilians);
                     console.log('NPC model loaded');
                 },
                 undefined,
@@ -833,6 +855,14 @@
                     ctx.fillStyle = '#e74c3c';
                     ctx.fillRect(p.mx - 3, p.mz - 3, 6, 6);
                 }
+                if (mapLayers.npcs) for (const entry of worldCivs.values()) {
+                    const p = place(entry.group.position.x, entry.group.position.z);
+                    if (!p) continue;
+                    ctx.fillStyle = '#2ecc71';
+                    ctx.beginPath();
+                    ctx.arc(p.mx, p.mz, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
 
                 if (mapLayers.chests) for (const chest of worldChests.values()) {
                     const p = place(chest.x, chest.z);
@@ -1107,6 +1137,10 @@
                     return;
                 }
                 const aimed = currentTarget();
+                if (aimed && aimed.kind === 'civil') {
+                    showMessage('They are not hostile');
+                    return;
+                }
                 if (ability !== 'mend' && (!aimed || aimed.kind !== 'npc')) {
                     showMessage('Select a target');
                     return;
@@ -1138,6 +1172,10 @@
 
             function currentTarget() {
                 if (!selectedNpcId) return null;
+                const civil = worldCivs.get(selectedNpcId);
+                if (civil) {
+                    return { kind: 'civil', id: selectedNpcId, group: civil.group, name: civil.name, title: civil.title, role: civil.role };
+                }
                 const npc = worldNpcs.get(selectedNpcId);
                 if (npc && !npc.dying) {
                     return { kind: 'npc', id: selectedNpcId, group: npc.group, name: npc.name || 'Hostile', level: npc.level, hp: npc.hp, maxHp: npc.maxHp };
@@ -1167,6 +1205,16 @@
                     return;
                 }
                 frame.hidden = false;
+                if (aimed.kind === 'civil') {
+                    frame.style.borderColor = 'rgba(46,204,113,0.85)';
+                    document.getElementById('targetName').textContent = aimed.name + '  ' + aimed.title;
+                    document.getElementById('targetHp').hidden = true;
+                    targetRing.material.color.set(0x2ecc71);
+                    targetRing.visible = true;
+                    targetRing.position.set(aimed.group.position.x, 0.05, aimed.group.position.z);
+                    return;
+                }
+                document.getElementById('targetHp').hidden = false;
                 frame.style.borderColor = aimed.kind === 'player' ? 'rgba(80,180,255,0.8)' : 'rgba(255,80,80,0.7)';
                 document.getElementById('targetName').textContent = aimed.kind === 'player'
                     ? aimed.name
@@ -1189,6 +1237,11 @@
                 const list = [];
                 for (const [id, entry] of worldNpcs) {
                     if (entry.dying) continue;
+                    const dx = entry.group.position.x - characterGroup.position.x;
+                    const dz = entry.group.position.z - characterGroup.position.z;
+                    list.push({ id, d: dx * dx + dz * dz });
+                }
+                for (const [id, entry] of worldCivs) {
                     const dx = entry.group.position.x - characterGroup.position.x;
                     const dz = entry.group.position.z - characterGroup.position.z;
                     list.push({ id, d: dx * dx + dz * dz });
@@ -1359,18 +1412,68 @@
                 return sprite;
             }
 
-            function tintHostile(root, color) {
+            function tintHostile(root, color, amount) {
                 const tint = new THREE.Color(color || '#c0392b');
+                const mix = amount == null ? 0.45 : amount;
                 root.traverse(obj => {
                     if (!obj.isMesh || !obj.material) return;
                     const source = Array.isArray(obj.material) ? obj.material : [obj.material];
                     const cloned = source.map(mat => {
                         const next = mat.clone();
-                        if (next.color) next.color.lerp(tint, 0.45);
+                        if (next.color) next.color.lerp(tint, mix);
                         return next;
                     });
                     obj.material = Array.isArray(obj.material) ? cloned : cloned[0];
                 });
+            }
+
+            function makeCivSprite(name, title, color) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 96;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(8, 8, 240, 56);
+                ctx.fillStyle = color || '#2ecc71';
+                ctx.font = 'bold 22px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(name || 'NPC', 128, 26);
+                ctx.font = '16px Arial';
+                ctx.fillStyle = '#e8ffe8';
+                ctx.fillText(title || '', 128, 48);
+                const tex = new THREE.CanvasTexture(canvas);
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+                sprite.scale.set(1.8, 0.68, 1);
+                sprite.position.y = 2.45;
+                sprite.userData.texture = tex;
+                return sprite;
+            }
+
+            function ensureCivilian(civ) {
+                if (!civ || worldCivs.has(civ.id) || !npcTemplate) return;
+                const group = new THREE.Group();
+                const model = cloneSkinned(npcTemplate);
+                model.scale.setScalar(npcScale);
+                model.position.y = npcFoot;
+                tintHostile(model, civ.tint, 0.72);
+                group.add(model);
+                group.position.set(civ.x, terrainHeight(civ.x, civ.z), civ.z);
+                group.userData.civilId = civ.id;
+                group.add(makeCivSprite(civ.name, civ.title, civ.tint));
+                if (npcClips.length) {
+                    const remoteMixer = new THREE.AnimationMixer(model);
+                    remoteMixer.clipAction(npcClips[0]).play();
+                    remoteMixers.push(remoteMixer);
+                }
+                scene.add(group);
+                worldCivs.set(civ.id, { group, id: civ.id, name: civ.name, title: civ.title, role: civ.role, text: civ.text, quest: civ.quest || '', tint: civ.tint });
+            }
+
+            function spawnCivilians(list) {
+                pendingCivilians = list || [];
+                if (!npcTemplate) return;
+                for (const civ of pendingCivilians) ensureCivilian(civ);
             }
 
             function removeWorldNpc(id) {
@@ -2223,6 +2326,125 @@
                 if (document.getElementById('shop').classList.contains('open')) renderShop();
             }
 
+            function nearestCivilian(range) {
+                let best = null;
+                let bestD = range * range;
+                const px = characterGroup.position.x;
+                const pz = characterGroup.position.z;
+                for (const entry of worldCivs.values()) {
+                    const dx = entry.group.position.x - px;
+                    const dz = entry.group.position.z - pz;
+                    const d = dx * dx + dz * dz;
+                    if (d <= bestD) {
+                        bestD = d;
+                        best = entry;
+                    }
+                }
+                return best;
+            }
+
+            function applyQuests(next) {
+                let note = '';
+                if (next) {
+                    for (const [id, row] of Object.entries(next)) {
+                        const prev = quests[id];
+                        const def = questDefs[id];
+                        if (def && row.state === 'active' && row.count >= def.count && (!prev || prev.count < def.count)) note = def.name + ' ready to turn in';
+                    }
+                    quests = next;
+                }
+                if (talkingId && worldCivs.get(talkingId)) renderTalk(worldCivs.get(talkingId));
+                return note;
+            }
+
+            function renderTalk(entry) {
+                const panel = document.getElementById('talk');
+                panel.classList.add('open');
+                panel.textContent = '';
+                talkingId = entry.id;
+                const close = document.createElement('button');
+                close.type = 'button';
+                close.className = 'text-btn';
+                close.textContent = 'Close';
+                close.addEventListener('click', () => {
+                    panel.classList.remove('open');
+                    talkingId = null;
+                });
+                panel.appendChild(close);
+                const title = document.createElement('h2');
+                title.textContent = entry.name;
+                panel.appendChild(title);
+                const role = document.createElement('p');
+                role.textContent = entry.title;
+                panel.appendChild(role);
+                const body = document.createElement('p');
+                body.textContent = entry.text || '';
+                panel.appendChild(body);
+                if (entry.role === 'shop') {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn gold-btn';
+                    button.textContent = 'Open shop';
+                    button.addEventListener('click', () => {
+                        if (!document.getElementById('shop').classList.contains('open')) toggleShop();
+                        else renderShop();
+                    });
+                    panel.appendChild(button);
+                } else if (entry.role === 'trainer') {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn';
+                    button.textContent = 'Open training';
+                    button.addEventListener('click', () => {
+                        sheetTab = 'spells';
+                        if (!document.getElementById('sheet').classList.contains('open')) toggleSheet();
+                        else renderSheet();
+                    });
+                    panel.appendChild(button);
+                } else if (entry.role === 'quest' && entry.quest) {
+                    const def = questDefs[entry.quest] || { name: 'Quest', text: '', count: 1, coins: 0 };
+                    const row = quests[entry.quest];
+                    const line = document.createElement('p');
+                    line.textContent = def.name + ' — ' + def.text + (row ? '  ' + Math.min(row.count, def.count) + '/' + def.count : '');
+                    panel.appendChild(line);
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn';
+                    if (!row) {
+                        button.textContent = 'Accept';
+                        button.addEventListener('click', () => sendCharacter('acceptQuest', { id: entry.id }));
+                    } else if (row.state === 'done') {
+                        button.textContent = 'Complete';
+                        button.disabled = true;
+                    } else if (row.count >= def.count) {
+                        button.textContent = 'Turn in';
+                        button.className = 'text-btn gold-btn';
+                        button.addEventListener('click', () => sendCharacter('turnIn', { id: entry.id }));
+                    } else {
+                        button.textContent = row.count + '/' + def.count;
+                        button.disabled = true;
+                    }
+                    panel.appendChild(button);
+                }
+            }
+
+            function tryTalk() {
+                const aimed = currentTarget();
+                let entry = null;
+                if (aimed && aimed.kind === 'civil') {
+                    const dx = aimed.group.position.x - characterGroup.position.x;
+                    const dz = aimed.group.position.z - characterGroup.position.z;
+                    if (dx * dx + dz * dz <= 3.6 * 3.6) entry = worldCivs.get(aimed.id);
+                }
+                if (!entry) entry = nearestCivilian(3.6);
+                if (!entry) {
+                    showMessage('No one close enough to talk to');
+                    return;
+                }
+                selectNpc(entry.id);
+                renderTalk(entry);
+            }
+
             function toggleShop() {
                 const panel = document.getElementById('shop');
                 panel.classList.toggle('open');
@@ -2539,6 +2761,7 @@
                 if (k === 'b' || k === 'i') toggleBag();
                 if (k === 'c') toggleSheet();
                 if (k === 'f') tryLoot();
+                if (k === 't') tryTalk();
                 if (k === 'r') tryReclaim();
                 if (k === 'h') usePotion('health');
                 if (k === 'm') usePotion('mana');
@@ -2559,6 +2782,7 @@
                 raycaster.setFromCamera(pointer, camera);
                 const roots = [];
                 for (const entry of worldNpcs.values()) roots.push(entry.group);
+                for (const entry of worldCivs.values()) roots.push(entry.group);
                 for (const entry of remotePlayers.values()) roots.push(entry.mesh);
                 const hits = raycaster.intersectObjects(roots, true);
                 if (!hits.length) {
@@ -2566,8 +2790,8 @@
                     return;
                 }
                 let obj = hits[0].object;
-                while (obj && !obj.userData.npcId && !obj.userData.playerId) obj = obj.parent;
-                selectNpc(obj ? (obj.userData.playerId || obj.userData.npcId) : null);
+                while (obj && !obj.userData.npcId && !obj.userData.playerId && !obj.userData.civilId) obj = obj.parent;
+                selectNpc(obj ? (obj.userData.civilId || obj.userData.playerId || obj.userData.npcId) : null);
             });
             renderer.domElement.addEventListener('mousedown', (e) => {
                 if (e.button === 2) {
@@ -2698,6 +2922,17 @@
                     entry.group.position.z += (entry.tz - entry.group.position.z) * Math.min(1, delta * 10);
                     entry.group.rotation.y = entry.rotY;
                     if (!entry.dying) entry.group.position.y = terrainHeight(entry.group.position.x, entry.group.position.z);
+                }
+                for (const entry of worldCivs.values()) {
+                    entry.group.position.y = terrainHeight(entry.group.position.x, entry.group.position.z);
+                }
+                const talkHint = document.getElementById('talkHint');
+                const closeCiv = nearestCivilian(3.6);
+                if (closeCiv) {
+                    talkHint.textContent = 'T  ' + closeCiv.name + ', ' + closeCiv.title;
+                    talkHint.classList.add('on');
+                } else {
+                    talkHint.classList.remove('on');
                 }
                 for (const entry of remotePlayers.values()) {
                     const gy = terrainHeight(entry.mesh.position.x, entry.mesh.position.z);
@@ -2966,6 +3201,9 @@
                         if (data.inventory) applyInventory(data.inventory);
                         if (data.stats) applyStats(data.stats);
                         if (data.npcs) syncNpcs(data.npcs);
+                        if (data.civilians) spawnCivilians(data.civilians);
+                        if (data.questDefs) questDefs = data.questDefs;
+                        if (data.quests) quests = data.quests;
                         if (data.chests) data.chests.forEach(addChest);
                         if (Array.isArray(data.actionbar)) {
                             actionBar = data.actionbar;
@@ -3063,15 +3301,23 @@
                         onGround = true;
                         applyStats(data);
                         showMessage('Defeated. Respawned.');
+                    } else if (data.type === 'quests') {
+                        if (data.inventory) applyInventory(data.inventory);
+                        applyStats(data);
+                        if (data.quests) applyQuests(data.quests);
+                        showMessage(data.ok === false ? (data.reason || 'Cannot do that') : (data.note || 'Quest updated'));
                     } else if (data.type === 'attackResult') {
                         if (!data.ok) showMessage(data.reason || 'Miss');
                         else {
                             applyStats(data);
+                            const ready = data.quests ? applyQuests(data.quests) : '';
                             if (data.heal) showMessage('+' + data.heal + ' HP');
                             else if (data.killed) {
-                                showMessage(data.leveled ? 'Level ' + data.level + '! +' + data.gained + ' XP' : '+' + data.gained + ' XP');
+                                const xp = data.leveled ? 'Level ' + data.level + '! +' + data.gained + ' XP' : '+' + data.gained + ' XP';
+                                showMessage(ready ? xp + ' · ' + ready : xp);
                                 if (data.chest) addChest(data.chest);
-                            } else if (data.damage) showMessage('Hit ' + data.damage);
+                            } else if (ready) showMessage(ready);
+                            else if (data.damage) showMessage('Hit ' + data.damage);
                         }
                     } else if (data.type === 'cast') {
                         launchCast(data);

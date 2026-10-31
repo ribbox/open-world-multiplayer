@@ -103,6 +103,67 @@ const NPC_KINDS = {
     cultist: { id: 'cultist', name: 'Cultist', tint: '#8e44ad', loot: 'magic' }
 };
 
+const CIVILIANS = [
+    { id: 'mira', name: 'Mira', role: 'shop', title: 'Shop assistant', tint: '#f1c40f', x: 10, z: 4, text: 'I sell the core crafting patterns. Bring coins.' },
+    { id: 'bram', name: 'Bram', role: 'trainer', title: 'Trainer', tint: '#5dade2', x: -10, z: 4, text: 'Choose a class, then train your spells with me.' },
+    { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' }
+];
+
+const QUESTS = {
+    'boar-tusks': { name: 'Boar Tusks', text: 'Kill 3 wild boars in Camp Glade.', kind: 'boar', count: 3, coins: 20, xp: 50 }
+};
+
+function publicCivilian(civ) {
+    return { id: civ.id, name: civ.name, role: civ.role, title: civ.title, tint: civ.tint, x: civ.x, z: civ.z, text: civ.text, quest: civ.quest || '' };
+}
+
+function publicQuests() {
+    const out = {};
+    for (const [id, quest] of Object.entries(QUESTS)) {
+        out[id] = { name: quest.name, text: quest.text, count: quest.count, coins: quest.coins, xp: quest.xp };
+    }
+    return out;
+}
+
+function loadQuests(prof) {
+    const next = {};
+    const raw = prof.quests && typeof prof.quests === 'object' ? prof.quests : {};
+    for (const [id, row] of Object.entries(raw)) {
+        if (!QUESTS[id] || !row) continue;
+        next[id] = { state: row.state === 'done' ? 'done' : 'active', count: Math.max(0, Math.min(QUESTS[id].count, Number(row.count) || 0)) };
+    }
+    prof.quests = next;
+}
+
+function nearCivilian(player, id) {
+    const civ = CIVILIANS.find(entry => entry.id === id);
+    if (!civ) return null;
+    if (Math.hypot(civ.x - player.x, civ.z - player.z) > 3.6) return null;
+    return civ;
+}
+
+function noteKill(player, npc) {
+    let changed = false;
+    for (const [id, quest] of Object.entries(QUESTS)) {
+        const row = player.quests && player.quests[id];
+        if (!row || row.state !== 'active' || quest.kind !== npc.kind) continue;
+        if (row.count >= quest.count) continue;
+        row.count += 1;
+        changed = true;
+    }
+    if (changed) savePlayer(player);
+    return changed;
+}
+
+function coinRoom(player, amount) {
+    let room = 0;
+    for (const slot of player.slots) {
+        if (!slot) room += 99;
+        else if (slot.kind === 'coins' && slot.qty < 99) room += 99 - slot.qty;
+    }
+    return room >= amount;
+}
+
 function xpToNext(level) {
     return 50 * level;
 }
@@ -478,6 +539,7 @@ function loadCharacter(prof) {
         seen.add(id);
         return true;
     });
+    loadQuests(prof);
 }
 
 function armorValue(player) {
@@ -844,6 +906,7 @@ function savePlayer(player) {
     prof.talents = player.talents;
     prof.spellRanks = player.spellRanks || {};
     prof.recipes = player.recipes || [];
+    prof.quests = player.quests || {};
     prof.level = player.level;
     prof.xp = player.xp;
     prof.wood = 0;
@@ -1151,6 +1214,7 @@ wss.on('connection', (ws) => {
                 talents: { ...prof.talents },
                 spellRanks: { ...prof.spellRanks },
                 recipes: Array.isArray(prof.recipes) ? prof.recipes.slice() : [],
+                quests: JSON.parse(JSON.stringify(prof.quests || {})),
                 bagSlots: prof.bagSlots || 0,
                 slots: prof.slots.map(copySlot),
                 actionbar: prof.actionbar,
@@ -1174,6 +1238,9 @@ wss.on('connection', (ws) => {
                 inventory: inventoryOf(player),
                 stats: statsOf(player),
                 npcs: Array.from(npcs.values()).filter(n => n.alive).map(publicNpc),
+                civilians: CIVILIANS.map(publicCivilian),
+                quests: player.quests,
+                questDefs: publicQuests(),
                 chests: Array.from(chests.values()).map(publicChest),
                 actionbar: player.actionbar,
                 character: publicCharacter(player),
@@ -1386,6 +1453,7 @@ wss.on('connection', (ws) => {
                     leveled,
                     ability: data.ability || 'sword',
                     chest: chest ? publicChest(chest) : null,
+                    quests: player.quests,
                     ...statsOf(player)
                 });
             };
@@ -1402,6 +1470,7 @@ wss.on('connection', (ws) => {
                     gained = 20 * npc.level;
                     leveled = grantXp(player, gained);
                     chest = spawnChest(npc);
+                    noteKill(player, npc);
                 }
                 broadcast({
                     type: 'npcHit',
@@ -1494,6 +1563,49 @@ wss.on('connection', (ws) => {
                 inventory: inventoryOf(player),
                 ...statsOf(player)
             });
+            return;
+        }
+
+        if (data.type === 'acceptQuest') {
+            const civ = nearCivilian(player, data.id);
+            const questId = civ && civ.quest;
+            const quest = questId && QUESTS[questId];
+            if (!civ || civ.role !== 'quest' || !quest) {
+                send(ws, { type: 'quests', ok: false, reason: civ ? 'Not a quest giver' : 'Too far', quests: player.quests });
+                return;
+            }
+            if (player.quests[questId]) {
+                send(ws, { type: 'quests', ok: false, reason: 'Already taken', quests: player.quests });
+                return;
+            }
+            player.quests[questId] = { state: 'active', count: 0 };
+            savePlayer(player);
+            send(ws, { type: 'quests', ok: true, note: 'Quest accepted', quests: player.quests });
+            return;
+        }
+
+        if (data.type === 'turnIn') {
+            const civ = nearCivilian(player, data.id);
+            const questId = civ && civ.quest;
+            const quest = questId && QUESTS[questId];
+            const row = questId && player.quests[questId];
+            if (!civ || !quest || !row || row.state !== 'active') {
+                send(ws, { type: 'quests', ok: false, reason: civ ? 'Nothing to turn in' : 'Too far', quests: player.quests });
+                return;
+            }
+            if (row.count < quest.count) {
+                send(ws, { type: 'quests', ok: false, reason: row.count + '/' + quest.count, quests: player.quests });
+                return;
+            }
+            if (!coinRoom(player, quest.coins)) {
+                send(ws, { type: 'quests', ok: false, reason: 'Inventory full', quests: player.quests });
+                return;
+            }
+            row.state = 'done';
+            addToSlots(player, { kind: 'coins', name: 'Coins', qty: quest.coins });
+            const leveled = grantXp(player, quest.xp);
+            savePlayer(player);
+            send(ws, { type: 'quests', ok: true, note: 'Quest complete', leveled, quests: player.quests, inventory: inventoryOf(player), ...statsOf(player) });
             return;
         }
 
