@@ -271,6 +271,7 @@
         B: Bag &nbsp; C: Character sheet &nbsp; F: Loot &nbsp; T: Talk<br>
         Character sheet Craft tab makes gear. The gold Shop button buys recipe sets<br>
         Farther zones hold stronger creatures with their own loot<br>
+        You can learn 2 crafting skills. Gather herbs by hand and sulfur with a pickaxe<br>
         H/M: first potion. Click a potion to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
@@ -647,7 +648,7 @@
             }
 
             const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, baseSlots: 16, coins: 0, materials: {} };
-            const SUPPLY_KINDS = [['wood', 'Wood'], ['stone', 'Stone'], ['cloth', 'Cloth'], ['leather', 'Leather'], ['ore', 'Ore'], ['gem', 'Gem']];
+            const SUPPLY_KINDS = [['wood', 'Wood'], ['stone', 'Stone'], ['cloth', 'Cloth'], ['leather', 'Leather'], ['ore', 'Ore'], ['gem', 'Gem'], ['herb', 'Herb'], ['powder', 'Powder']];
             function updateInventoryUI() {
                 const slots = inventory.slots || [];
                 const used = slots.filter(Boolean).length;
@@ -722,6 +723,15 @@
                 }
                 if (slot.kind === 'armor' || slot.kind === 'weapon') {
                     showMessage('Equip it on your character sheet');
+                    return;
+                }
+                if (slot.kind === 'bomb') {
+                    const aimed = currentTarget();
+                    if (!aimed || aimed.kind !== 'npc') {
+                        showMessage('Select a hostile target');
+                        return;
+                    }
+                    gameSocket.send(JSON.stringify({ type: 'use', slot: index, targetId: aimed.id }));
                     return;
                 }
                 if (slot.kind !== 'health' && slot.kind !== 'mana') return;
@@ -876,12 +886,14 @@
                 for (const c of allColliders) {
                     if (!c.type) continue;
                     if (c.type === 'tree' && !mapLayers.trees) continue;
-                    if (c.type !== 'tree' && !mapLayers.rocks) continue;
+                    if (c.type === 'herb' && !mapLayers.trees) continue;
+                    if ((c.type === 'rock' || c.type === 'sulfur') && !mapLayers.rocks) continue;
                     const p = place(c.x, c.z);
                     if (!p) continue;
                     ctx.beginPath();
-                    ctx.arc(p.mx, p.mz, c.type === 'tree' ? 3 : 2.5, 0, Math.PI * 2);
-                    ctx.fillStyle = c.type === 'tree' ? '#228B22' : '#888888';
+                    const radius = c.type === 'tree' ? 3 : c.type === 'herb' ? 2 : 2.5;
+                    ctx.arc(p.mx, p.mz, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = c.type === 'herb' ? '#7dff4a' : c.type === 'sulfur' ? '#f4d03f' : c.type === 'tree' ? '#228B22' : '#888888';
                     ctx.fill();
                 }
 
@@ -1068,6 +1080,32 @@
                         leaves.castShadow = true;
                         group.add(leaves);
                         meshes.push(trunk, leaves);
+                    } else if (item.type === 'herb') {
+                        const stem = new THREE.Mesh(
+                            new THREE.CylinderGeometry(0.06, 0.08, 0.55, 6),
+                            new THREE.MeshLambertMaterial({ color: 0x2e7d32 })
+                        );
+                        stem.position.set(item.px, terrainHeight(item.x, item.z) + 0.28, item.pz);
+                        const bloom = new THREE.Mesh(
+                            new THREE.SphereGeometry(0.28, 8, 6),
+                            new THREE.MeshLambertMaterial({ color: 0x43a047 })
+                        );
+                        bloom.position.set(item.px, terrainHeight(item.x, item.z) + 0.62, item.pz);
+                        const flower = new THREE.Mesh(
+                            new THREE.SphereGeometry(0.1, 6, 5),
+                            new THREE.MeshLambertMaterial({ color: 0xf1c40f })
+                        );
+                        flower.position.set(item.px, terrainHeight(item.x, item.z) + 0.82, item.pz);
+                        group.add(stem, bloom, flower);
+                        meshes.push(stem, bloom, flower);
+                    } else if (item.type === 'sulfur') {
+                        const crystal = new THREE.Mesh(
+                            new THREE.ConeGeometry(0.22, 0.7, 5),
+                            new THREE.MeshLambertMaterial({ color: 0xf4d03f })
+                        );
+                        crystal.position.set(item.px, terrainHeight(item.x, item.z) + 0.35, item.pz);
+                        group.add(crystal);
+                        meshes.push(crystal);
                     } else {
                         const rock = new THREE.Mesh(
                             new THREE.BoxGeometry(item.sx, item.sy, item.sz),
@@ -1083,7 +1121,7 @@
                         id: item.id,
                         x: item.x,
                         z: item.z,
-                        r: (item.type === 'tree' ? 0.5 : 0.9) + characterRadius,
+                        r: (item.type === 'tree' ? 0.5 : item.type === 'herb' ? 0.2 : item.type === 'sulfur' ? 0.4 : 0.9) + characterRadius,
                         type: item.type,
                         hits,
                         meshes,
@@ -1147,9 +1185,12 @@
                     showMessage('Nothing to gather');
                     return;
                 }
-                currentTool = closest.type === 'tree' ? 'axe' : 'pickaxe';
-                updateToolUI();
-                restoreWeapon = true;
+                if (closest.type === 'rock' || closest.type === 'sulfur') currentTool = 'pickaxe';
+                else if (closest.type === 'tree') currentTool = 'axe';
+                if (closest.type !== 'herb') {
+                    updateToolUI();
+                    restoreWeapon = true;
+                }
                 if (!playSwing()) return;
                 if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
                     showMessage('Not connected');
@@ -1161,7 +1202,7 @@
                     x: px,
                     y: characterGroup.position.y,
                     z: pz,
-                    tool: currentTool
+                    tool: closest.type === 'herb' ? 'hands' : currentTool
                 }));
             }
 
@@ -2052,6 +2093,9 @@
                 else if (kind === 'leather') drawLeather(g);
                 else if (kind === 'ore') drawOre(g);
                 else if (kind === 'gem') drawGem(g);
+                else if (kind === 'herb') drawHerb(g);
+                else if (kind === 'powder') drawPowder(g);
+                else if (kind === 'bomb') drawBomb(g);
                 else if (kind === 'recipe') drawScroll(g);
                 else drawGear(g, slot || 'chest', item.style);
                 if (item.magic && kind !== 'weapon') {
@@ -2073,6 +2117,47 @@
                 el.style.backgroundRepeat = 'no-repeat';
                 el.style.backgroundPosition = 'center';
                 el.style.backgroundSize = '32px 32px';
+            }
+
+            function drawHerb(g) {
+                g.strokeStyle = '#2e7d32';
+                g.lineWidth = 3;
+                g.beginPath();
+                g.moveTo(32, 54);
+                g.lineTo(32, 30);
+                g.stroke();
+                g.fillStyle = '#43a047';
+                g.beginPath();
+                g.ellipse(22, 28, 10, 6, -0.5, 0, Math.PI * 2);
+                g.ellipse(42, 26, 10, 6, 0.4, 0, Math.PI * 2);
+                g.fill();
+                g.fillStyle = '#f1c40f';
+                g.beginPath();
+                g.arc(32, 18, 4, 0, Math.PI * 2);
+                g.fill();
+            }
+
+            function drawPowder(g) {
+                g.fillStyle = '#f4d03f';
+                g.beginPath();
+                g.moveTo(32, 12);
+                g.lineTo(48, 50);
+                g.lineTo(16, 50);
+                g.closePath();
+                g.fill();
+            }
+
+            function drawBomb(g) {
+                g.fillStyle = '#2c2c2c';
+                g.beginPath();
+                g.arc(32, 38, 14, 0, Math.PI * 2);
+                g.fill();
+                g.strokeStyle = '#f1c40f';
+                g.lineWidth = 2;
+                g.beginPath();
+                g.moveTo(40, 26);
+                g.lineTo(48, 14);
+                g.stroke();
             }
 
             function drawWood(g) {
@@ -2521,9 +2606,13 @@
                 panel.appendChild(title);
                 const craft = character.craft || { sets: {}, recipes: {} };
                 const known = new Set(character.recipes || []);
+                const learnedSets = new Set();
+                for (const [recipeId, recipe] of Object.entries(craft.recipes || {})) {
+                    if (known.has(recipeId)) learnedSets.add(recipe.set);
+                }
                 const coins = haveKind('coins');
                 const note = document.createElement('p');
-                note.textContent = 'Coins ' + coins + '. A purchase teaches every core recipe in that set.';
+                note.textContent = 'Coins ' + coins + '. You can learn 2 crafting skills. A purchase teaches the core recipes in that skill.';
                 panel.appendChild(note);
                 const sets = Object.entries(craft.sets || {});
                 if (!sets.length) {
@@ -2545,6 +2634,9 @@
                     button.className = 'text-btn gold-btn';
                     if (owned) {
                         button.textContent = 'Owned';
+                        button.disabled = true;
+                    } else if (!learnedSets.has(id) && learnedSets.size >= 2) {
+                        button.textContent = 'Limit';
                         button.disabled = true;
                     } else {
                         button.textContent = set.cost + ' gold';
@@ -2709,7 +2801,7 @@
                 const craft = character.craft || { sets: {}, recipes: {} };
                 const known = new Set(character.recipes || []);
                 const note = document.createElement('div');
-                note.textContent = 'Known recipes. Buy more from the gold Shop button. Patterns found in chests are learned by clicking them in the bag.';
+                note.textContent = 'Known recipes. You can learn 2 crafting skills. Buy them from the Shop, or click a pattern in your bag.';
                 body.appendChild(note);
                 const groups = {};
                 for (const [id, recipe] of Object.entries(craft.recipes || {})) {
@@ -3321,6 +3413,8 @@
                         if (!data.ok) showMessage(data.reason || 'Cannot gather');
                         else if (data.gained === 'wood') showMessage('+1 Wood');
                         else if (data.gained === 'stone') showMessage('+1 Stone');
+                        else if (data.gained === 'herb') showMessage('+1 Herb');
+                        else if (data.gained === 'powder') showMessage('+1 Powder');
                         else showMessage('Hit');
                     } else if (data.type === 'npcs') {
                         syncNpcs(data.npcs || []);
@@ -3419,7 +3513,10 @@
                         else {
                             applyInventory(data.inventory);
                             applyStats(data);
-                            showMessage(data.item === 'health' ? 'Health restored' : 'Mana restored');
+                            if (data.quests) applyQuests(data.quests);
+                            if (data.chest) addChest(data.chest);
+                            if (data.item === 'bomb') showMessage(data.killed ? 'Bomb killed it' : 'Bomb hit ' + data.damage);
+                            else showMessage(data.item === 'health' ? 'Health restored' : 'Mana restored');
                         }
                     } else if (data.type === 'character') {
                         if (data.inventory) applyInventory(data.inventory);

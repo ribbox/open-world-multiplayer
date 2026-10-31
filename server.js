@@ -455,7 +455,14 @@ const RECIPES = {
     'greater-rune-blade': { name: 'Greater Rune Blade', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'sword', magic: true, armor: 0, cost: { ore: 4, wood: 1, gem: 2 }, loot: true },
     'greater-arcane-staff': { name: 'Greater Arcane Staff', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'staff', magic: true, armor: 0, cost: { wood: 3, gem: 2 }, loot: true },
     'spell-focus': { name: 'Spell Focus', set: 'magic', slot: 'offhand', kind: 'armor', style: 'cloth', magic: true, armor: 1, cost: { wood: 1, gem: 1 }, loot: true },
-    'gem-pendant': { name: 'Gem Pendant', set: 'magic', slot: 'neck', kind: 'armor', style: 'cloth', magic: true, armor: 1, cost: { cloth: 1, gem: 1 }, loot: true }
+    'gem-pendant': { name: 'Gem Pendant', set: 'magic', slot: 'neck', kind: 'armor', style: 'cloth', magic: true, armor: 1, cost: { cloth: 1, gem: 1 }, loot: true },
+    'minor-health': { name: 'Minor Health Potion', set: 'alchemy', kind: 'health', amount: 18, cost: { herb: 2 } },
+    'minor-mana': { name: 'Minor Mana Potion', set: 'alchemy', kind: 'mana', amount: 14, cost: { herb: 2 } },
+    'greater-health': { name: 'Greater Health Potion', set: 'alchemy', kind: 'health', amount: 40, cost: { herb: 4, powder: 1 }, loot: true },
+    'greater-mana': { name: 'Greater Mana Potion', set: 'alchemy', kind: 'mana', amount: 30, cost: { herb: 4, powder: 1 }, loot: true },
+    'rough-bomb': { name: 'Rough Bomb', set: 'explosive', kind: 'bomb', amount: 14, cost: { powder: 2, stone: 1 } },
+    'bitter-flask': { name: 'Bitter Flask', set: 'explosive', kind: 'bomb', amount: 10, cost: { herb: 2, powder: 1 } },
+    'heavy-bomb': { name: 'Heavy Bomb', set: 'explosive', kind: 'bomb', amount: 28, cost: { powder: 3, ore: 1 }, loot: true }
 };
 
 const CRAFT_SETS = {
@@ -463,10 +470,14 @@ const CRAFT_SETS = {
     leather: { name: 'Leatherworking', cost: 20, text: 'Cap, jerkin, gloves, pants, and boots.' },
     plate: { name: 'Armorsmithing', cost: 30, text: 'Helm, breastplate, gauntlets, greaves, and sabatons.' },
     weapon: { name: 'Weaponsmithing', cost: 16, text: 'Iron sword and oak staff.' },
-    magic: { name: 'Spellforging', cost: 28, text: 'Rune blade and arcane staff.' }
+    magic: { name: 'Spellforging', cost: 28, text: 'Rune blade and arcane staff.' },
+    alchemy: { name: 'Alchemy', cost: 18, text: 'Health and mana potions from herbs.' },
+    explosive: { name: 'Explosives', cost: 22, text: 'Bombs from powder and stone.' }
 };
 
-const MATERIAL_NAMES = { cloth: 'Cloth', leather: 'Leather', ore: 'Ore', gem: 'Gem', wood: 'Wood', stone: 'Stone' };
+const MAX_CRAFT_SKILLS = 2;
+
+const MATERIAL_NAMES = { cloth: 'Cloth', leather: 'Leather', ore: 'Ore', gem: 'Gem', wood: 'Wood', stone: 'Stone', herb: 'Herb', powder: 'Powder' };
 const LOOT_RECIPE_IDS = Object.keys(RECIPES).filter(id => RECIPES[id].loot);
 
 function publicCraft() {
@@ -590,10 +601,10 @@ function publicCharacter(player) {
     };
 }
 
-const MATERIAL_KINDS = ['wood', 'stone', 'cloth', 'leather', 'ore', 'gem'];
+const MATERIAL_KINDS = ['wood', 'stone', 'cloth', 'leather', 'ore', 'gem', 'herb', 'powder'];
 
 function blankMaterials() {
-    return { wood: 0, stone: 0, cloth: 0, leather: 0, ore: 0, gem: 0 };
+    return { wood: 0, stone: 0, cloth: 0, leather: 0, ore: 0, gem: 0, herb: 0, powder: 0 };
 }
 
 function coinCount(player) {
@@ -632,9 +643,27 @@ function takeKind(player, kind, amount) {
     return true;
 }
 
+function learnedCraftSets(player) {
+    const sets = new Set();
+    for (const id of player.recipes || []) {
+        const recipe = RECIPES[id];
+        if (recipe) sets.add(recipe.set);
+    }
+    return sets;
+}
+
+function craftRoom(player, setId) {
+    const sets = learnedCraftSets(player);
+    if (sets.has(setId)) return null;
+    if (sets.size >= MAX_CRAFT_SKILLS) return 'You can only learn 2 crafting skills';
+    return null;
+}
+
 function learnSet(player, setId) {
     const set = CRAFT_SETS[setId];
     if (!set) return 'Unknown set';
+    const blocked = craftRoom(player, setId);
+    if (blocked) return blocked;
     const ids = Object.keys(RECIPES).filter(id => RECIPES[id].set === setId && !RECIPES[id].loot);
     if (ids.every(id => player.recipes.includes(id))) return 'Already learned';
     if (!spendCoins(player, set.cost)) return 'Not enough coins';
@@ -648,6 +677,8 @@ function learnPattern(player, index) {
     if (!slot || slot.kind !== 'recipe') return 'Not a pattern';
     const recipe = RECIPES[slot.recipe];
     if (!recipe) return 'Unknown pattern';
+    const blocked = craftRoom(player, recipe.set);
+    if (blocked) return blocked;
     if (player.recipes.includes(slot.recipe)) return 'Already known';
     player.recipes.push(slot.recipe);
     slot.qty -= 1;
@@ -674,7 +705,8 @@ function craftItem(player, id) {
         weapon: recipe.weapon || '',
         slot: recipe.slot || '',
         style: recipe.style || '',
-        magic: !!recipe.magic
+        magic: !!recipe.magic,
+        amount: recipe.amount || 0
     });
     if (rest) {
         for (const [kind, qty] of Object.entries(recipe.cost)) {
@@ -786,7 +818,7 @@ function stackLimit(item) {
     if (item.kind === 'coins') return 99;
     if (item.kind === 'wood' || item.kind === 'stone' || item.kind === 'cloth' || item.kind === 'leather' || item.kind === 'ore') return 20;
     if (item.kind === 'junk' || item.kind === 'gem' || item.kind === 'recipe') return 10;
-    if (item.kind === 'health' || item.kind === 'mana' || item.kind === 'armor') return 5;
+    if (item.kind === 'health' || item.kind === 'mana' || item.kind === 'armor' || item.kind === 'bomb') return 5;
     return 1;
 }
 
@@ -946,7 +978,8 @@ const LOOT_TABLES = {
         { kind: 'recipe', weight: 4, sets: ['leather'] }
     ],
     silk: [
-        { kind: 'cloth', weight: 36 },
+        { kind: 'cloth', weight: 30 },
+        { kind: 'herb', weight: 16 },
         { kind: 'junk', weight: 18, names: ['Webbing', 'Dried silk', 'Chitin'] },
         { kind: 'mana', weight: 16 },
         { kind: 'coins', weight: 12 },
@@ -1016,7 +1049,7 @@ function lootItem(row, level) {
     }
     if (kind === 'health') return { kind, name: 'Health potion', qty: 1, amount: 8 + level * 3 };
     if (kind === 'mana') return { kind, name: 'Mana potion', qty: 1, amount: 6 + level * 2 };
-    if (kind === 'stone') return { kind, name: 'Stone', qty: 1 + Math.floor(level / 2) };
+    if (kind === 'stone' || kind === 'herb' || kind === 'powder') return { kind, name: MATERIAL_NAMES[kind], qty: 1 + Math.floor(level / 3) };
     if (kind === 'cloth' || kind === 'leather' || kind === 'ore' || kind === 'gem') {
         return { kind, name: MATERIAL_NAMES[kind], qty: kind === 'gem' ? 1 : 1 + Math.floor(level / 2) };
     }
@@ -1304,8 +1337,8 @@ wss.on('connection', (ws) => {
             player.lastGather = now;
             if (typeof data.x === 'number') player.x = data.x;
             if (typeof data.z === 'number') player.z = data.z;
-            const tool = data.tool === 'pickaxe' ? 'pickaxe' : 'axe';
-            player.tool = tool;
+            const tool = data.tool === 'pickaxe' ? 'pickaxe' : data.tool === 'hands' ? 'hands' : 'axe';
+            player.tool = tool === 'hands' ? player.tool : tool;
 
             const node = resourceById(data.id);
             if (!node) {
@@ -1323,7 +1356,9 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'gatherResult', ok: false, reason: 'Too far' });
                 return;
             }
-            if ((node.type === 'tree' && tool !== 'axe') || (node.type === 'rock' && tool !== 'pickaxe')) {
+            const needsAxe = node.type === 'tree';
+            const needsPick = node.type === 'rock' || node.type === 'sulfur';
+            if ((needsAxe && tool !== 'axe') || (needsPick && tool !== 'pickaxe')) {
                 send(ws, { type: 'gatherResult', ok: false, reason: 'Wrong tool' });
                 return;
             }
@@ -1331,14 +1366,18 @@ wss.on('connection', (ws) => {
             const next = hits - 1;
             let gained = null;
             if (next <= 0) {
-                const item = node.type === 'tree'
+                const drop = node.type === 'tree'
                     ? { kind: 'wood', name: 'Wood', qty: 1 }
-                    : { kind: 'stone', name: 'Stone', qty: 1 };
-                if (addToSlots(player, item)) {
+                    : node.type === 'herb'
+                        ? { kind: 'herb', name: 'Herb', qty: 1 }
+                        : node.type === 'sulfur'
+                            ? { kind: 'powder', name: 'Powder', qty: 1 }
+                            : { kind: 'stone', name: 'Stone', qty: 1 };
+                if (addToSlots(player, drop)) {
                     send(ws, { type: 'gatherResult', ok: false, reason: 'Inventory full', id: node.id, hits, inventory: inventoryOf(player) });
                     return;
                 }
-                gained = item.kind;
+                gained = drop.kind;
                 savePlayer(player);
             }
             save.resources[node.id] = next;
@@ -1677,6 +1716,59 @@ wss.on('connection', (ws) => {
                 player.hp = Math.min(player.maxHp, player.hp + (slot.amount || 10));
             } else if (slot.kind === 'mana') {
                 player.mana = Math.min(player.maxMana, player.mana + (slot.amount || 8));
+            } else if (slot.kind === 'bomb') {
+                const npc = npcs.get(data.targetId);
+                if (!npc || !npc.alive) {
+                    send(ws, { type: 'useResult', ok: false, reason: 'Select a hostile target' });
+                    return;
+                }
+                if (Math.hypot(npc.x - player.x, npc.z - player.z) > 8) {
+                    send(ws, { type: 'useResult', ok: false, reason: 'Out of range' });
+                    return;
+                }
+                const damage = slot.amount || 10;
+                npc.hp -= damage;
+                let gained = 0;
+                let leveled = false;
+                let chest = null;
+                if (npc.hp <= 0) {
+                    npc.hp = 0;
+                    npc.alive = false;
+                    npc.respawnAt = Date.now() + 8000;
+                    gained = 20 * npc.level;
+                    leveled = grantXp(player, gained);
+                    chest = spawnChest(npc);
+                    noteKill(player, npc);
+                }
+                broadcast({
+                    type: 'npcHit',
+                    id: npc.id,
+                    hp: npc.hp,
+                    maxHp: npc.maxHp,
+                    alive: npc.alive,
+                    x: npc.x,
+                    z: npc.z,
+                    level: npc.level,
+                    name: npc.name,
+                    tint: npc.tint
+                });
+                slot.qty -= 1;
+                if (slot.qty <= 0) player.slots[index] = null;
+                savePlayer(player);
+                send(ws, {
+                    type: 'useResult',
+                    ok: true,
+                    item: 'bomb',
+                    damage,
+                    killed: !npc.alive,
+                    gained,
+                    leveled,
+                    chest: chest ? publicChest(chest) : null,
+                    quests: player.quests,
+                    inventory: inventoryOf(player),
+                    ...statsOf(player)
+                });
+                return;
             } else if (slot.kind === 'armor' || slot.kind === 'weapon') {
                 send(ws, { type: 'useResult', ok: false, reason: 'Equip it on your character sheet' });
                 return;

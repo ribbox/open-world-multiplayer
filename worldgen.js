@@ -101,6 +101,27 @@ export function chunkResources(cx, cz) {
             hits: type === 'tree' ? 3 : 4
         });
     }
+    const extra = mulberry32(chunkSeed(cx + 91, cz - 13));
+    const herbs = 1 + Math.floor(extra() * 2);
+    for (let n = 0; n < herbs; n++) {
+        const px = (extra() - 0.5) * CHUNK_SIZE * 0.8;
+        const pz = (extra() - 0.5) * CHUNK_SIZE * 0.8;
+        const x = cx * CHUNK_SIZE + px;
+        const z = cz * CHUNK_SIZE + pz;
+        if (terrainHeight(x, z) < WATER_LEVEL + 0.35) continue;
+        const index = items.length;
+        items.push({ id: `${cx},${cz},${index}`, type: 'herb', x, z, px, pz, sx: 0, sy: 0, sz: 0, hits: 2 });
+    }
+    if (extra() < 0.45) {
+        const px = (extra() - 0.5) * CHUNK_SIZE * 0.8;
+        const pz = (extra() - 0.5) * CHUNK_SIZE * 0.8;
+        const x = cx * CHUNK_SIZE + px;
+        const z = cz * CHUNK_SIZE + pz;
+        if (terrainHeight(x, z) >= WATER_LEVEL + 0.35) {
+            const index = items.length;
+            items.push({ id: `${cx},${cz},${index}`, type: 'sulfur', x, z, px, pz, sx: 0.45, sy: 0.7, sz: 0.45, hits: 3 });
+        }
+    }
     return items;
 }
 
