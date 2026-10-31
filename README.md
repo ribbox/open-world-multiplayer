@@ -40,7 +40,7 @@ node server.js
 ## Notes
 - The bag has 16 slots. Extra bags can raise that later through `bagSlots`. Wood and stone stack to 20, coins to 99, junk to 10, potions and armor scraps to 5. A full bag will not take the last gather hit, and a chest keeps whatever does not fit.
 - Gathering and inventory are server-authoritative. Trees and rocks are shared, and a depleted node stays gone for everyone.
-- Hostile NPCs roam, chase nearby players, and show up as red squares on the minimap. Other players show as circles in their color. Ghosts are pale circles. Their level sets their hit points. Armor reduces the damage they deal.
+- Hostile NPCs roam, chase nearby players, and show up as red squares on the minimap. The minimap is heading-up: your arrow stays pointing up, and the world rotates so that is the way you are facing. Other players show as circles in their color. Ghosts are pale circles. NPC level sets their hit points. Armor reduces the damage they deal.
 - A kill drops a chest at the body, shown in gold on the minimap. It lasts 60 seconds. Loot is rolled from the NPC level: junk is the most common drop, then coins, gathered wood or stone, health potions, mana potions, and armor scraps are the rarest.
 - Press 1 for the sword attack, or put Power Strike on the bar. The staff's spells are Arcane Bolt and Mend. A kill grants XP. The XP needed for the next level is 50 times the current level.
 - Level, XP, inventory, potions, coins, armor, and node state are saved in the Docker volume `game-data` (`/app/data/save.json`).

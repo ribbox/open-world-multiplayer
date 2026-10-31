@@ -643,7 +643,6 @@
             const minimapCtx = minimapCanvas.getContext('2d');
             const mapSize = 180;
             const mapScale = 1.8;
-            const mapRange = 50;
             const remotePlayers = new Map();
 
             function drawMinimap() {
@@ -660,78 +659,79 @@
                 const px = characterGroup.position.x;
                 const pz = characterGroup.position.z;
                 const facing = characterGroup.rotation.y;
+                const sin = Math.sin(facing);
+                const cos = Math.cos(facing);
+                const radius = mapSize / 2 - 4;
+
+                function place(x, z) {
+                    const dx = x - px;
+                    const dz = z - pz;
+                    const right = dx * cos - dz * sin;
+                    const ahead = dx * sin + dz * cos;
+                    const mx = mapSize / 2 + right * mapScale;
+                    const mz = mapSize / 2 - ahead * mapScale;
+                    if ((mx - mapSize / 2) ** 2 + (mz - mapSize / 2) ** 2 > radius * radius) return null;
+                    return { mx, mz };
+                }
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(mapSize / 2, mapSize / 2, radius, 0, Math.PI * 2);
+                ctx.clip();
 
                 for (const c of allColliders) {
                     if (!c.type) continue;
-                    const dx = c.x - px;
-                    const dz = c.z - pz;
-                    if (Math.abs(dx) > mapRange || Math.abs(dz) > mapRange) continue;
-                    const mx = mapSize / 2 + dx * mapScale;
-                    const mz = mapSize / 2 + dz * mapScale;
+                    const p = place(c.x, c.z);
+                    if (!p) continue;
                     ctx.beginPath();
-                    ctx.arc(mx, mz, c.type === 'tree' ? 3 : 2.5, 0, Math.PI * 2);
+                    ctx.arc(p.mx, p.mz, c.type === 'tree' ? 3 : 2.5, 0, Math.PI * 2);
                     ctx.fillStyle = c.type === 'tree' ? '#228B22' : '#888888';
                     ctx.fill();
                 }
 
                 for (const entry of worldNpcs.values()) {
-                    const dx = entry.group.position.x - px;
-                    const dz = entry.group.position.z - pz;
-                    if (Math.abs(dx) > mapRange || Math.abs(dz) > mapRange) continue;
-                    const mx = mapSize / 2 + dx * mapScale;
-                    const mz = mapSize / 2 + dz * mapScale;
+                    const p = place(entry.group.position.x, entry.group.position.z);
+                    if (!p) continue;
                     ctx.fillStyle = '#e74c3c';
-                    ctx.fillRect(mx - 3, mz - 3, 6, 6);
+                    ctx.fillRect(p.mx - 3, p.mz - 3, 6, 6);
                 }
 
                 for (const chest of worldChests.values()) {
-                    const dx = chest.x - px;
-                    const dz = chest.z - pz;
-                    if (Math.abs(dx) > mapRange || Math.abs(dz) > mapRange) continue;
-                    const mx = mapSize / 2 + dx * mapScale;
-                    const mz = mapSize / 2 + dz * mapScale;
+                    const p = place(chest.x, chest.z);
+                    if (!p) continue;
                     ctx.fillStyle = '#f1c40f';
-                    ctx.fillRect(mx - 3, mz - 3, 6, 6);
+                    ctx.fillRect(p.mx - 3, p.mz - 3, 6, 6);
                 }
 
                 for (const marker of corpseMarkers.values()) {
-                    const dx = marker.position.x - px;
-                    const dz = marker.position.z - pz;
-                    if (Math.abs(dx) > mapRange || Math.abs(dz) > mapRange) continue;
-                    const mx = mapSize / 2 + dx * mapScale;
-                    const mz = mapSize / 2 + dz * mapScale;
+                    const p = place(marker.position.x, marker.position.z);
+                    if (!p) continue;
                     ctx.fillStyle = '#d6ecff';
                     ctx.beginPath();
-                    ctx.arc(mx, mz, 4, 0, Math.PI * 2);
+                    ctx.arc(p.mx, p.mz, 4, 0, Math.PI * 2);
                     ctx.fill();
                 }
 
                 for (const entry of remotePlayers.values()) {
-                    const dx = entry.mesh.position.x - px;
-                    const dz = entry.mesh.position.z - pz;
-                    if (Math.abs(dx) > mapRange || Math.abs(dz) > mapRange) continue;
-                    const mx = mapSize / 2 + dx * mapScale;
-                    const mz = mapSize / 2 + dz * mapScale;
+                    const p = place(entry.mesh.position.x, entry.mesh.position.z);
+                    if (!p) continue;
                     ctx.beginPath();
-                    ctx.arc(mx, mz, entry.data && entry.data.ghost ? 3.5 : 4.5, 0, Math.PI * 2);
+                    ctx.arc(p.mx, p.mz, entry.data && entry.data.ghost ? 3.5 : 4.5, 0, Math.PI * 2);
                     ctx.fillStyle = entry.data && entry.data.ghost ? '#d6ecff' : (entry.data && entry.data.color) || '#5dade2';
                     ctx.fill();
                     ctx.lineWidth = 1.5;
                     ctx.strokeStyle = '#ffffff';
                     ctx.stroke();
                 }
+                ctx.restore();
 
-                ctx.save();
-                ctx.translate(mapSize / 2, mapSize / 2);
-                ctx.rotate(Math.PI - facing);
                 ctx.beginPath();
-                ctx.moveTo(0, -8);
-                ctx.lineTo(5, 6);
-                ctx.lineTo(-5, 6);
+                ctx.moveTo(mapSize / 2, mapSize / 2 - 8);
+                ctx.lineTo(mapSize / 2 + 5, mapSize / 2 + 6);
+                ctx.lineTo(mapSize / 2 - 5, mapSize / 2 + 6);
                 ctx.closePath();
                 ctx.fillStyle = '#4169E1';
                 ctx.fill();
-                ctx.restore();
             }
 
             // Camera orbit
