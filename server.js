@@ -174,6 +174,15 @@ function nearestPlayer(npc, range) {
     return best;
 }
 
+function talentRank(player, id) {
+    if (!player || !player.talents) return 0;
+    return player.talents[id] || 0;
+}
+
+function maxManaFor(player) {
+    return 10 + ((player.level || 1) - 1) * 4 + talentRank(player, 'meditation') * 2;
+}
+
 function grantXp(player, amount) {
     player.xp += amount;
     let leveled = false;
@@ -181,7 +190,7 @@ function grantXp(player, amount) {
         player.xp -= xpToNext(player.level);
         player.level += 1;
         player.maxHp = maxHpFor(player.level);
-        player.maxMana = 10 + (player.level - 1) * 4;
+        player.maxMana = maxManaFor(player);
         player.hp = player.maxHp;
         player.mana = player.maxMana;
         leveled = true;
@@ -206,13 +215,15 @@ function statsOf(player) {
 const ABILITIES = {
     sword: { weapon: 'sword', mana: 2, range: 2.6, damage: (level) => 4 + level },
     'power-strike': { weapon: 'sword', mana: 6, range: 2.6, damage: (level) => 8 + level * 2 },
+    cleave: { weapon: 'sword', mana: 5, range: 2.6, damage: (level) => 6 + level },
     'arcane-bolt': { weapon: 'staff', mana: 5, range: 8, damage: (level) => 6 + level },
+    'arcane-surge': { weapon: 'staff', mana: 8, range: 8, damage: (level) => 12 + level * 2 },
     mend: { weapon: 'staff', mana: 4, range: 0, heal: (level) => 8 + level * 2 }
 };
 
 const BAR_PAGES = 3;
 const BAR_SLOTS = 8;
-const ACTION_IDS = new Set(['sword', 'power-strike', 'staff', 'arcane-bolt', 'mend', 'gather']);
+const ACTION_IDS = new Set(['sword', 'power-strike', 'cleave', 'staff', 'arcane-bolt', 'arcane-surge', 'mend', 'gather']);
 
 function defaultActionBar() {
     return [
@@ -235,6 +246,222 @@ function sanitizeActionBar(pages) {
     return bar;
 }
 
+const EQUIP_SLOTS = ['weapon', 'head', 'chest', 'feet'];
+const CLASS_KITS = {
+    warrior: {
+        weapon: { kind: 'weapon', weapon: 'sword', name: 'Worn Sword', qty: 1, armor: 0, amount: 0, slot: 'weapon' },
+        trained: ['sword', 'power-strike']
+    },
+    mage: {
+        weapon: { kind: 'weapon', weapon: 'staff', name: 'Apprentice Staff', qty: 1, armor: 0, amount: 0, slot: 'weapon' },
+        trained: ['staff', 'arcane-bolt']
+    }
+};
+const SPELLS = {
+    sword: { class: 'warrior', name: 'Sword', level: 1, cost: 0 },
+    'power-strike': { class: 'warrior', name: 'Power Strike', level: 1, cost: 0 },
+    cleave: { class: 'warrior', name: 'Cleave', level: 4, cost: 20, talent: 'cleave' },
+    staff: { class: 'mage', name: 'Staff', level: 1, cost: 0 },
+    'arcane-bolt': { class: 'mage', name: 'Arcane Bolt', level: 1, cost: 0 },
+    mend: { class: 'mage', name: 'Mend', level: 2, cost: 15 },
+    'arcane-surge': { class: 'mage', name: 'Arcane Surge', level: 4, cost: 25, talent: 'surge' }
+};
+const TALENTS = {
+    toughness: { class: 'warrior', name: 'Toughness', max: 3, row: 0, requires: null, text: '+1 armor per rank' },
+    might: { class: 'warrior', name: 'Might', max: 3, row: 1, requires: { toughness: 1 }, text: '+1 melee damage per rank' },
+    cleave: { class: 'warrior', name: 'Cleave', max: 1, row: 2, requires: { might: 2 }, text: 'Unlocks Cleave' },
+    meditation: { class: 'mage', name: 'Meditation', max: 3, row: 0, requires: null, text: '+2 max mana per rank' },
+    'arcane-power': { class: 'mage', name: 'Arcane Power', max: 3, row: 1, requires: { meditation: 1 }, text: '+1 spell damage per rank' },
+    surge: { class: 'mage', name: 'Surge', max: 1, row: 2, requires: { 'arcane-power': 2 }, text: 'Unlocks Arcane Surge' }
+};
+
+function emptyEquipment() {
+    return { weapon: null, head: null, chest: null, feet: null };
+}
+
+function loadCharacter(prof) {
+    prof.legacyArmor = prof.legacyArmor || 0;
+    if (!prof.equipment) {
+        prof.equipment = emptyEquipment();
+        const old = prof.armor || 0;
+        if (old > 0) {
+            prof.equipment.chest = { kind: 'armor', slot: 'chest', name: 'Salvaged Armor', qty: 1, armor: old, amount: 0, weapon: '' };
+            prof.legacyArmor = 0;
+        } else {
+            prof.legacyArmor = 0;
+        }
+    } else {
+        const next = emptyEquipment();
+        for (const slot of EQUIP_SLOTS) next[slot] = prof.equipment[slot] ? copySlot(prof.equipment[slot]) : null;
+        prof.equipment = next;
+    }
+    if (prof.class !== 'warrior' && prof.class !== 'mage') prof.class = null;
+    prof.trained = Array.isArray(prof.trained) ? prof.trained.filter(id => SPELLS[id]) : [];
+    const talents = {};
+    if (prof.talents && typeof prof.talents === 'object') {
+        for (const [id, rank] of Object.entries(prof.talents)) {
+            const def = TALENTS[id];
+            if (!def) continue;
+            talents[id] = Math.max(0, Math.min(def.max, Number(rank) || 0));
+        }
+    }
+    prof.talents = talents;
+}
+
+function armorValue(player) {
+    let total = talentRank(player, 'toughness');
+    let worn = false;
+    for (const slot of ['head', 'chest', 'feet']) {
+        const piece = player.equipment && player.equipment[slot];
+        if (!piece) continue;
+        worn = true;
+        total += piece.armor || 0;
+    }
+    if (!worn) total += player.legacyArmor || 0;
+    return total;
+}
+
+function refreshDerived(player) {
+    player.armor = armorValue(player);
+    player.maxMana = maxManaFor(player);
+    if (player.mana > player.maxMana) player.mana = player.maxMana;
+}
+
+function talentPoints(player) {
+    const spent = Object.values(player.talents || {}).reduce((sum, rank) => sum + rank, 0);
+    return Math.max(0, (player.level || 1) - 1 - spent);
+}
+
+function knownSpells(player) {
+    if (!player.class) return ['sword', 'power-strike', 'staff', 'arcane-bolt', 'mend', 'gather'];
+    const known = ['gather'];
+    for (const id of player.trained) {
+        const spell = SPELLS[id];
+        if (!spell || spell.class !== player.class) continue;
+        if (spell.talent && talentRank(player, spell.talent) < 1) continue;
+        known.push(id);
+    }
+    return known;
+}
+
+function publicCharacter(player) {
+    return {
+        class: player.class,
+        equipment: player.equipment,
+        trained: player.trained,
+        talents: player.talents,
+        points: talentPoints(player),
+        known: knownSpells(player),
+        spells: SPELLS,
+        talentsDef: TALENTS
+    };
+}
+
+function coinCount(player) {
+    return player.slots.reduce((sum, slot) => sum + (slot && slot.kind === 'coins' ? slot.qty : 0), 0);
+}
+
+function spendCoins(player, amount) {
+    if (amount <= 0) return true;
+    if (coinCount(player) < amount) return false;
+    let left = amount;
+    for (let i = 0; i < player.slots.length && left > 0; i++) {
+        const slot = player.slots[i];
+        if (!slot || slot.kind !== 'coins') continue;
+        const take = Math.min(slot.qty, left);
+        slot.qty -= take;
+        left -= take;
+        if (slot.qty <= 0) player.slots[i] = null;
+    }
+    return left === 0;
+}
+
+function chooseClass(player, className) {
+    if (player.class) return 'Class already chosen';
+    const kit = CLASS_KITS[className];
+    if (!kit) return 'Unknown class';
+    player.class = className;
+    player.trained = kit.trained.slice();
+    player.talents = {};
+    player.equipment.weapon = copySlot(kit.weapon);
+    refreshDerived(player);
+    savePlayer(player);
+    return null;
+}
+
+function trainSpell(player, id) {
+    const spell = SPELLS[id];
+    if (!player.class) return 'Choose a class first';
+    if (!spell || spell.class !== player.class) return 'Not for your class';
+    if (player.trained.includes(id) && (!spell.talent || talentRank(player, spell.talent) > 0)) return 'Already trained';
+    if (spell.talent && talentRank(player, spell.talent) < 1) return 'Needs the talent';
+    if (player.level < spell.level) return 'Requires level ' + spell.level;
+    if (!spendCoins(player, spell.cost)) return 'Not enough coins';
+    if (!player.trained.includes(id)) player.trained.push(id);
+    savePlayer(player);
+    return null;
+}
+
+function spendTalent(player, id) {
+    const def = TALENTS[id];
+    if (!player.class) return 'Choose a class first';
+    if (!def || def.class !== player.class) return 'Not for your class';
+    const rank = talentRank(player, id);
+    if (rank >= def.max) return 'Max rank';
+    if (talentPoints(player) < 1) return 'No talent points';
+    if (def.requires) {
+        for (const [need, min] of Object.entries(def.requires)) {
+            if (talentRank(player, need) < min) return 'Requires ' + TALENTS[need].name;
+        }
+    }
+    player.talents[id] = rank + 1;
+    if (id === 'cleave' && !player.trained.includes('cleave')) player.trained.push('cleave');
+    if (id === 'surge' && !player.trained.includes('arcane-surge')) player.trained.push('arcane-surge');
+    refreshDerived(player);
+    savePlayer(player);
+    return null;
+}
+
+function equipItem(player, equipSlot, bagIndex) {
+    if (!EQUIP_SLOTS.includes(equipSlot)) return 'Bad slot';
+    const item = player.slots[bagIndex];
+    if (!item) return 'Empty slot';
+    const fits = item.kind === 'weapon' ? 'weapon' : (item.slot || 'chest');
+    if (item.kind !== 'weapon' && item.kind !== 'armor') return 'Cannot equip that';
+    if (fits !== equipSlot) return 'Does not fit';
+    if (!player.class) return 'Choose a class first';
+    if (item.kind === 'weapon' && item.weapon !== CLASS_KITS[player.class].weapon.weapon) return 'Wrong class';
+    const piece = copySlot(item);
+    piece.qty = 1;
+    item.qty -= 1;
+    const worn = player.equipment[equipSlot];
+    if (item.qty <= 0) player.slots[bagIndex] = null;
+    if (worn) {
+        const rest = addToSlots(player, worn);
+        if (rest) {
+            if (player.slots[bagIndex]) player.slots[bagIndex].qty += 1;
+            else player.slots[bagIndex] = copySlot(item.qty ? item : piece);
+            return 'Inventory full';
+        }
+    }
+    player.equipment[equipSlot] = piece;
+    refreshDerived(player);
+    savePlayer(player);
+    return null;
+}
+
+function unequipItem(player, equipSlot) {
+    if (!EQUIP_SLOTS.includes(equipSlot)) return 'Bad slot';
+    const worn = player.equipment[equipSlot];
+    if (!worn) return 'Nothing equipped';
+    const rest = addToSlots(player, worn);
+    if (rest) return 'Inventory full';
+    player.equipment[equipSlot] = null;
+    refreshDerived(player);
+    savePlayer(player);
+    return null;
+}
+
 const BASE_SLOTS = 16;
 
 function stackLimit(item) {
@@ -246,7 +473,7 @@ function stackLimit(item) {
 }
 
 function sameStack(a, b) {
-    return a && b && a.kind === b.kind && a.name === b.name && (a.amount || 0) === (b.amount || 0) && (a.armor || 0) === (b.armor || 0);
+    return a && b && a.kind === b.kind && a.name === b.name && (a.amount || 0) === (b.amount || 0) && (a.armor || 0) === (b.armor || 0) && (a.slot || '') === (b.slot || '') && (a.weapon || '') === (b.weapon || '');
 }
 
 function slotCapacity(player) {
@@ -284,17 +511,19 @@ function addToSlots(player, source) {
             name: source.name,
             qty: take,
             amount: source.amount || 0,
-            armor: source.armor || 0
+            armor: source.armor || 0,
+            weapon: source.weapon || '',
+            slot: source.slot || ''
         };
         qty -= take;
         if (qty <= 0) return null;
     }
-    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0 };
+    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0, weapon: source.weapon || '', slot: source.slot || '' };
 }
 
 function copySlot(slot) {
     if (!slot) return null;
-    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0 };
+    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0, weapon: slot.weapon || '', slot: slot.slot || '' };
 }
 
 function loadInventory(prof) {
@@ -349,6 +578,11 @@ function savePlayer(player) {
     prof.slots = player.slots;
     prof.bagSlots = player.bagSlots || 0;
     prof.armor = player.armor;
+    prof.legacyArmor = player.legacyArmor || 0;
+    prof.class = player.class || null;
+    prof.equipment = player.equipment;
+    prof.trained = player.trained;
+    prof.talents = player.talents;
     prof.level = player.level;
     prof.xp = player.xp;
     prof.wood = 0;
@@ -401,7 +635,10 @@ function rollLoot(level) {
         } else if (kind === 'mana') {
             items.push({ kind, name: 'Mana potion', qty: 1, amount: 6 + level * 2 });
         } else {
-            items.push({ kind, name: 'Armor scrap', qty: 1, armor: 1 + Math.floor((level - 1) / 2) });
+            const armorSlots = ['head', 'chest', 'feet'];
+            const wear = armorSlots[Math.floor(Math.random() * armorSlots.length)];
+            const wearName = { head: 'Helm scrap', chest: 'Armor scrap', feet: 'Boot scrap' };
+            items.push({ kind: 'armor', slot: wear, name: wearName[wear], qty: 1, armor: 1 + Math.floor((level - 1) / 2) });
         }
     }
     return items;
@@ -570,6 +807,7 @@ wss.on('connection', (ws) => {
             prof.xp = prof.xp || 0;
             prof.armor = prof.armor || 0;
             loadInventory(prof);
+            loadCharacter(prof);
             prof.actionbar = sanitizeActionBar(prof.actionbar);
 
             const existing = players.get(persistentId);
@@ -592,11 +830,21 @@ wss.on('connection', (ws) => {
                 xp: prof.xp,
                 maxHp: maxHpFor(prof.level),
                 hp: maxHpFor(prof.level),
-                maxMana: 10 + (prof.level - 1) * 4,
-                mana: 10 + (prof.level - 1) * 4,
+                maxMana: maxManaFor({ level: prof.level, talents: prof.talents }),
+                mana: maxManaFor({ level: prof.level, talents: prof.talents }),
                 manaShown: -1,
                 manaSent: 0,
-                armor: prof.armor,
+                armor: 0,
+                legacyArmor: prof.legacyArmor || 0,
+                class: prof.class,
+                equipment: {
+                    weapon: prof.equipment.weapon ? copySlot(prof.equipment.weapon) : null,
+                    head: prof.equipment.head ? copySlot(prof.equipment.head) : null,
+                    chest: prof.equipment.chest ? copySlot(prof.equipment.chest) : null,
+                    feet: prof.equipment.feet ? copySlot(prof.equipment.feet) : null
+                },
+                trained: prof.trained.slice(),
+                talents: { ...prof.talents },
                 bagSlots: prof.bagSlots || 0,
                 slots: prof.slots.map(copySlot),
                 actionbar: prof.actionbar,
@@ -605,6 +853,7 @@ wss.on('connection', (ws) => {
                 lastAttack: 0
             };
             players.set(persistentId, player);
+            refreshDerived(player);
             sessionId = persistentId;
             scheduleSave();
 
@@ -618,6 +867,7 @@ wss.on('connection', (ws) => {
                 npcs: Array.from(npcs.values()).filter(n => n.alive).map(publicNpc),
                 chests: Array.from(chests.values()).map(publicChest),
                 actionbar: player.actionbar,
+                character: publicCharacter(player),
                 resources: save.resources,
                 players: Array.from(players.entries())
                     .filter(([pid]) => pid !== persistentId)
@@ -715,6 +965,17 @@ wss.on('connection', (ws) => {
             if (data.tool === 'sword' || data.tool === 'staff') player.tool = data.tool;
             const spec = ABILITIES[data.ability] || ABILITIES.sword;
             player.tool = spec.weapon;
+            if (player.class) {
+                const worn = player.equipment.weapon && player.equipment.weapon.weapon;
+                if (worn !== spec.weapon) {
+                    send(ws, { type: 'attackResult', ok: false, reason: 'Equip a ' + spec.weapon });
+                    return;
+                }
+                if (!knownSpells(player).includes(data.ability || 'sword')) {
+                    send(ws, { type: 'attackResult', ok: false, reason: 'Spell not trained' });
+                    return;
+                }
+            }
             if (player.mana < spec.mana) {
                 send(ws, { type: 'attackResult', ok: false, reason: 'Not enough mana', ability: data.ability || 'sword', ...statsOf(player) });
                 return;
@@ -741,7 +1002,7 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'attackResult', ok: false, reason: 'No target', ...statsOf(player) });
                 return;
             }
-            const damage = spec.damage(player.level);
+            const damage = spec.damage(player.level) + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0);
             best.hp -= damage;
             let gained = 0;
             let leveled = false;
@@ -828,8 +1089,9 @@ wss.on('connection', (ws) => {
                 player.hp = Math.min(player.maxHp, player.hp + (slot.amount || 10));
             } else if (slot.kind === 'mana') {
                 player.mana = Math.min(player.maxMana, player.mana + (slot.amount || 8));
-            } else if (slot.kind === 'armor') {
-                player.armor += slot.armor || 1;
+            } else if (slot.kind === 'armor' || slot.kind === 'weapon') {
+                send(ws, { type: 'useResult', ok: false, reason: 'Equip it on your character sheet' });
+                return;
             } else {
                 send(ws, { type: 'useResult', ok: false, reason: 'Cannot use that' });
                 return;
@@ -846,6 +1108,36 @@ wss.on('connection', (ws) => {
             save.players[player.persistentId].actionbar = player.actionbar;
             scheduleSave();
             send(ws, { type: 'actionbar', pages: player.actionbar });
+            return;
+        }
+
+        if (data.type === 'chooseClass') {
+            const error = chooseClass(player, data.class);
+            send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'train') {
+            const error = trainSpell(player, data.spell);
+            send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'talent') {
+            const error = spendTalent(player, data.id);
+            send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'equip') {
+            const error = equipItem(player, data.slot, data.index);
+            send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'unequip') {
+            const error = unequipItem(player, data.slot);
+            send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
         }
     });
 

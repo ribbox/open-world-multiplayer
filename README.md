@@ -27,9 +27,9 @@ node server.js
 - W/S: move, A/D: turn
 - Space: jump, Shift: sprint
 - 1-8: use the current action-bar page. [ and ] change page. Right-click a slot, or drag, to assign a weapon, spell, or Gather.
-- The Bag button stays on the bar and opens the inventory. B does the same.
-- E gathers when a tree or rock is close (axe or pickaxe is chosen for you) and otherwise swings the sword.
-- F: loot a chest. H and M use the first health or mana potion. Click a health, mana, or armor slot to use that stack.
+- B opens the bag. C opens the character sheet. Choose Warrior or Mage once.
+- The sheet equips a weapon and head, chest, or feet. Class spells are trained there. Each level after the first gives a talent point for that class's tree.
+- F: loot a chest. H and M use the first health or mana potion.
 - Hold Right Mouse + move: orbit camera
 - Mouse wheel: zoom in/out on the character
 

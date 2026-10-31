@@ -69,7 +69,31 @@
         }
         .bar-nav, #bagButton { width: 36px; font-size: 16px; }
         #bagButton { width: 46px; background: #3d3420; }
-        #bagButton.open { outline: 2px solid #f1c40f; }
+        #bagButton.open, #sheetButton.open { outline: 2px solid #f1c40f; }
+        #sheetButton { width: 46px; background: #2c3140; font-size: 12px; }
+        #sheet {
+            display: none; position: absolute; left: 50%; top: 48px; transform: translateX(-50%);
+            width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 160px); overflow: auto;
+            background: rgba(16, 18, 24, 0.94); color: white; border: 1px solid rgba(255,255,255,0.35);
+            border-radius: 8px; padding: 14px 16px; z-index: 24; pointer-events: auto;
+        }
+        #sheet.open { display: block; }
+        #sheet h2 { margin: 0 0 8px; font-size: 18px; }
+        #sheet .row { display: flex; gap: 16px; align-items: flex-start; }
+        #doll { display: grid; grid-template-columns: 72px 72px; gap: 6px; }
+        .paper-slot, .class-pick, .sheet-tab, .text-btn {
+            color: white; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 4px; cursor: pointer;
+        }
+        .paper-slot { width: 72px; height: 64px; font-size: 11px; }
+        .paper-slot.filled { background: #3d4f6f; }
+        .class-pick { width: 220px; min-height: 88px; padding: 8px; text-align: left; }
+        .sheet-tab { padding: 4px 10px; margin-right: 4px; }
+        .sheet-tab.on { background: #3d4f6f; }
+        .spell-row, .talent-row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.12); font-size: 13px; }
+        .text-btn { padding: 3px 8px; }
+        .text-btn:disabled { opacity: 0.45; cursor: default; }
+        #sheetClose { float: right; }
         .bar-slot .key { display: block; font-size: 9px; opacity: 0.7; }
         .bar-slot.sword, .bar-slot.power-strike { background: #6d2424; }
         .bar-slot.staff, .bar-slot.arcane-bolt, .bar-slot.mend { background: #243e6d; }
@@ -107,11 +131,10 @@
         W/S: Forward / Back<br>
         A/D: Turn<br>
         Space: Jump &nbsp; Shift: Sprint<br>
-        Space: Jump &nbsp; Shift: Sprint<br>
         1-8: Action bar &nbsp; [ ]: Change page<br>
-        Right-click a slot to assign it<br>
+        Right-click a slot to assign a trained action<br>
         E: Gather if something is close, otherwise attack<br>
-        B or Bag: Inventory &nbsp; F: Loot<br>
+        B: Bag &nbsp; C: Character sheet &nbsp; F: Loot<br>
         H/M: first potion. Click a potion or armor slot to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
@@ -139,9 +162,11 @@
             <div id="barSlots"></div>
             <button type="button" class="bar-nav" id="pageNext">›</button>
             <button type="button" id="bagButton">Bag</button>
+            <button type="button" id="sheetButton">Char</button>
         </div>
         <div id="pageLabel">Page 1 / 3</div>
     </div>
+    <div id="sheet"></div>
     <div id="actionPicker" hidden></div>
     <canvas id="minimap" width="180" height="180"></canvas>
     <div id="message"></div>
@@ -368,11 +393,13 @@
             staff.visible = false;
 
             const ACTIONS = {
-                sword: { name: 'Sword', short: 'Swd', kind: 'weapon', weapon: 'sword', hint: 'Equip sword. Click again to attack. 2 mana.' },
-                'power-strike': { name: 'Power Strike', short: 'Pwr', kind: 'spell', weapon: 'sword', hint: 'Sword spell. Heavy hit. 6 mana.' },
-                staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'Equip staff.' },
-                'arcane-bolt': { name: 'Arcane Bolt', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Staff spell. Longer range. 5 mana.' },
-                mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Staff spell. Restore health. 4 mana.' },
+                sword: { name: 'Sword', short: 'Swd', kind: 'weapon', weapon: 'sword', hint: 'Attack with an equipped sword. 2 mana.' },
+                'power-strike': { name: 'Power Strike', short: 'Pwr', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Heavy hit. 6 mana.' },
+                cleave: { name: 'Cleave', short: 'Clv', kind: 'spell', weapon: 'sword', hint: 'Warrior talent spell. 5 mana.' },
+                staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'Requires an equipped staff.' },
+                'arcane-bolt': { name: 'Arcane Bolt', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Longer range. 5 mana.' },
+                'arcane-surge': { name: 'Arcane Surge', short: 'Srg', kind: 'spell', weapon: 'staff', hint: 'Mage talent spell. 8 mana.' },
+                mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Restore health. 4 mana.' },
                 gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.' }
             };
             const BAR_PAGES = 3;
@@ -386,6 +413,8 @@
             }
             let equippedWeapon = 'sword';
             let currentTool = 'sword';
+            let character = { class: null, equipment: {}, trained: [], talents: {}, points: 0, known: null, spells: {}, talentsDef: {} };
+            let sheetTab = 'spells';
             let barPage = 0;
             let actionBar = defaultActionBar();
             let restoreWeapon = false;
@@ -462,7 +491,11 @@
             function useSlot(index) {
                 const slot = inventory.slots[index];
                 if (!slot || !gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
-                if (slot.kind !== 'health' && slot.kind !== 'mana' && slot.kind !== 'armor') return;
+                if (slot.kind === 'armor' || slot.kind === 'weapon') {
+                    showMessage('Equip it on your character sheet');
+                    return;
+                }
+                if (slot.kind !== 'health' && slot.kind !== 'mana') return;
                 gameSocket.send(JSON.stringify({ type: 'use', slot: index }));
             }
             updateInventoryUI();
@@ -761,6 +794,15 @@
                 }));
             }
 
+            function wornWeapon() {
+                return character.equipment && character.equipment.weapon && character.equipment.weapon.weapon;
+            }
+
+            function spellKnown(id) {
+                if (!character.class || !character.known) return true;
+                return character.known.includes(id);
+            }
+
             function useAction(id) {
                 const action = ACTIONS[id];
                 if (!action) return;
@@ -768,15 +810,37 @@
                     tryGather();
                     return;
                 }
-                if (action.kind === 'weapon') {
-                    if (equippedWeapon === action.weapon && action.weapon === 'sword') tryAttack('sword');
-                    else {
-                        equippedWeapon = action.weapon;
-                        currentTool = action.weapon;
-                        updateToolUI();
-                        renderBar();
-                        showMessage(action.name + ' equipped');
+                if (!spellKnown(id)) {
+                    showMessage('Not trained');
+                    return;
+                }
+                if (!character.class) {
+                    if (action.kind === 'weapon') {
+                        if (equippedWeapon === action.weapon && action.weapon === 'sword') tryAttack('sword');
+                        else {
+                            equippedWeapon = action.weapon;
+                            currentTool = action.weapon;
+                            updateToolUI();
+                            renderBar();
+                            showMessage(action.name + ' equipped');
+                        }
+                        return;
                     }
+                    tryAttack(id);
+                    return;
+                }
+                const worn = wornWeapon();
+                if (action.kind === 'weapon') {
+                    if (worn !== action.weapon) {
+                        showMessage('Equip a ' + action.weapon + ' on your character sheet');
+                        return;
+                    }
+                    if (action.weapon === 'sword') tryAttack('sword');
+                    else showMessage('Staff equipped');
+                    return;
+                }
+                if (worn !== action.weapon) {
+                    showMessage('Requires an equipped ' + action.weapon);
                     return;
                 }
                 tryAttack(id);
@@ -1004,8 +1068,8 @@
 
             const picker = document.getElementById('actionPicker');
             const PICKER_GROUPS = [
-                ['Sword', ['sword', 'power-strike']],
-                ['Staff', ['staff', 'arcane-bolt', 'mend']],
+                ['Warrior', ['sword', 'power-strike', 'cleave']],
+                ['Mage', ['staff', 'arcane-bolt', 'mend', 'arcane-surge']],
                 ['Field', ['gather']]
             ];
 
@@ -1077,6 +1141,7 @@
                     heading.textContent = title;
                     picker.appendChild(heading);
                     for (const id of ids) {
+                        if (!spellKnown(id)) continue;
                         const choice = document.createElement('button');
                         choice.type = 'button';
                         choice.textContent = ACTIONS[id].name;
@@ -1115,12 +1180,190 @@
                 document.getElementById('bagButton').classList.toggle('open', panel.classList.contains('open'));
             }
 
+            function sendCharacter(type, extra) {
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
+                    showMessage('Not connected');
+                    return;
+                }
+                gameSocket.send(JSON.stringify({ type, ...extra }));
+            }
+
+            function applyCharacter(data) {
+                if (!data) return;
+                character = data;
+                const worn = wornWeapon();
+                if (worn && (currentTool === 'sword' || currentTool === 'staff')) {
+                    equippedWeapon = worn;
+                    currentTool = worn;
+                    updateToolUI();
+                }
+                renderBar();
+                if (document.getElementById('sheet').classList.contains('open')) renderSheet();
+            }
+
+            function toggleSheet() {
+                const panel = document.getElementById('sheet');
+                panel.classList.toggle('open');
+                document.getElementById('sheetButton').classList.toggle('open', panel.classList.contains('open'));
+                if (panel.classList.contains('open')) renderSheet();
+            }
+
+            function renderSheet() {
+                const panel = document.getElementById('sheet');
+                panel.textContent = '';
+                const close = document.createElement('button');
+                close.type = 'button';
+                close.id = 'sheetClose';
+                close.className = 'text-btn';
+                close.textContent = 'Close';
+                close.addEventListener('click', toggleSheet);
+                panel.appendChild(close);
+                const title = document.createElement('h2');
+                title.textContent = 'Character';
+                panel.appendChild(title);
+
+                if (!character.class) {
+                    const note = document.createElement('p');
+                    note.textContent = 'Choose a class. This sets your weapon, the spells you can train, and your talent tree.';
+                    panel.appendChild(note);
+                    const row = document.createElement('div');
+                    row.className = 'row';
+                    for (const [id, name, text] of [
+                        ['warrior', 'Warrior', 'Sword, Power Strike, and a Might tree.'],
+                        ['mage', 'Mage', 'Arcane Bolt, Mend, and an Arcane tree.']
+                    ]) {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'class-pick';
+                        button.textContent = name + '\n' + text;
+                        button.addEventListener('click', () => sendCharacter('chooseClass', { class: id }));
+                        row.appendChild(button);
+                    }
+                    panel.appendChild(row);
+                    return;
+                }
+
+                const summary = document.createElement('p');
+                summary.textContent = character.class[0].toUpperCase() + character.class.slice(1) + '  ·  Talent points ' + (character.points || 0);
+                panel.appendChild(summary);
+                const row = document.createElement('div');
+                row.className = 'row';
+                const doll = document.createElement('div');
+                doll.id = 'doll';
+                const labels = { head: 'Head', chest: 'Chest', feet: 'Feet', weapon: 'Weapon' };
+                for (const slot of ['head', 'weapon', 'chest', 'feet']) {
+                    const piece = character.equipment && character.equipment[slot];
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'paper-slot' + (piece ? ' filled' : '');
+                    button.textContent = piece ? piece.name : labels[slot];
+                    button.title = piece ? 'Unequip' : 'Empty';
+                    button.addEventListener('click', () => {
+                        if (piece) sendCharacter('unequip', { slot });
+                    });
+                    doll.appendChild(button);
+                }
+                row.appendChild(doll);
+
+                const side = document.createElement('div');
+                side.style.flex = '1';
+                const tabs = document.createElement('div');
+                for (const tab of ['spells', 'talents', 'bag']) {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'sheet-tab' + (sheetTab === tab ? ' on' : '');
+                    button.textContent = tab[0].toUpperCase() + tab.slice(1);
+                    button.addEventListener('click', () => { sheetTab = tab; renderSheet(); });
+                    tabs.appendChild(button);
+                }
+                side.appendChild(tabs);
+                const body = document.createElement('div');
+                if (sheetTab === 'spells') renderSpellList(body);
+                else if (sheetTab === 'talents') renderTalentList(body);
+                else renderEquipList(body);
+                side.appendChild(body);
+                row.appendChild(side);
+                panel.appendChild(row);
+            }
+
+            function renderSpellList(body) {
+                const spells = character.spells || {};
+                for (const [id, spell] of Object.entries(spells)) {
+                    if (spell.class !== character.class) continue;
+                    const line = document.createElement('div');
+                    line.className = 'spell-row';
+                    const known = (character.trained || []).includes(id) && (!spell.talent || (character.talents[spell.talent] || 0) > 0);
+                    const label = document.createElement('div');
+                    label.textContent = spell.name + (spell.cost ? ' · ' + spell.cost + ' coins' : '') + (spell.level > 1 ? ' · level ' + spell.level : '');
+                    line.appendChild(label);
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn';
+                    if (known) {
+                        button.textContent = 'Trained';
+                        button.disabled = true;
+                    } else if (spell.talent && !(character.talents[spell.talent] > 0)) {
+                        button.textContent = 'Talent';
+                        button.disabled = true;
+                    } else {
+                        button.textContent = 'Train';
+                        button.addEventListener('click', () => sendCharacter('train', { spell: id }));
+                    }
+                    line.appendChild(button);
+                    body.appendChild(line);
+                }
+            }
+
+            function renderTalentList(body) {
+                const defs = character.talentsDef || {};
+                const rows = Object.entries(defs).filter(([, def]) => def.class === character.class).sort((a, b) => a[1].row - b[1].row);
+                for (const [id, def] of rows) {
+                    const rank = (character.talents && character.talents[id]) || 0;
+                    const line = document.createElement('div');
+                    line.className = 'talent-row';
+                    const label = document.createElement('div');
+                    label.textContent = def.name + ' ' + rank + '/' + def.max + ' — ' + def.text;
+                    line.appendChild(label);
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn';
+                    button.textContent = rank >= def.max ? 'Max' : 'Learn';
+                    button.disabled = rank >= def.max;
+                    button.addEventListener('click', () => sendCharacter('talent', { id }));
+                    line.appendChild(button);
+                    body.appendChild(line);
+                }
+            }
+
+            function renderEquipList(body) {
+                const note = document.createElement('div');
+                note.textContent = 'Click a bag item to equip it.';
+                body.appendChild(note);
+                (inventory.slots || []).forEach((slot, index) => {
+                    if (!slot || (slot.kind !== 'armor' && slot.kind !== 'weapon')) return;
+                    const line = document.createElement('div');
+                    line.className = 'spell-row';
+                    const label = document.createElement('div');
+                    label.textContent = slot.name + (slot.armor ? ' · armor ' + slot.armor : '');
+                    line.appendChild(label);
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn';
+                    button.textContent = 'Equip';
+                    button.addEventListener('click', () => sendCharacter('equip', { slot: slot.kind === 'weapon' ? 'weapon' : (slot.slot || 'chest'), index }));
+                    line.appendChild(button);
+                    body.appendChild(line);
+                });
+            }
+
             document.getElementById('pagePrev').addEventListener('click', () => changePage(-1));
             document.getElementById('pageNext').addEventListener('click', () => changePage(1));
             document.getElementById('bagButton').addEventListener('click', toggleBag);
+            document.getElementById('sheetButton').addEventListener('click', toggleSheet);
             document.getElementById('pagePrev').addEventListener('mousedown', (e) => e.preventDefault());
             document.getElementById('pageNext').addEventListener('mousedown', (e) => e.preventDefault());
             document.getElementById('bagButton').addEventListener('mousedown', (e) => e.preventDefault());
+            document.getElementById('sheetButton').addEventListener('mousedown', (e) => e.preventDefault());
             document.addEventListener('mousedown', (e) => {
                 if (picker.hidden || picker.contains(e.target)) return;
                 picker.hidden = true;
@@ -1151,10 +1394,11 @@
                         if (c.type && Math.hypot(px - c.x, pz - c.z) < 2.8) near = true;
                     }
                     if (near) tryGather();
-                    else if (equippedWeapon === 'sword') tryAttack('sword');
+                    else if ((character.class ? wornWeapon() : equippedWeapon) === 'sword') tryAttack('sword');
                     else showMessage('Select a spell');
                 }
                 if (k === 'b' || k === 'i') toggleBag();
+                if (k === 'c') toggleSheet();
                 if (k === 'f') tryLoot();
                 if (k === 'h') usePotion('health');
                 if (k === 'm') usePotion('mana');
@@ -1431,6 +1675,7 @@
                             actionBar = data.actionbar;
                             renderBar();
                         }
+                        if (data.character) applyCharacter(data.character);
                         if (data.resources) {
                             for (const [id, hits] of Object.entries(data.resources)) {
                                 applyResourceState(id, hits);
@@ -1510,8 +1755,13 @@
                         else {
                             applyInventory(data.inventory);
                             applyStats(data);
-                            showMessage(data.item === 'health' ? 'Health restored' : data.item === 'armor' ? 'Armor equipped' : 'Mana restored');
+                            showMessage(data.item === 'health' ? 'Health restored' : 'Mana restored');
                         }
+                    } else if (data.type === 'character') {
+                        if (data.inventory) applyInventory(data.inventory);
+                        applyStats(data);
+                        if (data.character) applyCharacter(data.character);
+                        showMessage(data.ok === false ? (data.reason || 'Cannot do that') : 'Character updated');
                     } else if (data.type === 'stats') {
                         applyStats(data);
                     }
