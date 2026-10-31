@@ -282,7 +282,7 @@
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
         Train spells only while standing at a trainer. Gather herbs by hand and sulfur with a pickaxe<br>
-        Click the minimap for the world map. Camps with a trainer and a shop sit in every zone<br>
+        Click the minimap for the world map. Click a spot on it to teleport. Unexplored land stays hidden<br>
         H/M: first potion. Click a potion to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
@@ -326,7 +326,7 @@
     <div id="talkHint"></div>
     <div id="talk"></div>
     <div id="actionPicker" hidden></div>
-    <div id="mapReadout"><div id="zoneName">Camp Glade</div><div id="zoneCoords">50.0, 50.0</div><div id="mapHint">Click the map</div></div>
+    <div id="mapReadout"><div id="zoneName">Camp Glade</div><div id="zoneCoords">50.0, 50.0</div><div id="mapHint">Click for the world map</div></div>
     <canvas id="minimap" width="180" height="180"></canvas>
     <div id="worldmap">
         <div id="worldmapPanel">
@@ -360,7 +360,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity } from './worldgen.js';
+        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround } from './worldgen.js';
 
         const infoBox = document.getElementById('info');
         const showInfo = document.getElementById('showInfo');
@@ -850,7 +850,28 @@
                 });
             });
 
+            const explored = new Set();
+            const exploredZones = new Set();
+            function rememberFog(key) {
+                if (!key || explored.has(key)) return;
+                explored.add(key);
+                const [ix, iz] = key.split(',').map(Number);
+                const min = worldBounds().min;
+                const zone = zoneAt(min + (ix + 0.5) * FOG_CELL, min + (iz + 0.5) * FOG_CELL);
+                exploredZones.add(zone.zx + ',' + zone.zz);
+            }
+            function revealHere(x, z) {
+                for (const key of fogCellsAround(x, z)) rememberFog(key);
+            }
+            function seenAt(x, z) {
+                const { min } = worldBounds();
+                const ix = Math.floor((x - min) / FOG_CELL);
+                const iz = Math.floor((z - min) / FOG_CELL);
+                return explored.has(ix + ',' + iz);
+            }
+
             function drawMinimap() {
+                revealHere(characterGroup.position.x, characterGroup.position.z);
                 const ctx = minimapCtx;
                 ctx.clearRect(0, 0, mapSize, mapSize);
                 ctx.beginPath();
@@ -926,6 +947,7 @@
                     if (c.type === 'tree' && !mapLayers.trees) continue;
                     if (c.type === 'herb' && !mapLayers.trees) continue;
                     if ((c.type === 'rock' || c.type === 'sulfur') && !mapLayers.rocks) continue;
+                    if (!seenAt(c.x, c.z)) continue;
                     const p = place(c.x, c.z);
                     if (!p) continue;
                     ctx.beginPath();
@@ -937,13 +959,13 @@
 
                 if (mapLayers.npcs) for (const entry of worldNpcs.values()) {
                     const p = place(entry.group.position.x, entry.group.position.z);
-                    if (!p) continue;
+                    if (!p || !seenAt(entry.group.position.x, entry.group.position.z)) continue;
                     ctx.fillStyle = '#e74c3c';
                     ctx.fillRect(p.mx - 3, p.mz - 3, 6, 6);
                 }
                 if (mapLayers.npcs) for (const entry of worldCivs.values()) {
                     const p = place(entry.group.position.x, entry.group.position.z);
-                    if (!p) continue;
+                    if (!p || !seenAt(entry.group.position.x, entry.group.position.z)) continue;
                     ctx.fillStyle = '#2ecc71';
                     ctx.beginPath();
                     ctx.arc(p.mx, p.mz, 4, 0, Math.PI * 2);
@@ -951,6 +973,7 @@
                 }
 
                 if (mapLayers.chests) for (const chest of worldChests.values()) {
+                    if (!seenAt(chest.x, chest.z)) continue;
                     const p = place(chest.x, chest.z);
                     if (!p) continue;
                     ctx.fillStyle = '#f1c40f';
@@ -959,7 +982,7 @@
 
                 if (mapLayers.bodies) for (const marker of corpseMarkers.values()) {
                     const p = place(marker.position.x, marker.position.z);
-                    if (!p) continue;
+                    if (!p || !seenAt(marker.position.x, marker.position.z)) continue;
                     ctx.fillStyle = '#d6ecff';
                     ctx.beginPath();
                     ctx.arc(p.mx, p.mz, 4, 0, Math.PI * 2);
@@ -968,7 +991,7 @@
 
                 if (mapLayers.players) for (const entry of remotePlayers.values()) {
                     const p = place(entry.mesh.position.x, entry.mesh.position.z);
-                    if (!p) continue;
+                    if (!p || !seenAt(entry.mesh.position.x, entry.mesh.position.z)) continue;
                     ctx.beginPath();
                     ctx.arc(p.mx, p.mz, entry.data && entry.data.ghost ? 3.5 : 4.5, 0, Math.PI * 2);
                     ctx.fillStyle = entry.data && entry.data.ghost ? '#d6ecff' : (entry.data && entry.data.color) || '#5dade2';
@@ -976,6 +999,28 @@
                     ctx.lineWidth = 1.5;
                     ctx.strokeStyle = '#ffffff';
                     ctx.stroke();
+                }
+                const { min } = worldBounds();
+                const view = 96;
+                const ix0 = Math.floor((px - view - min) / FOG_CELL);
+                const ix1 = Math.floor((px + view - min) / FOG_CELL);
+                const iz0 = Math.floor((pz - view - min) / FOG_CELL);
+                const iz1 = Math.floor((pz + view - min) / FOG_CELL);
+                ctx.fillStyle = 'rgba(8, 10, 14, 0.94)';
+                for (let iz = iz0; iz <= iz1; iz++) {
+                    for (let ix = ix0; ix <= ix1; ix++) {
+                        if (explored.has(ix + ',' + iz)) continue;
+                        const x0 = min + ix * FOG_CELL;
+                        const z0 = min + iz * FOG_CELL;
+                        const corners = [project(x0, z0), project(x0 + FOG_CELL, z0), project(x0 + FOG_CELL, z0 + FOG_CELL), project(x0, z0 + FOG_CELL)];
+                        ctx.beginPath();
+                        ctx.moveTo(corners[0].mx, corners[0].mz);
+                        ctx.lineTo(corners[1].mx, corners[1].mz);
+                        ctx.lineTo(corners[2].mx, corners[2].mz);
+                        ctx.lineTo(corners[3].mx, corners[3].mz);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
                 }
                 ctx.restore();
 
@@ -992,47 +1037,70 @@
 
             const worldCanvas = document.getElementById('worldmapCanvas');
             const worldCtx = worldCanvas.getContext('2d');
-            function drawWorldMap() {
+            function worldMapGeom() {
                 const size = worldCanvas.width;
                 const zones = WORLD_RADIUS * 2 + 1;
                 const cell = Math.floor((size - 16) / zones);
                 const origin = (size - cell * zones) / 2;
+                const min = worldBounds().min;
+                const span = zones * ZONE_SIZE;
+                return { size, zones, cell, origin, min, span };
+            }
+
+            function drawWorldMap() {
+                const g = worldMapGeom();
                 const ctx = worldCtx;
-                ctx.clearRect(0, 0, size, size);
-                ctx.fillStyle = '#102016';
-                ctx.fillRect(0, 0, size, size);
+                ctx.clearRect(0, 0, g.size, g.size);
+                ctx.fillStyle = '#07090c';
+                ctx.fillRect(0, 0, g.size, g.size);
                 const px = characterGroup.position.x;
                 const pz = characterGroup.position.z;
                 const here = zoneAt(px, pz);
-                const min = worldBounds().min;
-                const span = zones * ZONE_SIZE;
                 function toMap(x, z) {
                     return {
-                        mx: origin + ((x - min) / span) * cell * zones,
-                        mz: origin + ((z - min) / span) * cell * zones
+                        mx: g.origin + ((x - g.min) / g.span) * g.cell * g.zones,
+                        mz: g.origin + ((z - g.min) / g.span) * g.cell * g.zones
                     };
                 }
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
                     for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
-                        const x0 = origin + (zx + WORLD_RADIUS) * cell;
-                        const y0 = origin + (zz + WORLD_RADIUS) * cell;
-                        const ring = Math.max(Math.abs(zx), Math.abs(zz));
-                        const current = zx === here.zx && zz === here.zz;
-                        ctx.fillStyle = current ? '#2f6b34' : ring === 0 ? '#245c30' : ring < 3 ? '#1c4a28' : '#16361f';
-                        ctx.fillRect(x0 + 1, y0 + 1, cell - 2, cell - 2);
-                        ctx.strokeStyle = current ? '#f1c40f' : 'rgba(255,255,255,0.22)';
-                        ctx.strokeRect(x0 + 1, y0 + 1, cell - 2, cell - 2);
+                        const x0 = g.origin + (zx + WORLD_RADIUS) * g.cell;
+                        const y0 = g.origin + (zz + WORLD_RADIUS) * g.cell;
+                        ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+                        ctx.strokeRect(x0 + 1, y0 + 1, g.cell - 2, g.cell - 2);
+                    }
+                }
+                ctx.fillStyle = '#1c4a28';
+                for (const key of explored) {
+                    const [ix, iz] = key.split(',').map(Number);
+                    const x = g.min + ix * FOG_CELL;
+                    const z = g.min + iz * FOG_CELL;
+                    const spot = zoneAt(x + FOG_CELL * 0.5, z + FOG_CELL * 0.5);
+                    ctx.fillStyle = spot.zx === here.zx && spot.zz === here.zz ? '#2f6b34' : '#1c4a28';
+                    const a = toMap(x, z);
+                    const b = toMap(x + FOG_CELL, z + FOG_CELL);
+                    ctx.fillRect(a.mx, a.mz, Math.max(1, b.mx - a.mx), Math.max(1, b.mz - a.mz));
+                }
+                ctx.textAlign = 'center';
+                for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+                    for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+                        if (!exploredZones.has(zx + ',' + zz)) continue;
+                        const x0 = g.origin + (zx + WORLD_RADIUS) * g.cell;
+                        const y0 = g.origin + (zz + WORLD_RADIUS) * g.cell;
                         ctx.fillStyle = '#f4f4f4';
                         ctx.font = '11px sans-serif';
-                        ctx.fillText(zoneName(zx, zz), x0 + cell / 2, y0 + 16, cell - 10);
-                        const camp = toMap(zoneCamp(zx, zz).x, zoneCamp(zx, zz).z);
+                        ctx.fillText(zoneName(zx, zz), x0 + g.cell / 2, y0 + 14, g.cell - 10);
+                        const camp = zoneCamp(zx, zz);
+                        if (!seenAt(camp.x, camp.z)) continue;
+                        const mark = toMap(camp.x, camp.z);
                         ctx.fillStyle = '#f1c40f';
-                        ctx.fillRect(camp.mx - 3, camp.mz - 3, 6, 6);
+                        ctx.fillRect(mark.mx - 3, mark.mz - 3, 6, 6);
                     }
                 }
                 if (mapLayers.players) for (const entry of remotePlayers.values()) {
+                    if (!seenAt(entry.mesh.position.x, entry.mesh.position.z)) continue;
                     const rp = toMap(entry.mesh.position.x, entry.mesh.position.z);
                     ctx.beginPath();
                     ctx.arc(rp.mx, rp.mz, 4, 0, Math.PI * 2);
@@ -1047,7 +1115,18 @@
                 ctx.lineWidth = 2;
                 ctx.strokeStyle = '#ffffff';
                 ctx.stroke();
-                document.getElementById('worldmapReadout').textContent = here.name + '  ' + here.x.toFixed(0) + ', ' + here.z.toFixed(0) + '   ·   gold squares are camps';
+                const known = exploredZones.has(here.zx + ',' + here.zz);
+                document.getElementById('worldmapReadout').textContent = (known ? here.name : 'Unexplored') + '  ' + here.x.toFixed(0) + ', ' + here.z.toFixed(0) + '   ·   click to teleport';
+            }
+
+            function worldFromMapEvent(e) {
+                const rect = worldCanvas.getBoundingClientRect();
+                const mx = (e.clientX - rect.left) * (worldCanvas.width / rect.width);
+                const mz = (e.clientY - rect.top) * (worldCanvas.height / rect.height);
+                const g = worldMapGeom();
+                const x = g.min + ((mx - g.origin) / (g.cell * g.zones)) * g.span;
+                const z = g.min + ((mz - g.origin) / (g.cell * g.zones)) * g.span;
+                return clampWorld(x, z, 2.2);
             }
             function toggleWorldMap(force) {
                 const panel = document.getElementById('worldmap');
@@ -1059,6 +1138,14 @@
             document.getElementById('worldmapClose').addEventListener('click', () => toggleWorldMap(false));
             document.getElementById('worldmap').addEventListener('click', (e) => {
                 if (e.target.id === 'worldmap') toggleWorldMap(false);
+            });
+            worldCanvas.addEventListener('click', (e) => {
+                const spot = worldFromMapEvent(e);
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
+                    showMessage('Not connected');
+                    return;
+                }
+                gameSocket.send(JSON.stringify({ type: 'teleport', x: spot.x, z: spot.z }));
             });
 
             // Camera orbit
@@ -3611,6 +3698,11 @@
                             renderBar();
                         }
                         if (data.character) applyCharacter(data.character);
+                        if (Array.isArray(data.fog)) {
+                            explored.clear();
+                            exploredZones.clear();
+                            for (const key of data.fog) rememberFog(key);
+                        }
                         if (data.resources) {
                             for (const [id, hits] of Object.entries(data.resources)) {
                                 applyResourceState(id, hits);
@@ -3764,6 +3856,15 @@
                         applyStats(data);
                         if (data.character) applyCharacter(data.character);
                         showMessage(data.ok === false ? (data.reason || 'Cannot do that') : (data.note || 'Character updated'));
+                    } else if (data.type === 'fog') {
+                        for (const key of data.add || []) rememberFog(key);
+                    } else if (data.type === 'teleport') {
+                        characterGroup.position.set(data.x, data.y, data.z);
+                        verticalVelocity = 0;
+                        onGround = true;
+                        for (const key of data.add || []) rememberFog(key);
+                        revealHere(data.x, data.z);
+                        showMessage('Teleported');
                     } else if (data.type === 'stats') {
                         applyStats(data);
                     }

@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampFolk, zoneInWorld, clampWorld, sellPrice, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampFolk, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -318,6 +318,21 @@ for (let zx = -1; zx <= 1; zx++) {
     for (let zz = -1; zz <= 1; zz++) ensureZone(zx, zz);
 }
 
+function revealFog(player) {
+    if (!player.explored) player.explored = new Set();
+    const add = [];
+    for (const key of fogCellsAround(player.x, player.z)) {
+        if (player.explored.has(key)) continue;
+        player.explored.add(key);
+        add.push(key);
+    }
+    if (!add.length) return add;
+    const prof = save.players[player.persistentId];
+    if (prof) prof.explored = Array.from(player.explored);
+    scheduleSave();
+    return add;
+}
+
 function becomeGhost(player, now) {
     if (player.ghost) return;
     player.ghost = true;
@@ -327,6 +342,8 @@ function becomeGhost(player, now) {
     player.y = 0;
     player.z = 0;
     player.invulnUntil = now + 1500;
+    const revealed = revealFog(player);
+    if (revealed.length) send(player.ws, { type: 'fog', add: revealed });
     send(player.ws, { type: 'died', x: 0, y: 0, z: 0, corpse: player.corpse, ...statsOf(player) });
     broadcast({ type: 'ghost', ...publicPlayer(player.persistentId, player) });
 }
@@ -1301,10 +1318,12 @@ wss.on('connection', (ws) => {
                 lastAttack: 0,
                 ghost: false,
                 corpse: null,
+                explored: new Set(Array.isArray(prof.explored) ? prof.explored.filter(key => typeof key === 'string') : []),
                 persistentId
             };
             players.set(persistentId, player);
             refreshDerived(player);
+            revealFog(player);
             sessionId = persistentId;
             scheduleSave();
 
@@ -1323,6 +1342,7 @@ wss.on('connection', (ws) => {
                 actionbar: player.actionbar,
                 character: publicCharacter(player),
                 resources: save.resources,
+                fog: Array.from(player.explored),
                 players: Array.from(players.entries())
                     .filter(([pid]) => pid !== persistentId)
                     .map(([pid, p]) => publicPlayer(pid, p))
@@ -1343,7 +1363,20 @@ wss.on('connection', (ws) => {
             player.z = edge.z;
             if (typeof data.rotY === 'number') player.rotY = data.rotY;
             if (data.tool === 'axe' || data.tool === 'pickaxe' || data.tool === 'sword' || data.tool === 'staff') player.tool = data.tool;
+            const revealed = revealFog(player);
             broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
+            if (revealed.length) send(ws, { type: 'fog', add: revealed });
+            return;
+        }
+
+        if (data.type === 'teleport') {
+            const edge = clampWorld(Number(data.x), Number(data.z), 2.2);
+            player.x = edge.x;
+            player.z = edge.z;
+            player.y = terrainHeight(player.x, player.z);
+            const revealed = revealFog(player);
+            broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
+            send(ws, { type: 'teleport', x: player.x, y: player.y, z: player.z, add: revealed });
             return;
         }
 

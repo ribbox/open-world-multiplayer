@@ -179,6 +179,34 @@ export function zoneInWorld(zx, zz) {
     return Math.abs(zx) <= WORLD_RADIUS && Math.abs(zz) <= WORLD_RADIUS;
 }
 
+export const FOG_CELL = 20;
+export const FOG_RADIUS = 34;
+
+export function fogKey(x, z) {
+    const { min } = worldBounds();
+    const ix = Math.floor((x - min) / FOG_CELL);
+    const iz = Math.floor((z - min) / FOG_CELL);
+    return ix + ',' + iz;
+}
+
+export function fogCellsAround(x, z, radius = FOG_RADIUS) {
+    const { min, max } = worldBounds();
+    const reach = Math.ceil(radius / FOG_CELL);
+    const cx = Math.floor((x - min) / FOG_CELL);
+    const cz = Math.floor((z - min) / FOG_CELL);
+    const keys = [];
+    const r2 = radius * radius;
+    for (let iz = cz - reach; iz <= cz + reach; iz++) {
+        for (let ix = cx - reach; ix <= cx + reach; ix++) {
+            const wx = min + (ix + 0.5) * FOG_CELL;
+            const wz = min + (iz + 0.5) * FOG_CELL;
+            if (wx < min || wz < min || wx > max || wz > max) continue;
+            if ((wx - x) ** 2 + (wz - z) ** 2 <= r2) keys.push(ix + ',' + iz);
+        }
+    }
+    return keys;
+}
+
 export function zoneCamp(zx, zz) {
     if (zx === 0 && zz === 0) return { x: 0, z: 6 };
     const rand = mulberry32(chunkSeed(zx + 53, zz + 91));
