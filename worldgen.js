@@ -1,4 +1,5 @@
 export const CHUNK_SIZE = 50;
+export const WATER_LEVEL = 0.35;
 
 export function chunkSeed(cx, cz) {
     let h = Math.imul(cx | 0, 374761393) + Math.imul(cz | 0, 668265263) + 0x9e3779b9;
@@ -14,6 +15,57 @@ function mulberry32(seed) {
         t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
+}
+
+function hills(x, z) {
+    return 4.2
+        + Math.sin(x * 0.021) * Math.cos(z * 0.018) * 3.4
+        + Math.sin((x * 0.65 + z) * 0.011) * 5.4
+        + Math.cos(x * 0.006 - z * 0.009) * 4.2
+        + Math.sin(x * 0.046) * Math.sin(z * 0.041) * 1.3;
+}
+
+function riverMask(x, z) {
+    const center = 78 + Math.sin(z * 0.02) * 36 + Math.sin(z * 0.0055) * 14;
+    const width = 7;
+    const d = Math.abs(x - center);
+    if (d >= width) return 0;
+    const t = 1 - d / width;
+    return t * t;
+}
+
+function lakeDepth(x, z) {
+    const cell = 240;
+    const cx = Math.floor(x / cell);
+    const cz = Math.floor(z / cell);
+    let depth = 0;
+    for (let ix = cx - 1; ix <= cx + 1; ix++) {
+        for (let iz = cz - 1; iz <= cz + 1; iz++) {
+            const rand = mulberry32(chunkSeed(ix + 401, iz - 77));
+            const roll = rand();
+            const lx = (ix + 0.5) * cell + (rand() - 0.5) * 50;
+            const lz = (iz + 0.5) * cell + (rand() - 0.5) * 50;
+            const radius = 16 + rand() * 18;
+            if (roll > 0.55) continue;
+            if (Math.hypot(lx, lz) < 60) continue;
+            const d = Math.hypot(x - lx, z - lz);
+            if (d >= radius) continue;
+            const bowl = 1 - d / radius;
+            depth = Math.max(depth, bowl * bowl * 4.8);
+        }
+    }
+    return depth;
+}
+
+export function terrainHeight(x, z) {
+    let h = hills(x, z);
+    const river = riverMask(x, z);
+    if (river > 0) h = h * (1 - river) + (WATER_LEVEL - 1.7) * river;
+    const lake = lakeDepth(x, z);
+    if (lake > 0) h = Math.min(h, WATER_LEVEL - lake);
+    const dist = Math.hypot(x, z);
+    const flat = Math.min(1, Math.max(0, (dist - 12) / 28));
+    return h * flat + 0.9 * (1 - flat);
 }
 
 // Same sequence the client uses to place trees and rocks.
@@ -33,11 +85,14 @@ export function chunkResources(cx, cz) {
             sy = 0.4 + rand() * 0.8;
             sz = 0.8 + rand() * 1.2;
         }
+        const x = cx * CHUNK_SIZE + px;
+        const z = cz * CHUNK_SIZE + pz;
+        if (terrainHeight(x, z) < WATER_LEVEL + 0.2) continue;
         items.push({
             id: `${cx},${cz},${i}`,
             type,
-            x: cx * CHUNK_SIZE + px,
-            z: cz * CHUNK_SIZE + pz,
+            x,
+            z,
             px,
             pz,
             sx,

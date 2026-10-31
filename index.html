@@ -7,9 +7,21 @@
         body { margin: 0; overflow: hidden; background: #87CEEB; font-family: Arial, sans-serif; }
         #info {
             position: absolute; top: 10px; left: 10px; color: white;
-            background: rgba(0,0,0,0.6); padding: 12px; border-radius: 6px;
+            background: rgba(0,0,0,0.6); padding: 12px 28px 12px 12px; border-radius: 6px;
             font-size: 14px; pointer-events: none; z-index: 10;
         }
+        #info.hidden { display: none; }
+        #hideInfo, #showInfo {
+            pointer-events: auto; cursor: pointer; color: white;
+            background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.35); border-radius: 4px;
+        }
+        #hideInfo {
+            position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; padding: 0; line-height: 18px;
+        }
+        #showInfo {
+            position: absolute; top: 10px; left: 10px; z-index: 11; padding: 4px 8px; font-size: 13px;
+        }
+        #showInfo[hidden] { display: none; }
         #inventory {
             display: none;
             position: absolute; right: 16px; bottom: 118px; color: white;
@@ -192,6 +204,7 @@
 </head>
 <body>
     <div id="info">
+        <button type="button" id="hideInfo" aria-label="Hide instructions">×</button>
         <strong>Open World Prototype</strong><br>
         W/S: Forward / Back<br>
         A/D: Turn. The camera follows behind unless you are holding the right mouse button<br>
@@ -206,6 +219,7 @@
         Mouse Wheel: Zoom<br>
         <small>Player: human model &nbsp;|&nbsp; NPCs: minion model (served by server)</small>
     </div>
+    <button type="button" id="showInfo" hidden>Help</button>
     <div id="inventory">
         <div id="bag">
             <span id="bagLabel">Bag 0/16</span>
@@ -250,7 +264,18 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-        import { chunkResources, CHUNK_SIZE } from './worldgen.js';
+        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL } from './worldgen.js';
+
+        const infoBox = document.getElementById('info');
+        const showInfo = document.getElementById('showInfo');
+        function setHelp(open) {
+            infoBox.classList.toggle('hidden', !open);
+            showInfo.hidden = open;
+            localStorage.setItem('ow-help', open ? '1' : '0');
+        }
+        document.getElementById('hideInfo').addEventListener('click', () => setHelp(false));
+        showInfo.addEventListener('click', () => setHelp(true));
+        if (localStorage.getItem('ow-help') === '0') setHelp(false);
 
         function showError(msg) {
             const el = document.getElementById('error');
@@ -287,16 +312,9 @@
             directionalLight.castShadow = true;
             scene.add(directionalLight);
 
-            const groundGeometry = new THREE.PlaneGeometry(3000, 3000);
-            const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
-            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-            ground.rotation.x = -Math.PI / 2;
-            ground.receiveShadow = true;
-            scene.add(ground);
-
             // Character group (model will be loaded into it)
             const characterGroup = new THREE.Group();
-            characterGroup.position.y = 0;
+            characterGroup.position.y = terrainHeight(0, 0);
             scene.add(characterGroup);
 
             let mixer = null;
@@ -761,12 +779,81 @@
             const loadedChunks = new Map();
             const allColliders = [];
 
+            function addTerrain(group, cx, cz) {
+                const seg = 14;
+                const geo = new THREE.PlaneGeometry(chunkSize, chunkSize, seg, seg);
+                geo.rotateX(-Math.PI / 2);
+                const pos = geo.attributes.position;
+                const colors = new Float32Array(pos.count * 3);
+                let wet = false;
+                for (let i = 0; i < pos.count; i++) {
+                    const wx = cx * chunkSize + pos.getX(i);
+                    const wz = cz * chunkSize + pos.getZ(i);
+                    const y = terrainHeight(wx, wz);
+                    pos.setY(i, y);
+                    if (y < WATER_LEVEL + 0.15) wet = true;
+                    const tint = y < WATER_LEVEL + 0.45
+                        ? [0.76, 0.68, 0.42]
+                        : y > 7.5 ? [0.48, 0.5, 0.44]
+                        : y > 4.2 ? [0.32, 0.5, 0.22]
+                        : [0.16, 0.46, 0.15];
+                    colors[i * 3] = tint[0];
+                    colors[i * 3 + 1] = tint[1];
+                    colors[i * 3 + 2] = tint[2];
+                }
+                geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geo.computeVertexNormals();
+                const mesh = new THREE.Mesh(
+                    geo,
+                    new THREE.MeshLambertMaterial({ vertexColors: true })
+                );
+                mesh.receiveShadow = true;
+                group.add(mesh);
+
+                if (!wet) return;
+                const step = chunkSize / seg;
+                const verts = [];
+                for (let iz = 0; iz < seg; iz++) {
+                    for (let ix = 0; ix < seg; ix++) {
+                        const x0 = -chunkSize / 2 + ix * step;
+                        const z0 = -chunkSize / 2 + iz * step;
+                        const corners = [
+                            [x0, z0],
+                            [x0 + step, z0],
+                            [x0, z0 + step],
+                            [x0 + step, z0 + step]
+                        ].map(([lx, lz]) => terrainHeight(cx * chunkSize + lx, cz * chunkSize + lz));
+                        if (Math.min(...corners) >= WATER_LEVEL + 0.05) continue;
+                        const y = WATER_LEVEL;
+                        verts.push(
+                            x0, y, z0, x0 + step, y, z0, x0, y, z0 + step,
+                            x0 + step, y, z0, x0 + step, y, z0 + step, x0, y, z0 + step
+                        );
+                    }
+                }
+                if (!verts.length) return;
+                const waterGeo = new THREE.BufferGeometry();
+                waterGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+                waterGeo.computeVertexNormals();
+                const water = new THREE.Mesh(
+                    waterGeo,
+                    new THREE.MeshLambertMaterial({
+                        color: 0x1d6ea0,
+                        transparent: true,
+                        opacity: 0.72,
+                        depthWrite: false
+                    })
+                );
+                group.add(water);
+            }
+
             function generateChunk(cx, cz) {
                 const key = `${cx},${cz}`;
                 if (loadedChunks.has(key)) return;
 
                 const group = new THREE.Group();
                 group.position.set(cx * chunkSize, 0, cz * chunkSize);
+                addTerrain(group, cx, cz);
 
                 const colliders = [];
                 for (const item of chunkResources(cx, cz)) {
@@ -779,7 +866,7 @@
                             new THREE.CylinderGeometry(0.3, 0.45, 3, 8),
                             new THREE.MeshLambertMaterial({ color: 0x8B4513 })
                         );
-                        trunk.position.set(item.px, 1.5, item.pz);
+                        trunk.position.set(item.px, terrainHeight(item.x, item.z) + 1.5, item.pz);
                         trunk.castShadow = true;
                         group.add(trunk);
 
@@ -787,7 +874,7 @@
                             new THREE.ConeGeometry(1.6, 3.2, 8),
                             new THREE.MeshLambertMaterial({ color: 0x2E8B57 })
                         );
-                        leaves.position.set(item.px, 4.2, item.pz);
+                        leaves.position.set(item.px, terrainHeight(item.x, item.z) + 4.2, item.pz);
                         leaves.castShadow = true;
                         group.add(leaves);
                         meshes.push(trunk, leaves);
@@ -796,7 +883,7 @@
                             new THREE.BoxGeometry(item.sx, item.sy, item.sz),
                             new THREE.MeshLambertMaterial({ color: 0x696969 })
                         );
-                        rock.position.set(item.px, item.sy / 2, item.pz);
+                        rock.position.set(item.px, terrainHeight(item.x, item.z) + item.sy / 2, item.pz);
                         rock.castShadow = true;
                         group.add(rock);
                         meshes.push(rock);
@@ -1251,7 +1338,8 @@
                     if (!entry.dying) continue;
                     entry.deathT += delta;
                     entry.group.rotation.x = Math.min(1.35, entry.deathT * 2.4);
-                    entry.group.position.y = -Math.min(0.7, entry.deathT * 0.8);
+                    const base = terrainHeight(entry.group.position.x, entry.group.position.z);
+                    entry.group.position.y = base - Math.min(0.7, entry.deathT * 0.8);
                     fadeNpc(entry.group, Math.max(0, 1 - entry.deathT / 0.8));
                     if (entry.deathT >= 0.8) done.push(id);
                 }
@@ -2266,6 +2354,7 @@
 
                 resolveCollisions(characterGroup.position);
 
+                const groundY = terrainHeight(characterGroup.position.x, characterGroup.position.z);
                 if (keys.space && onGround) {
                     verticalVelocity = jumpSpeed;
                     onGround = false;
@@ -2273,11 +2362,15 @@
                 if (!onGround) {
                     verticalVelocity -= gravity * delta;
                     characterGroup.position.y += verticalVelocity * delta;
-                    if (characterGroup.position.y <= 0) {
-                        characterGroup.position.y = 0;
+                    if (characterGroup.position.y <= groundY) {
+                        characterGroup.position.y = groundY;
                         verticalVelocity = 0;
                         onGround = true;
                     }
+                } else if (characterGroup.position.y - groundY > 0.75) {
+                    onGround = false;
+                } else {
+                    characterGroup.position.y = groundY;
                 }
 
                 updateSwing(delta);
@@ -2290,6 +2383,12 @@
                     entry.group.position.x += (entry.tx - entry.group.position.x) * Math.min(1, delta * 10);
                     entry.group.position.z += (entry.tz - entry.group.position.z) * Math.min(1, delta * 10);
                     entry.group.rotation.y = entry.rotY;
+                    if (!entry.dying) entry.group.position.y = terrainHeight(entry.group.position.x, entry.group.position.z);
+                }
+                for (const entry of remotePlayers.values()) {
+                    const gy = terrainHeight(entry.mesh.position.x, entry.mesh.position.z);
+                    const reported = entry.data && typeof entry.data.y === 'number' ? entry.data.y : gy;
+                    entry.mesh.position.y = reported > gy + 0.35 ? reported : gy;
                 }
                 if (selectedNpcId) refreshTargetFrame();
                 drawMinimap();
@@ -2470,7 +2569,7 @@
                     scene.add(marker);
                     corpseMarkers.set(id, marker);
                 }
-                marker.position.set(corpse.x, 0, corpse.z);
+                marker.position.set(corpse.x, terrainHeight(corpse.x, corpse.z), corpse.z);
             }
 
             function enterGhost(corpse) {
