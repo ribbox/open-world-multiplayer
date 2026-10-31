@@ -203,6 +203,38 @@ function statsOf(player) {
     };
 }
 
+const ABILITIES = {
+    sword: { weapon: 'sword', mana: 2, range: 2.6, damage: (level) => 4 + level },
+    'power-strike': { weapon: 'sword', mana: 6, range: 2.6, damage: (level) => 8 + level * 2 },
+    'arcane-bolt': { weapon: 'staff', mana: 5, range: 8, damage: (level) => 6 + level },
+    mend: { weapon: 'staff', mana: 4, range: 0, heal: (level) => 8 + level * 2 }
+};
+
+const BAR_PAGES = 3;
+const BAR_SLOTS = 8;
+const ACTION_IDS = new Set(['sword', 'power-strike', 'staff', 'arcane-bolt', 'mend', 'gather']);
+
+function defaultActionBar() {
+    return [
+        ['sword', 'power-strike', 'gather', null, null, null, null, null],
+        ['staff', 'arcane-bolt', 'mend', null, null, null, null, null],
+        [null, null, null, null, null, null, null, null]
+    ];
+}
+
+function sanitizeActionBar(pages) {
+    const bar = defaultActionBar();
+    if (!Array.isArray(pages)) return bar;
+    for (let p = 0; p < BAR_PAGES; p++) {
+        const row = pages[p];
+        if (!Array.isArray(row)) continue;
+        for (let i = 0; i < BAR_SLOTS; i++) {
+            bar[p][i] = ACTION_IDS.has(row[i]) ? row[i] : null;
+        }
+    }
+    return bar;
+}
+
 const BASE_SLOTS = 16;
 
 function stackLimit(item) {
@@ -538,6 +570,7 @@ wss.on('connection', (ws) => {
             prof.xp = prof.xp || 0;
             prof.armor = prof.armor || 0;
             loadInventory(prof);
+            prof.actionbar = sanitizeActionBar(prof.actionbar);
 
             const existing = players.get(persistentId);
             if (existing && existing.ws !== ws) {
@@ -566,6 +599,7 @@ wss.on('connection', (ws) => {
                 armor: prof.armor,
                 bagSlots: prof.bagSlots || 0,
                 slots: prof.slots.map(copySlot),
+                actionbar: prof.actionbar,
                 invulnUntil: 0,
                 lastGather: 0,
                 lastAttack: 0
@@ -583,6 +617,7 @@ wss.on('connection', (ws) => {
                 stats: statsOf(player),
                 npcs: Array.from(npcs.values()).filter(n => n.alive).map(publicNpc),
                 chests: Array.from(chests.values()).map(publicChest),
+                actionbar: player.actionbar,
                 resources: save.resources,
                 players: Array.from(players.entries())
                     .filter(([pid]) => pid !== persistentId)
@@ -600,7 +635,7 @@ wss.on('connection', (ws) => {
             if (typeof data.y === 'number') player.y = data.y;
             if (typeof data.z === 'number') player.z = data.z;
             if (typeof data.rotY === 'number') player.rotY = data.rotY;
-            if (data.tool === 'axe' || data.tool === 'pickaxe' || data.tool === 'sword') player.tool = data.tool;
+            if (data.tool === 'axe' || data.tool === 'pickaxe' || data.tool === 'sword' || data.tool === 'staff') player.tool = data.tool;
             broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
             return;
         }
@@ -677,13 +712,22 @@ wss.on('connection', (ws) => {
             if (typeof data.x === 'number') player.x = data.x;
             if (typeof data.z === 'number') player.z = data.z;
             if (typeof data.rotY === 'number') player.rotY = data.rotY;
-            if (data.tool === 'sword') player.tool = 'sword';
-            if (player.tool !== 'sword') {
-                send(ws, { type: 'attackResult', ok: false, reason: 'Need a sword' });
+            if (data.tool === 'sword' || data.tool === 'staff') player.tool = data.tool;
+            const spec = ABILITIES[data.ability] || ABILITIES.sword;
+            player.tool = spec.weapon;
+            if (player.mana < spec.mana) {
+                send(ws, { type: 'attackResult', ok: false, reason: 'Not enough mana', ability: data.ability || 'sword', ...statsOf(player) });
+                return;
+            }
+            player.mana -= spec.mana;
+            if (spec.heal) {
+                const healed = spec.heal(player.level);
+                player.hp = Math.min(player.maxHp, player.hp + healed);
+                send(ws, { type: 'attackResult', ok: true, ability: data.ability, heal: healed, ...statsOf(player) });
                 return;
             }
             let best = null;
-            let bestD = ATTACK_RANGE;
+            let bestD = spec.range;
             for (const npc of npcs.values()) {
                 if (!npc.alive) continue;
                 const dist = Math.hypot(npc.x - player.x, npc.z - player.z);
@@ -693,15 +737,11 @@ wss.on('connection', (ws) => {
                 }
             }
             if (!best) {
-                send(ws, { type: 'attackResult', ok: false, reason: 'No target' });
+                player.mana += spec.mana;
+                send(ws, { type: 'attackResult', ok: false, reason: 'No target', ...statsOf(player) });
                 return;
             }
-            if (player.mana < 2) {
-                send(ws, { type: 'attackResult', ok: false, reason: 'Not enough mana', ...statsOf(player) });
-                return;
-            }
-            player.mana -= 2;
-            const damage = 4 + player.level;
+            const damage = spec.damage(player.level);
             best.hp -= damage;
             let gained = 0;
             let leveled = false;
@@ -732,6 +772,7 @@ wss.on('connection', (ws) => {
                 killed: !best.alive,
                 gained,
                 leveled,
+                ability: data.ability || 'sword',
                 chest: chest ? publicChest(chest) : null,
                 ...statsOf(player)
             });
@@ -797,6 +838,14 @@ wss.on('connection', (ws) => {
             if (slot.qty <= 0) player.slots[index] = null;
             savePlayer(player);
             send(ws, { type: 'useResult', ok: true, item: slot.kind, inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'actionbar') {
+            player.actionbar = sanitizeActionBar(data.pages);
+            save.players[player.persistentId].actionbar = player.actionbar;
+            scheduleSave();
+            send(ws, { type: 'actionbar', pages: player.actionbar });
         }
     });
 

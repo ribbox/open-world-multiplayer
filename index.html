@@ -11,10 +11,12 @@
             font-size: 14px; pointer-events: none; z-index: 10;
         }
         #inventory {
-            position: absolute; top: 10px; right: 10px; color: white;
-            background: rgba(0,0,0,0.6); padding: 12px; border-radius: 6px;
-            font-size: 14px; pointer-events: none; z-index: 10;
+            display: none;
+            position: absolute; right: 16px; bottom: 118px; color: white;
+            background: rgba(0,0,0,0.82); padding: 12px; border-radius: 6px;
+            font-size: 14px; pointer-events: auto; z-index: 12;
         }
+        #inventory.open { display: block; }
         #bag {
             pointer-events: auto;
             margin-top: 6px;
@@ -49,10 +51,41 @@
             background: rgba(0,0,0,0.4); z-index: 10;
         }
         #message {
-            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+            position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%);
             color: #90EE90; background: rgba(0,0,0,0.7); padding: 8px 16px;
             border-radius: 4px; font-size: 16px; pointer-events: none; z-index: 10; display: none;
         }
+        #actionbar {
+            position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+            z-index: 12; color: white; font-size: 13px; user-select: none;
+        }
+        #status { text-align: center; margin-bottom: 4px; text-shadow: 0 1px 2px #000; }
+        #barRow { display: flex; align-items: flex-end; gap: 6px; }
+        #barSlots { display: flex; gap: 4px; }
+        .bar-slot, .bar-nav, #bagButton {
+            width: 46px; height: 46px; padding: 0; color: white; cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.45); background: rgba(0,0,0,0.55);
+            border-radius: 4px; font-size: 11px; line-height: 1.1;
+        }
+        .bar-nav, #bagButton { width: 36px; font-size: 16px; }
+        #bagButton { width: 46px; background: #3d3420; }
+        #bagButton.open { outline: 2px solid #f1c40f; }
+        .bar-slot .key { display: block; font-size: 9px; opacity: 0.7; }
+        .bar-slot.sword, .bar-slot.power-strike { background: #6d2424; }
+        .bar-slot.staff, .bar-slot.arcane-bolt, .bar-slot.mend { background: #243e6d; }
+        .bar-slot.gather { background: #2d5a32; }
+        .bar-slot.armed { outline: 2px solid #f1c40f; }
+        #pageLabel { text-align: center; font-size: 11px; opacity: 0.8; margin-top: 3px; }
+        #actionPicker {
+            position: fixed; z-index: 30; background: rgba(12,12,12,0.95);
+            color: white; border: 1px solid rgba(255,255,255,0.4); border-radius: 6px;
+            padding: 6px; min-width: 150px;
+        }
+        #actionPicker button {
+            display: block; width: 100%; text-align: left; margin: 2px 0; padding: 4px 6px;
+            background: rgba(255,255,255,0.08); color: white; border: 0; cursor: pointer;
+        }
+        #actionPicker .group { font-size: 10px; opacity: 0.65; margin: 6px 2px 2px; }
         #error {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             color: #ff6b6b; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 8px;
@@ -74,19 +107,17 @@
         W/S: Forward / Back<br>
         A/D: Turn<br>
         Space: Jump &nbsp; Shift: Sprint<br>
-        1: Axe &nbsp; 2: Pickaxe &nbsp; 3: Sword<br>
-        E: Swing / Gather / Attack<br>
-        F: Loot chest &nbsp; H/M: first potion<br>
-        Click a health, mana, or armor slot to use it<br>
+        Space: Jump &nbsp; Shift: Sprint<br>
+        1-8: Action bar &nbsp; [ ]: Change page<br>
+        Right-click a slot to assign it<br>
+        E: Gather if something is close, otherwise attack<br>
+        B or Bag: Inventory &nbsp; F: Loot<br>
+        H/M: first potion. Click a potion or armor slot to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
         <small>Player: human model &nbsp;|&nbsp; NPCs: minion model (served by server)</small>
     </div>
     <div id="inventory">
-        Tool: <span id="toolName">Axe</span><br>
-        Lv <span id="levelCount">1</span> &nbsp; XP <span id="xpCount">0</span>/<span id="xpNext">50</span><br>
-        HP <span id="hpCount">20</span>/<span id="maxHpCount">20</span><br>
-        MP <span id="manaCount">10</span>/<span id="maxManaCount">10</span> &nbsp; Armor <span id="armorCount">0</span><br>
         <div id="bag">
             <span id="bagLabel">Bag 0/16</span>
             <div id="bagSlots"></div>
@@ -94,6 +125,24 @@
         <span id="playerColor" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span>
         <input id="playerName" maxlength="16" placeholder="Name">
     </div>
+    <div id="actionbar">
+        <div id="status">
+            <span id="toolName">Sword</span>
+            &nbsp; Lv <span id="levelCount">1</span>
+            &nbsp; XP <span id="xpCount">0</span>/<span id="xpNext">50</span>
+            &nbsp; HP <span id="hpCount">20</span>/<span id="maxHpCount">20</span>
+            &nbsp; MP <span id="manaCount">10</span>/<span id="maxManaCount">10</span>
+            &nbsp; Ar <span id="armorCount">0</span>
+        </div>
+        <div id="barRow">
+            <button type="button" class="bar-nav" id="pagePrev">‹</button>
+            <div id="barSlots"></div>
+            <button type="button" class="bar-nav" id="pageNext">›</button>
+            <button type="button" id="bagButton">Bag</button>
+        </div>
+        <div id="pageLabel">Page 1 / 3</div>
+    </div>
+    <div id="actionPicker" hidden></div>
     <canvas id="minimap" width="180" height="180"></canvas>
     <div id="message"></div>
     <div id="error"></div>
@@ -288,22 +337,66 @@
                 return group;
             }
 
+            function createStaff() {
+                const group = new THREE.Group();
+                const shaft = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.035, 0.045, 1.15, 8),
+                    new THREE.MeshLambertMaterial({ color: 0x6b3e26 })
+                );
+                shaft.position.y = 0.55;
+                group.add(shaft);
+                const orb = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.12, 10, 8),
+                    new THREE.MeshLambertMaterial({ color: 0x5dade2 })
+                );
+                orb.position.y = 1.18;
+                group.add(orb);
+                group.position.set(0.35, 1.1, 0.2);
+                return group;
+            }
+
             const axe = createAxe();
             const pickaxe = createPickaxe();
             const sword = createSword();
+            const staff = createStaff();
             characterGroup.add(axe);
             characterGroup.add(pickaxe);
             characterGroup.add(sword);
+            characterGroup.add(staff);
+            axe.visible = false;
             pickaxe.visible = false;
-            sword.visible = false;
+            staff.visible = false;
 
-            let currentTool = 'axe';
+            const ACTIONS = {
+                sword: { name: 'Sword', short: 'Swd', kind: 'weapon', weapon: 'sword', hint: 'Equip sword. Click again to attack. 2 mana.' },
+                'power-strike': { name: 'Power Strike', short: 'Pwr', kind: 'spell', weapon: 'sword', hint: 'Sword spell. Heavy hit. 6 mana.' },
+                staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'Equip staff.' },
+                'arcane-bolt': { name: 'Arcane Bolt', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Staff spell. Longer range. 5 mana.' },
+                mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Staff spell. Restore health. 4 mana.' },
+                gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.' }
+            };
+            const BAR_PAGES = 3;
+            const BAR_SLOTS = 8;
+            function defaultActionBar() {
+                return [
+                    ['sword', 'power-strike', 'gather', null, null, null, null, null],
+                    ['staff', 'arcane-bolt', 'mend', null, null, null, null, null],
+                    [null, null, null, null, null, null, null, null]
+                ];
+            }
+            let equippedWeapon = 'sword';
+            let currentTool = 'sword';
+            let barPage = 0;
+            let actionBar = defaultActionBar();
+            let restoreWeapon = false;
+
             function updateToolUI() {
-                const names = { axe: 'Axe', pickaxe: 'Pickaxe', sword: 'Sword' };
+                const names = { axe: 'Axe', pickaxe: 'Pickaxe', sword: 'Sword', staff: 'Staff' };
                 document.getElementById('toolName').textContent = names[currentTool] || currentTool;
                 axe.visible = currentTool === 'axe';
                 pickaxe.visible = currentTool === 'pickaxe';
                 sword.visible = currentTool === 'sword';
+                staff.visible = currentTool === 'staff';
             }
             updateToolUI();
 
@@ -379,8 +472,8 @@
             let swingTime = 0;
             const swingDuration = 0.6;
 
-            function startSwing() {
-                if (swinging) return;
+            function playSwing() {
+                if (swinging) return false;
                 swinging = true;
                 swingTime = 0;
                 if (attackAction) {
@@ -388,8 +481,7 @@
                     attackAction.setLoop(THREE.LoopOnce);
                     attackAction.clampWhenFinished = true;
                 }
-                if (currentTool === 'sword') tryAttack();
-                else tryGather();
+                return true;
             }
 
             function updateSwing(delta) {
@@ -397,19 +489,26 @@
                 swingTime += delta;
                 const t = Math.min(swingTime / swingDuration, 1);
                 const swingT = Math.sin(t * Math.PI);
-                const tool = currentTool === 'axe' ? axe : currentTool === 'pickaxe' ? pickaxe : sword;
+                const tool = currentTool === 'axe' ? axe : currentTool === 'pickaxe' ? pickaxe : currentTool === 'staff' ? staff : sword;
                 if (currentTool === 'axe') {
                     tool.rotation.x = -1.2 * swingT;
                     tool.rotation.z = -0.6 * swingT;
                 } else if (currentTool === 'sword') {
                     tool.rotation.z = -1.5 * swingT;
                     tool.rotation.x = -0.35 * swingT;
+                } else if (currentTool === 'staff') {
+                    tool.rotation.x = -0.9 * swingT;
                 } else {
                     tool.rotation.x = 0.8 - 1.6 * swingT;
                 }
                 if (t >= 1) {
                     swinging = false;
                     tool.rotation.set(0, 0, 0);
+                    if (restoreWeapon) {
+                        restoreWeapon = false;
+                        currentTool = equippedWeapon;
+                        updateToolUI();
+                    }
                     if (idleAction && attackAction) {
                         attackAction.stop();
                         idleAction.play();
@@ -611,19 +710,21 @@
 
                 for (const c of allColliders) {
                     if (!c.type) continue;
-                    const dx = px - c.x;
-                    const dz = pz - c.z;
-                    const dist = Math.sqrt(dx * dx + dz * dz);
+                    const dist = Math.hypot(px - c.x, pz - c.z);
                     if (dist < closestDist) {
-                        if ((currentTool === 'axe' && c.type === 'tree') ||
-                            (currentTool === 'pickaxe' && c.type === 'rock')) {
-                            closest = c;
-                            closestDist = dist;
-                        }
+                        closest = c;
+                        closestDist = dist;
                     }
                 }
 
-                if (!closest) return;
+                if (!closest) {
+                    showMessage('Nothing to gather');
+                    return;
+                }
+                currentTool = closest.type === 'tree' ? 'axe' : 'pickaxe';
+                updateToolUI();
+                restoreWeapon = true;
+                if (!playSwing()) return;
                 if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
                     showMessage('Not connected');
                     return;
@@ -638,18 +739,47 @@
                 }));
             }
 
-            function tryAttack() {
+            function tryAttack(ability) {
+                const action = ACTIONS[ability];
+                if (!action || !action.weapon) return;
+                equippedWeapon = action.weapon;
+                currentTool = action.weapon;
+                updateToolUI();
+                renderBar();
+                if (!playSwing()) return;
                 if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
                     showMessage('Not connected');
                     return;
                 }
                 gameSocket.send(JSON.stringify({
                     type: 'attack',
+                    ability,
                     x: characterGroup.position.x,
                     z: characterGroup.position.z,
                     rotY: characterGroup.rotation.y,
-                    tool: 'sword'
+                    tool: action.weapon
                 }));
+            }
+
+            function useAction(id) {
+                const action = ACTIONS[id];
+                if (!action) return;
+                if (action.kind === 'gather') {
+                    tryGather();
+                    return;
+                }
+                if (action.kind === 'weapon') {
+                    if (equippedWeapon === action.weapon && action.weapon === 'sword') tryAttack('sword');
+                    else {
+                        equippedWeapon = action.weapon;
+                        currentTool = action.weapon;
+                        updateToolUI();
+                        renderBar();
+                        showMessage(action.name + ' equipped');
+                    }
+                    return;
+                }
+                tryAttack(id);
             }
 
             function makeNpcSprite(level, hp, maxHp) {
@@ -872,9 +1002,134 @@
 
             updateChunks();
 
+            const picker = document.getElementById('actionPicker');
+            const PICKER_GROUPS = [
+                ['Sword', ['sword', 'power-strike']],
+                ['Staff', ['staff', 'arcane-bolt', 'mend']],
+                ['Field', ['gather']]
+            ];
+
+            function saveActionBar() {
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
+                gameSocket.send(JSON.stringify({ type: 'actionbar', pages: actionBar }));
+            }
+
+            function renderBar() {
+                const root = document.getElementById('barSlots');
+                root.textContent = '';
+                const row = actionBar[barPage] || [];
+                for (let i = 0; i < BAR_SLOTS; i++) {
+                    const id = row[i];
+                    const action = id ? ACTIONS[id] : null;
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'bar-slot' + (action ? ' ' + id : '') + (action && action.kind === 'weapon' && action.weapon === equippedWeapon ? ' armed' : '');
+                    button.draggable = true;
+                    button.title = action ? action.name + ' — ' + action.hint + ' Right-click to assign.' : 'Empty. Right-click to assign.';
+                    const key = document.createElement('span');
+                    key.className = 'key';
+                    key.textContent = String(i + 1);
+                    button.appendChild(key);
+                    if (action) {
+                        const label = document.createElement('div');
+                        label.textContent = action.short;
+                        button.appendChild(label);
+                    }
+                    button.addEventListener('mousedown', (e) => e.preventDefault());
+                    button.addEventListener('click', () => { if (action) useAction(id); });
+                    button.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        openPicker(i, button);
+                    });
+                    button.addEventListener('dragstart', (e) => {
+                        e.dataTransfer.setData('text/plain', 'slot:' + i);
+                    });
+                    button.addEventListener('dragover', (e) => e.preventDefault());
+                    button.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        const data = e.dataTransfer.getData('text/plain');
+                        if (data.indexOf('slot:') === 0) {
+                            const from = Number(data.slice(5));
+                            const next = actionBar[barPage][i];
+                            actionBar[barPage][i] = actionBar[barPage][from];
+                            actionBar[barPage][from] = next;
+                        } else if (data.indexOf('action:') === 0) {
+                            actionBar[barPage][i] = data.slice(7) || null;
+                        }
+                        renderBar();
+                        saveActionBar();
+                    });
+                    root.appendChild(button);
+                }
+                document.getElementById('pageLabel').textContent = 'Page ' + (barPage + 1) + ' / ' + BAR_PAGES;
+            }
+
+            function openPicker(index, anchor) {
+                picker.textContent = '';
+                picker.hidden = false;
+                const rect = anchor.getBoundingClientRect();
+                picker.style.left = Math.max(8, rect.left) + 'px';
+                picker.style.top = 'auto';
+                picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+                for (const [title, ids] of PICKER_GROUPS) {
+                    const heading = document.createElement('div');
+                    heading.className = 'group';
+                    heading.textContent = title;
+                    picker.appendChild(heading);
+                    for (const id of ids) {
+                        const choice = document.createElement('button');
+                        choice.type = 'button';
+                        choice.textContent = ACTIONS[id].name;
+                        choice.draggable = true;
+                        choice.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', 'action:' + id));
+                        choice.addEventListener('click', () => {
+                            actionBar[barPage][index] = id;
+                            picker.hidden = true;
+                            renderBar();
+                            saveActionBar();
+                        });
+                        picker.appendChild(choice);
+                    }
+                }
+                const clear = document.createElement('button');
+                clear.type = 'button';
+                clear.textContent = 'Clear slot';
+                clear.addEventListener('click', () => {
+                    actionBar[barPage][index] = null;
+                    picker.hidden = true;
+                    renderBar();
+                    saveActionBar();
+                });
+                picker.appendChild(clear);
+            }
+
+            function changePage(delta) {
+                barPage = (barPage + delta + BAR_PAGES) % BAR_PAGES;
+                picker.hidden = true;
+                renderBar();
+            }
+
+            function toggleBag() {
+                const panel = document.getElementById('inventory');
+                panel.classList.toggle('open');
+                document.getElementById('bagButton').classList.toggle('open', panel.classList.contains('open'));
+            }
+
+            document.getElementById('pagePrev').addEventListener('click', () => changePage(-1));
+            document.getElementById('pageNext').addEventListener('click', () => changePage(1));
+            document.getElementById('bagButton').addEventListener('click', toggleBag);
+            document.getElementById('pagePrev').addEventListener('mousedown', (e) => e.preventDefault());
+            document.getElementById('pageNext').addEventListener('mousedown', (e) => e.preventDefault());
+            document.getElementById('bagButton').addEventListener('mousedown', (e) => e.preventDefault());
+            document.addEventListener('mousedown', (e) => {
+                if (picker.hidden || picker.contains(e.target)) return;
+                picker.hidden = true;
+            });
+            renderBar();
+
             // Input
             document.addEventListener('keydown', (e) => {
-                if (e.target && e.target.tagName === 'INPUT') return;
+                if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
                 const k = e.key.toLowerCase();
                 if (k in keys) keys[k] = true;
                 if (e.key === 'Shift') keys.shift = true;
@@ -882,10 +1137,24 @@
                     keys.space = true;
                     e.preventDefault();
                 }
-                if (e.key === '1') { currentTool = 'axe'; updateToolUI(); }
-                if (e.key === '2') { currentTool = 'pickaxe'; updateToolUI(); }
-                if (e.key === '3') { currentTool = 'sword'; updateToolUI(); }
-                if (k === 'e') startSwing();
+                if (k >= '1' && k <= '8') {
+                    const id = actionBar[barPage][Number(k) - 1];
+                    if (id) useAction(id);
+                }
+                if (k === '[' || k === '-') changePage(-1);
+                if (k === ']' || k === '=') changePage(1);
+                if (k === 'e') {
+                    const px = characterGroup.position.x;
+                    const pz = characterGroup.position.z;
+                    let near = false;
+                    for (const c of allColliders) {
+                        if (c.type && Math.hypot(px - c.x, pz - c.z) < 2.8) near = true;
+                    }
+                    if (near) tryGather();
+                    else if (equippedWeapon === 'sword') tryAttack('sword');
+                    else showMessage('Select a spell');
+                }
+                if (k === 'b' || k === 'i') toggleBag();
                 if (k === 'f') tryLoot();
                 if (k === 'h') usePotion('health');
                 if (k === 'm') usePotion('mana');
@@ -1158,6 +1427,10 @@
                         if (data.stats) applyStats(data.stats);
                         if (data.npcs) syncNpcs(data.npcs);
                         if (data.chests) data.chests.forEach(addChest);
+                        if (Array.isArray(data.actionbar)) {
+                            actionBar = data.actionbar;
+                            renderBar();
+                        }
                         if (data.resources) {
                             for (const [id, hits] of Object.entries(data.resources)) {
                                 applyResourceState(id, hits);
@@ -1214,7 +1487,8 @@
                             if (data.reason && data.reason !== 'No target') showMessage(data.reason);
                         } else {
                             applyStats(data);
-                            if (data.killed) {
+                            if (data.heal) showMessage('+' + data.heal + ' HP');
+                            else if (data.killed) {
                                 showMessage(data.leveled ? 'Level ' + data.level + '! +' + data.gained + ' XP' : '+' + data.gained + ' XP');
                                 if (data.chest) addChest(data.chest);
                             } else showMessage('Hit ' + data.damage);
