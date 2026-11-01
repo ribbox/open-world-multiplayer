@@ -136,6 +136,15 @@
             color: #90EE90; background: rgba(0,0,0,0.7); padding: 8px 16px;
             border-radius: 4px; font-size: 16px; pointer-events: none; z-index: 10; display: none;
         }
+        #log {
+            position: absolute; top: 12px; right: 12px; width: min(240px, 46vw);
+            max-height: 168px; overflow-y: auto; z-index: 14; pointer-events: auto;
+            color: #eee; background: rgba(0,0,0,0.62); border-radius: 6px;
+            font-size: 12px; line-height: 1.35; padding: 4px 8px;
+        }
+        #log:empty { display: none; }
+        #log .note { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        #log time { opacity: 0.55; margin-right: 6px; }
         #actionbar {
             position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
             z-index: 12; color: white; font-size: 13px; user-select: none;
@@ -284,6 +293,7 @@
         Train spells only while standing at a trainer. Gather herbs by hand and sulfur with a pickaxe<br>
         Click the minimap for the world map. Numbers are mob levels. Gray gives no XP<br>
         World setup is a separate page at /setup<br>
+        Notices stay in the list at the top right<br>
         H/M: first potion. Click a potion to use it<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
@@ -356,6 +366,7 @@
         <div id="targetHp"><div id="targetHpFill"></div></div>
     </div>
     <div id="message"></div>
+    <div id="log"></div>
     <div id="error"></div>
     <script type="module">
         import * as THREE from 'three';
@@ -390,10 +401,22 @@
         }
 
         function showMessage(text) {
+            if (!text) return;
+            const log = document.getElementById('log');
+            const row = document.createElement('div');
+            row.className = 'note';
+            const time = document.createElement('time');
+            const now = new Date();
+            time.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+            row.append(time, document.createTextNode(String(text)));
+            log.appendChild(row);
+            while (log.children.length > 50) log.removeChild(log.firstChild);
+            log.scrollTop = log.scrollHeight;
             const el = document.getElementById('message');
             el.textContent = text;
             el.style.display = 'block';
-            setTimeout(() => { el.style.display = 'none'; }, 1500);
+            clearTimeout(showMessage.timer);
+            showMessage.timer = setTimeout(() => { el.style.display = 'none'; }, 2500);
         }
 
         try {
