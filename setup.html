@@ -50,10 +50,17 @@
                 <button type="button" id="tabLoot">Loot</button>
             </div>
             <div id="panelMap">
-                <p>Draw an outline, then place camps and resource nodes inside it.</p>
+                <p>Draw a zone or the world edge. With two or more points, each side can be a straight line or an organic curve. Click a side to switch it.</p>
+                <div class="row">
+                    <button type="button" id="editZones" class="on">Zones</button>
+                    <button type="button" id="editBounds">World edge</button>
+                    <button type="button" id="edgeLine" class="on">Straight</button>
+                    <button type="button" id="edgeOrganic">Organic</button>
+                </div>
                 <div class="row" id="tools"></div>
                 <button type="button" id="finish">Finish outline</button>
                 <button type="button" id="deleteZone">Delete zone</button>
+                <button type="button" id="clearBounds">Clear world edge</button>
                 <h2>Zones</h2>
                 <div id="zoneList"></div>
             </div>
@@ -64,8 +71,17 @@
                 <input id="hpPerLevel" type="number" min="0" max="40">
                 <label>Levels below you that give no XP</label>
                 <input id="grayLevels" type="number" min="1" max="20">
-                <label>XP per mob level</label>
-                <input id="xpPerMobLevel" type="number" min="0" max="100">
+                <label>World half-size</label>
+                <input id="worldHalf" type="number" min="200" max="2000">
+                <label>World edge</label>
+                <select id="worldEdge">
+                    <option value="hills">Inaccessible hills</option>
+                    <option value="sea">Sea</option>
+                </select>
+                <label>How far a player can swim</label>
+                <input id="swimDistance" type="number" min="4" max="40">
+                <label>Steepest climb. Higher is steeper. A steeper slope cannot be walked or jumped.</label>
+                <input id="maxSlope" type="number" min="0.3" max="1.4" step="0.05">
                 <p>A zone can override hit points. Blank uses this formula.</p>
                 <label>New admin password</label>
                 <input id="newPassword" type="password" autocomplete="new-password">
@@ -87,7 +103,7 @@
         </div>
     </div>
     <script type="module">
-        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, zoneName } from './worldgen.js';
+        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, zoneName, curvePoints, segmentCurve } from './worldgen.js';
 
         const MOBS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
         const NODES = ['tree', 'rock', 'herb', 'sulfur'];
@@ -98,7 +114,10 @@
         let config = null;
         let tool = 'draw';
         let selected = -1;
+        let drawing = 'zone';
+        let edgeMode = 'line';
         let draft = [];
+        let draftEdges = [];
         let drag = null;
         const view = { x: 0, z: 0, scale: 0.42 };
 
@@ -293,8 +312,11 @@
                     ctx.fillText(zoneName(zx, zz), (p.px + q.px) / 2, p.py + 14);
                 }
             }
+            if (config.bounds && config.bounds.points && config.bounds.points.length >= 3) {
+                strokeZone(config.bounds.points, config.bounds.edges, drawing === 'bounds' ? 'rgba(80,160,220,0.18)' : 'rgba(40,90,140,0.12)', config.bounds.edge === 'sea' ? '#7ec8e3' : '#c4a574', true);
+            }
             config.zones.forEach((entry, index) => {
-                strokeZone(entry.points, index === selected ? 'rgba(241,196,15,0.35)' : 'rgba(90,170,255,0.28)', index === selected ? '#f1c40f' : '#9cf');
+                strokeZone(entry.points, entry.edges, index === selected ? 'rgba(241,196,15,0.35)' : 'rgba(90,170,255,0.28)', index === selected ? '#f1c40f' : '#9cf', true);
                 for (const camp of entry.camps) mark(camp.x, camp.z, '#f1c40f', 5);
                 for (const node of entry.nodes) {
                     const color = node.type === 'tree' ? '#2e8b57' : node.type === 'rock' ? '#888' : node.type === 'herb' ? '#7dff4a' : '#f4d03f';
@@ -307,27 +329,54 @@
                     ctx.fillText(entry.level + ' ' + entry.mob, s.px, s.py);
                 }
             });
-            if (draft.length) strokeZone(draft, 'rgba(255,255,255,0.15)', '#fff');
+            if (draft.length) strokeZone(draft, draftEdges, 'rgba(255,255,255,0.15)', '#fff', false);
         }
         function centroid(points) {
             const sum = points.reduce((acc, point) => [acc[0] + point[0], acc[1] + point[1]], [0, 0]);
             return [sum[0] / points.length, sum[1] / points.length];
         }
-        function strokeZone(points, fill, stroke) {
+        function strokeZone(points, edges, fill, stroke, closed) {
             if (!points.length) return;
+            const path = points.length >= 2 ? curvePoints(points, edges || [], closed && points.length >= 3) : points;
             ctx.beginPath();
-            points.forEach((point, index) => {
+            path.forEach((point, index) => {
                 const p = toScreen(point[0], point[1]);
                 if (index === 0) ctx.moveTo(p.px, p.py);
                 else ctx.lineTo(p.px, p.py);
             });
-            ctx.closePath();
+            if (closed && points.length >= 3) ctx.closePath();
             ctx.fillStyle = fill;
             ctx.strokeStyle = stroke;
             ctx.lineWidth = 2;
-            ctx.fill();
+            if (closed && points.length >= 3) ctx.fill();
             ctx.stroke();
             for (const point of points) mark(point[0], point[1], stroke, 3);
+        }
+        function outlineSamples(points, edges) {
+            return points.length >= 3 ? curvePoints(points, edges || [], true) : points;
+        }
+        function nearestEdge(points, edges, x, z) {
+            if (!points || points.length < 2) return -1;
+            const closed = points.length >= 3;
+            const count = closed ? points.length : points.length - 1;
+            let best = -1;
+            let dist = 14;
+            for (let i = 0; i < count; i++) {
+                const part = segmentCurve(points[i], points[(i + 1) % points.length], edges && edges[i]);
+                for (let s = 1; s < part.length; s++) {
+                    const ax = part[s - 1][0];
+                    const az = part[s - 1][1];
+                    const bx = part[s][0];
+                    const bz = part[s][1];
+                    const dx = bx - ax;
+                    const dz = bz - az;
+                    const len = dx * dx + dz * dz || 1;
+                    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / len));
+                    const d = Math.hypot(x - (ax + dx * t), z - (az + dz * t));
+                    if (d < dist) { dist = d; best = i; }
+                }
+            }
+            return best;
         }
         function mark(x, z, color, r) {
             const p = toScreen(x, z);
@@ -345,14 +394,19 @@
             });
             return best;
         }
-        function addZone(points) {
+        function addZone(points, edges) {
             const id = 'z' + Math.random().toString(36).slice(2, 7);
-            config.zones.push({ id, name: 'New zone', points, mob: 'boar', level: 1, hp: 0, loot: 'hide', camps: [], nodes: [] });
+            config.zones.push({ id, name: 'New zone', points, edges, mob: 'boar', level: 1, hp: 0, loot: 'hide', camps: [], nodes: [] });
             selected = config.zones.length - 1;
             draft = [];
+            draftEdges = [];
             renderZones();
             renderFields();
             draw();
+        }
+        function activeOutline() {
+            if (drawing === 'bounds') return config.bounds;
+            return zone();
         }
         const toolNames = [['draw', 'Draw'], ['select', 'Select'], ['camp', 'Camp'], ['tree', 'Tree'], ['rock', 'Rock'], ['herb', 'Herb'], ['sulfur', 'Sulfur'], ['erase', 'Erase']];
         const tools = document.getElementById('tools');
@@ -370,9 +424,47 @@
         }
         document.getElementById('finish').addEventListener('click', () => {
             if (draft.length < 3) { note('An outline needs at least 3 points'); return; }
-            addZone(draft.map(point => point.slice()));
+            const edges = draftEdges.slice();
+            edges.push(edgeMode);
+            const points = draft.map(point => point.slice());
+            if (drawing === 'bounds') {
+                config.bounds.points = points;
+                config.bounds.edges = edges;
+                draft = [];
+                draftEdges = [];
+                note('World edge set. Save the world.');
+                draw();
+                return;
+            }
+            addZone(points, edges);
             note('Zone added. Set its mob, then save.');
         });
+        document.getElementById('clearBounds').addEventListener('click', () => {
+            config.bounds.points = [];
+            config.bounds.edges = [];
+            if (drawing === 'bounds') { draft = []; draftEdges = []; }
+            note('World edge cleared. The square half-size is the boundary.');
+            draw();
+        });
+        document.getElementById('editZones').addEventListener('click', () => {
+            drawing = 'zone';
+            document.getElementById('editZones').classList.add('on');
+            document.getElementById('editBounds').classList.remove('on');
+            note('Drawing zones');
+        });
+        document.getElementById('editBounds').addEventListener('click', () => {
+            drawing = 'bounds';
+            document.getElementById('editBounds').classList.add('on');
+            document.getElementById('editZones').classList.remove('on');
+            note('Drawing the world edge. Straight or organic applies to the next side.');
+        });
+        function setEdgeMode(mode) {
+            edgeMode = mode;
+            document.getElementById('edgeLine').classList.toggle('on', mode === 'line');
+            document.getElementById('edgeOrganic').classList.toggle('on', mode === 'organic');
+        }
+        document.getElementById('edgeLine').addEventListener('click', () => setEdgeMode('line'));
+        document.getElementById('edgeOrganic').addEventListener('click', () => setEdgeMode('organic'));
         document.getElementById('deleteZone').addEventListener('click', () => {
             if (selected < 0) return;
             config.zones.splice(selected, 1);
@@ -385,10 +477,10 @@
         canvas.addEventListener('mousedown', (event) => {
             const spot = worldFromEvent(event);
             if (event.button === 2) { drag = { mode: 'pan', x: event.clientX, y: event.clientY, vx: view.x, vz: view.z }; return; }
-            const current = zone();
-            if (tool === 'select' && current) {
+            const current = activeOutline();
+            if (tool === 'select' && current && current.points) {
                 const index = nearest(current.points, spot.x, spot.z, 18 / view.scale);
-                if (index >= 0) drag = { mode: 'point', index };
+                if (index >= 0) drag = { mode: 'point', index, outline: current };
             }
         });
         window.addEventListener('mouseup', () => { drag = null; });
@@ -400,8 +492,8 @@
                 draw();
                 return;
             }
-            const current = zone();
-            if (drag.mode === 'point' && current) {
+            const current = drag.outline;
+            if (drag.mode === 'point' && current && current.points) {
                 const spot = worldFromEvent(event);
                 current.points[drag.index] = [Math.round(spot.x), Math.round(spot.z)];
                 draw();
@@ -417,21 +509,36 @@
             const spot = worldFromEvent(event);
             const point = [Math.round(spot.x), Math.round(spot.z)];
             if (tool === 'draw') {
+                if (draft.length) draftEdges.push(edgeMode);
                 draft.push(point);
                 draw();
-                note(draft.length + ' points. Finish the outline when it is closed.');
+                note(draft.length + ' points. The newest side is ' + (edgeMode === 'organic' ? 'organic' : 'straight') + '.');
                 return;
             }
             if (tool === 'select') {
-                selected = config.zones.findIndex(entry => inside(spot.x, spot.z, entry.points));
-                renderZones();
-                renderFields();
+                const outline = activeOutline();
+                if (outline && outline.points && outline.points.length >= 2) {
+                    if (!outline.edges || outline.edges.length !== outline.points.length) outline.edges = outline.points.map(() => 'line');
+                    const edge = nearestEdge(outline.points, outline.edges, spot.x, spot.z);
+                    const vertex = nearest(outline.points, spot.x, spot.z, 10);
+                    if (edge >= 0 && vertex < 0) {
+                        outline.edges[edge] = outline.edges[edge] === 'organic' ? 'line' : 'organic';
+                        note(outline.edges[edge] === 'organic' ? 'Organic side' : 'Straight side');
+                        draw();
+                        return;
+                    }
+                }
+                if (drawing === 'zone') {
+                    selected = config.zones.findIndex(entry => inside(spot.x, spot.z, outlineSamples(entry.points, entry.edges)));
+                    renderZones();
+                    renderFields();
+                }
                 draw();
                 return;
             }
             const current = zone();
             if (!current) { note('Select a zone first'); return; }
-            if (!inside(spot.x, spot.z, current.points)) { note('Place that inside the outline'); return; }
+            if (!inside(spot.x, spot.z, outlineSamples(current.points, current.edges))) { note('Place that inside the outline'); return; }
             if (tool === 'camp') current.camps.push({ x: point[0], z: point[1], shop: 'Merchant', trainer: 'Trainer' });
             else if (NODES.includes(tool)) current.nodes.push({ type: tool, x: point[0], z: point[1] });
             else if (tool === 'erase') {
@@ -442,7 +549,10 @@
                     if (camp >= 0) current.camps.splice(camp, 1);
                     else {
                         const vertex = nearest(current.points, spot.x, spot.z, 14);
-                        if (vertex >= 0 && current.points.length > 3) current.points.splice(vertex, 1);
+                        if (vertex >= 0 && current.points.length > 3) {
+                            current.points.splice(vertex, 1);
+                            if (current.edges) current.edges.splice(vertex, 1);
+                        }
                     }
                 }
             }
@@ -495,13 +605,22 @@
             }
         });
         function fillRules() {
+            if (!config.bounds) config.bounds = { half: 900, edge: 'hills', swim: 14, maxSlope: 0.7, points: [], edges: [] };
             document.getElementById('hpBase').value = config.hpBase;
             document.getElementById('hpPerLevel').value = config.hpPerLevel;
             document.getElementById('grayLevels').value = config.grayLevels;
             document.getElementById('xpPerMobLevel').value = config.xpPerMobLevel;
+            document.getElementById('worldHalf').value = config.bounds.half;
+            document.getElementById('worldEdge').value = config.bounds.edge || 'hills';
+            document.getElementById('swimDistance').value = config.bounds.swim;
+            document.getElementById('maxSlope').value = config.bounds.maxSlope;
             for (const id of ['hpBase', 'hpPerLevel', 'grayLevels', 'xpPerMobLevel']) {
                 document.getElementById(id).addEventListener('change', () => { config[id] = Number(document.getElementById(id).value); });
             }
+            document.getElementById('worldHalf').addEventListener('change', () => { config.bounds.half = Number(document.getElementById('worldHalf').value); });
+            document.getElementById('worldEdge').addEventListener('change', () => { config.bounds.edge = document.getElementById('worldEdge').value; draw(); });
+            document.getElementById('swimDistance').addEventListener('change', () => { config.bounds.swim = Number(document.getElementById('swimDistance').value); });
+            document.getElementById('maxSlope').addEventListener('change', () => { config.bounds.maxSlope = Number(document.getElementById('maxSlope').value); });
         }
         async function boot() {
             if (!token) return showLogin('');

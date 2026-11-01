@@ -1,6 +1,16 @@
 export const CHUNK_SIZE = 50;
 export const WATER_LEVEL = 0.35;
 
+let shape = {
+    half: 900,
+    edge: 'hills',
+    swim: 14,
+    maxSlope: 0.7,
+    points: [],
+    edges: [],
+    samples: null
+};
+
 export function chunkSeed(cx, cz) {
     let h = Math.imul(cx | 0, 374761393) + Math.imul(cz | 0, 668265263) + 0x9e3779b9;
     h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -65,7 +75,8 @@ export function terrainHeight(x, z) {
     if (lake > 0) h = Math.min(h, WATER_LEVEL - lake);
     const dist = Math.hypot(x, z);
     const flat = Math.min(1, Math.max(0, (dist - 12) / 28));
-    return h * flat + 0.9 * (1 - flat);
+    h = h * flat + 0.9 * (1 - flat);
+    return applyBoundary(x, z, h);
 }
 
 // Same sequence the client uses to place trees and rocks.
@@ -164,18 +175,161 @@ const ZONE_PACKS = [
 
 export const WORLD_RADIUS = 4;
 
+function organicAt(a, b, t) {
+    const dx = b[0] - a[0];
+    const dz = b[1] - a[1];
+    const len = Math.hypot(dx, dz) || 1;
+    const px = -dz / len;
+    const pz = dx / len;
+    const sign = ((Math.round(a[0] * 0.17 + b[1]) ^ Math.round(a[1] - b[0])) & 1) ? 1 : -1;
+    const bow = Math.sin(t * Math.PI) * len * 0.22 + Math.sin(t * Math.PI * 3) * len * 0.06;
+    return [a[0] + dx * t + px * bow * sign, a[1] + dz * t + pz * bow * sign];
+}
+
+export function segmentCurve(a, b, style) {
+    if (style !== 'organic') return [a, b];
+    const points = [];
+    for (let step = 0; step <= 8; step++) points.push(organicAt(a, b, step / 8));
+    return points;
+}
+
+export function curvePoints(points, edges, closed = true) {
+    const count = points.length;
+    if (count < 2) return points.map(point => point.slice());
+    const segments = closed ? count : count - 1;
+    const out = [];
+    for (let i = 0; i < segments; i++) {
+        const part = segmentCurve(points[i], points[(i + 1) % count], edges && edges[i]);
+        if (i === 0) out.push(...part);
+        else out.push(...part.slice(1));
+    }
+    return out;
+}
+
+function distToSeg(x, z, a, b) {
+    const dx = b[0] - a[0];
+    const dz = b[1] - a[1];
+    const len = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / len));
+    return Math.hypot(x - (a[0] + dx * t), z - (a[1] + dz * t));
+}
+
+export function boundaryInset(x, z) {
+    if (shape.samples && shape.samples.length >= 3) {
+        let best = Infinity;
+        const samples = shape.samples;
+        for (let i = 0, j = samples.length - 1; i < samples.length; j = i++) {
+            best = Math.min(best, distToSeg(x, z, samples[j], samples[i]));
+        }
+        return pointInPoly(x, z, samples) ? best : -best;
+    }
+    return Math.min(shape.half - x, shape.half + x, shape.half - z, shape.half + z);
+}
+
+function pullInside(x, z, minInset) {
+    const samples = shape.samples;
+    let cx = 0;
+    let cz = 0;
+    for (const point of samples) {
+        cx += point[0];
+        cz += point[1];
+    }
+    cx /= samples.length;
+    cz /= samples.length;
+    let px = x;
+    let pz = z;
+    for (let i = 0; i < 16; i++) {
+        if (boundaryInset(px, pz) >= minInset) break;
+        px += (cx - px) * 0.35;
+        pz += (cz - pz) * 0.35;
+    }
+    return { x: px, z: pz };
+}
+
+function applyBoundary(x, z, h) {
+    const inset = boundaryInset(x, z);
+    if (shape.edge === 'sea') {
+        if (inset < 26) {
+            const t = Math.min(1, (26 - inset) / 12);
+            const deep = WATER_LEVEL - 1.7 - Math.max(0, -inset) * 0.05;
+            return h * (1 - t) + deep * t;
+        }
+        return h;
+    }
+    if (inset < 22) {
+        const t = (22 - inset) / 22;
+        return h + t * t * t * 28;
+    }
+    return h;
+}
+
+export function blocksClimb(x0, z0, x1, z1) {
+    const dist = Math.hypot(x1 - x0, z1 - z0);
+    if (dist < 0.0001) return false;
+    const steps = Math.max(1, Math.ceil(dist / 0.45));
+    let prev = terrainHeight(x0, z0);
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const y = terrainHeight(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t);
+        if ((y - prev) / (dist / steps) > shape.maxSlope) return true;
+        prev = y;
+    }
+    return false;
+}
+
+export function waterAt(x, z) {
+    return terrainHeight(x, z) < WATER_LEVEL + 0.05;
+}
+
+export function swimRange() {
+    return shape.swim;
+}
+
+export function swimTooFar(x, z) {
+    if (!waterAt(x, z)) return false;
+    const reach = shape.swim;
+    const step = 4;
+    for (let dz = -reach; dz <= reach; dz += step) {
+        for (let dx = -reach; dx <= reach; dx += step) {
+            if (dx * dx + dz * dz > reach * reach) continue;
+            if (!waterAt(x + dx, z + dz)) return false;
+        }
+    }
+    return true;
+}
+
+export function worldShape() {
+    return {
+        half: shape.half,
+        edge: shape.edge,
+        swim: shape.swim,
+        maxSlope: shape.maxSlope,
+        points: shape.points.map(point => point.slice()),
+        edges: shape.edges.slice()
+    };
+}
+
 export function worldBounds() {
-    const edge = WORLD_RADIUS * ZONE_SIZE + ZONE_SIZE / 2;
-    return { min: -edge, max: edge };
+    let half = shape.half;
+    if (shape.samples) {
+        for (const point of shape.samples) {
+            half = Math.max(half, Math.abs(point[0]), Math.abs(point[1]));
+        }
+    }
+    if (shape.edge === 'sea') half += shape.swim + 16;
+    return { min: -half, max: half };
 }
 
 export function clampWorld(x, z, margin = 2) {
-    const { min, max } = worldBounds();
-    const lo = min + margin;
-    const hi = max - margin;
+    if (shape.samples && shape.samples.length >= 3) {
+        const allow = shape.edge === 'sea' ? shape.swim : -margin;
+        if (boundaryInset(x, z) >= allow) return { x, z };
+        return pullInside(x, z, allow);
+    }
+    const limit = shape.half + (shape.edge === 'sea' ? shape.swim : -margin);
     return {
-        x: Math.max(lo, Math.min(hi, x)),
-        z: Math.max(lo, Math.min(hi, z))
+        x: Math.max(-limit, Math.min(limit, x)),
+        z: Math.max(-limit, Math.min(limit, z))
     };
 }
 
@@ -292,16 +446,32 @@ function pointInPoly(x, z, points) {
 }
 
 export function applyWorldConfig(config) {
+    const bounds = config && config.bounds && typeof config.bounds === 'object' ? config.bounds : {};
+    const half = Number(bounds.half);
+    shape.half = Number.isFinite(half) ? Math.max(200, Math.min(2000, half)) : 900;
+    shape.edge = bounds.edge === 'sea' ? 'sea' : 'hills';
+    const swim = Number(bounds.swim);
+    shape.swim = Number.isFinite(swim) ? Math.max(4, Math.min(40, swim)) : 14;
+    const slope = Number(bounds.maxSlope);
+    shape.maxSlope = Number.isFinite(slope) ? Math.max(0.3, Math.min(1.4, slope)) : 0.7;
+    const rawPoints = Array.isArray(bounds.points) ? bounds.points : [];
+    shape.points = rawPoints.slice(0, 80).map(point => [Number(point[0]), Number(point[1])]).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+    if (shape.points.length < 3) shape.points = [];
+    shape.edges = shape.points.map((_, index) => (bounds.edges && bounds.edges[index] === 'organic' ? 'organic' : 'line'));
+    shape.samples = shape.points.length >= 3 ? curvePoints(shape.points, shape.edges, true) : null;
     designedZones = [];
     designedNodes = [];
     const zones = Array.isArray(config && config.zones) ? config.zones : [];
     for (const zone of zones.slice(0, 24)) {
         const points = (Array.isArray(zone.points) ? zone.points : []).slice(0, 80).map(point => [Number(point[0]), Number(point[1])]).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
         if (points.length < 3) continue;
+        const edges = points.map((_, index) => (zone.edges && zone.edges[index] === 'organic' ? 'organic' : 'line'));
         const entry = {
             id: String(zone.id || ('zone-' + designedZones.length)).slice(0, 24),
             name: String(zone.name || 'Zone').slice(0, 32),
             points,
+            edges,
+            samples: curvePoints(points, edges, true),
             mob: MOB_IDS.includes(zone.mob) ? zone.mob : 'boar',
             level: Math.max(1, Math.min(30, Math.round(Number(zone.level) || 1))),
             hp: Math.max(0, Math.min(500, Math.round(Number(zone.hp) || 0))),
@@ -333,13 +503,24 @@ export function applyWorldConfig(config) {
 
 export function designedZoneAt(x, z) {
     for (let i = designedZones.length - 1; i >= 0; i--) {
-        if (pointInPoly(x, z, designedZones[i].points)) return designedZones[i];
+        if (pointInPoly(x, z, designedZones[i].samples || designedZones[i].points)) return designedZones[i];
     }
     return null;
 }
 
 export function listDesignedZones() {
-    return designedZones;
+    return designedZones.map(zone => ({
+        id: zone.id,
+        name: zone.name,
+        points: zone.points,
+        edges: zone.edges,
+        mob: zone.mob,
+        level: zone.level,
+        hp: zone.hp,
+        loot: zone.loot,
+        camps: zone.camps,
+        nodes: zone.nodes
+    }));
 }
 
 function appendDesignedNodes(cx, cz, items) {

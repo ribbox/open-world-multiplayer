@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampFolk, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, applyWorldConfig, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampFolk, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -328,6 +328,7 @@ function pickWander(npc) {
 
 function ensureZone(zx, zz) {
     if (!zoneInWorld(zx, zz)) return;
+    if (boundaryInset(zx * ZONE_SIZE, zz * ZONE_SIZE) < 30) return;
     const key = zoneKey(zx, zz);
     if (seededZones.has(key)) return;
     seededZones.add(key);
@@ -1409,12 +1410,22 @@ wss.on('connection', (ws) => {
         if (!player || player.ws !== ws) return;
 
         if (data.type === 'update') {
+            const prevX = player.x;
+            const prevZ = player.z;
             if (typeof data.x === 'number') player.x = data.x;
             if (typeof data.y === 'number') player.y = data.y;
             if (typeof data.z === 'number') player.z = data.z;
             const edge = clampWorld(player.x, player.z, 2.2);
-            player.x = edge.x;
-            player.z = edge.z;
+            const tooFar = swimTooFar(edge.x, edge.z);
+            const leavingShore = tooFar && !swimTooFar(prevX, prevZ);
+            const deeper = tooFar && boundaryInset(edge.x, edge.z) < boundaryInset(prevX, prevZ) - 0.2;
+            if (blocksClimb(prevX, prevZ, edge.x, edge.z) || leavingShore || deeper) {
+                player.x = prevX;
+                player.z = prevZ;
+            } else {
+                player.x = edge.x;
+                player.z = edge.z;
+            }
             if (typeof data.rotY === 'number') player.rotY = data.rotY;
             if (data.tool === 'axe' || data.tool === 'pickaxe' || data.tool === 'sword' || data.tool === 'staff') player.tool = data.tool;
             const revealed = revealFog(player);
@@ -2073,6 +2084,26 @@ function clampNum(value, fallback, min, max) {
     return Math.max(min, Math.min(max, Math.round(n)));
 }
 
+function clampFloat(value, fallback, min, max) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, Math.round(n * 100) / 100));
+}
+
+function sanitizeBounds(input) {
+    const src = input && typeof input === 'object' ? input : {};
+    const points = Array.isArray(src.points) ? src.points.slice(0, 80).map(point => [Number(point[0]), Number(point[1])]).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1])) : [];
+    const closed = points.length >= 3;
+    return {
+        half: clampNum(src.half, 900, 200, 2000),
+        edge: src.edge === 'sea' ? 'sea' : 'hills',
+        swim: clampNum(src.swim, 14, 4, 40),
+        maxSlope: clampFloat(src.maxSlope, 0.7, 0.3, 1.4),
+        points: closed ? points : [],
+        edges: closed ? points.map((_, index) => (src.edges && src.edges[index] === 'organic' ? 'organic' : 'line')) : []
+    };
+}
+
 function sanitizeWorld(input) {
     const src = input && typeof input === 'object' ? input : {};
     return {
@@ -2082,7 +2113,8 @@ function sanitizeWorld(input) {
         xpPerMobLevel: clampNum(src.xpPerMobLevel, 20, 0, 100),
         adminPassword: typeof src.adminPassword === 'string' ? src.adminPassword.slice(0, 64) : '',
         loot: sanitizeLoot(src.loot),
-        zones: Array.isArray(src.zones) ? src.zones : []
+        zones: Array.isArray(src.zones) ? src.zones : [],
+        bounds: sanitizeBounds(src.bounds)
     };
 }
 
@@ -2098,6 +2130,7 @@ function publicWorld() {
         hpPerLevel: worldRules.hpPerLevel,
         grayLevels: worldRules.grayLevels,
         xpPerMobLevel: worldRules.xpPerMobLevel,
+        bounds: worldShape(),
         zones: listDesignedZones()
     };
 }
@@ -2109,7 +2142,7 @@ function applyLoaded(config) {
     worldRules.xpPerMobLevel = config.xpPerMobLevel;
     applyWorldConfig(config);
     lootTables = config.loot;
-    worldConfig = { ...config, zones: listDesignedZones(), loot: lootTables };
+    worldConfig = { ...config, zones: listDesignedZones(), bounds: worldShape(), loot: lootTables };
     rebuildCivilians();
     npcs.clear();
     seededZones.clear();
