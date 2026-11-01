@@ -257,9 +257,11 @@ function applyBoundary(x, z, h) {
         }
         return h;
     }
-    if (inset < 22) {
-        const t = (22 - inset) / 22;
-        return h + t * t * t * 28;
+    if (inset < 42) {
+        const u = Math.min(1, (42 - inset) / 42);
+        const gentle = Math.min(u, 0.62);
+        const cliff = Math.max(0, u - 0.62) / 0.38;
+        return h + gentle * 5.5 + cliff * cliff * 26;
     }
     return h;
 }

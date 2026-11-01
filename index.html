@@ -372,7 +372,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, blocksClimb, waterAt, swimRange, curvePoints, worldShape } from './worldgen.js';
+        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset } from './worldgen.js';
 
         let bootWorld = null;
         try {
@@ -448,36 +448,6 @@
                     edgePosts.material.dispose();
                     edgePosts = null;
                 }
-                const info = worldShape();
-                if (info.edge === 'sea') return;
-                const ring = info.points.length >= 3
-                    ? curvePoints(info.points, info.edges, true)
-                    : [[-info.half, -info.half], [info.half, -info.half], [info.half, info.half], [-info.half, info.half]];
-                const spots = [];
-                for (let i = 0; i < ring.length; i++) {
-                    const a = ring[i];
-                    const b = ring[(i + 1) % ring.length];
-                    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
-                    const steps = Math.max(1, Math.round(length / 18));
-                    for (let step = 0; step < steps; step++) {
-                        const t = step / steps;
-                        spots.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
-                    }
-                }
-                if (!spots.length) return;
-                edgePosts = new THREE.InstancedMesh(
-                    new THREE.BoxGeometry(2.4, 5.5, 2.4),
-                    new THREE.MeshLambertMaterial({ color: 0x4e342e }),
-                    spots.length
-                );
-                const dummy = new THREE.Object3D();
-                spots.forEach(([x, z], i) => {
-                    dummy.position.set(x, terrainHeight(x, z) + 2.6, z);
-                    dummy.updateMatrix();
-                    edgePosts.setMatrixAt(i, dummy.matrix);
-                });
-                edgePosts.instanceMatrix.needsUpdate = true;
-                scene.add(edgePosts);
             }
             addWorldEdge();
 
@@ -601,7 +571,8 @@
                 );
                 head.position.set(0.1, 0.7, 0);
                 group.add(head);
-                group.position.set(0.35, 1.1, 0.2);
+                group.position.set(0.28, 0.85, 0.28);
+                group.rotation.z = -0.35;
                 return group;
             }
 
@@ -619,7 +590,8 @@
                 );
                 head.position.set(0, 0.75, 0);
                 group.add(head);
-                group.position.set(0.35, 1.1, 0.2);
+                group.position.set(0.28, 0.85, 0.28);
+                group.rotation.z = -0.35;
                 return group;
             }
 
@@ -643,7 +615,8 @@
                 );
                 blade.position.y = 0.66;
                 group.add(blade);
-                group.position.set(0.35, 1.1, 0.2);
+                group.position.set(0.22, 0.9, 0.22);
+                group.rotation.z = -0.2;
                 return group;
             }
 
@@ -659,9 +632,10 @@
                     new THREE.SphereGeometry(0.12, 10, 8),
                     new THREE.MeshLambertMaterial({ color: 0x5dade2 })
                 );
-                orb.position.y = 1.18;
+                orb.position.y = 1.05;
                 group.add(orb);
-                group.position.set(0.35, 1.1, 0.2);
+                group.position.set(0.16, 0.95, 0.2);
+                group.rotation.z = -0.45;
                 return group;
             }
 
@@ -1335,11 +1309,12 @@
             const allColliders = [];
 
             function addTerrain(group, cx, cz) {
-                const seg = 14;
+                const seg = 28;
                 const geo = new THREE.PlaneGeometry(chunkSize, chunkSize, seg, seg);
                 geo.rotateX(-Math.PI / 2);
                 const pos = geo.attributes.position;
                 const colors = new Float32Array(pos.count * 3);
+                const edgeKind = worldShape().edge;
                 let wet = false;
                 for (let i = 0; i < pos.count; i++) {
                     const wx = cx * chunkSize + pos.getX(i);
@@ -1347,9 +1322,11 @@
                     const y = terrainHeight(wx, wz);
                     pos.setY(i, y);
                     if (y < WATER_LEVEL + 0.15) wet = true;
+                    const cliff = edgeKind === 'hills' && boundaryInset(wx, wz) < 18;
                     const tint = y < WATER_LEVEL + 0.45
                         ? [0.76, 0.68, 0.42]
-                        : y > 7.5 ? [0.48, 0.5, 0.44]
+                        : cliff || y > 11 ? [0.45, 0.42, 0.36]
+                        : y > 7.5 ? [0.42, 0.48, 0.34]
                         : y > 4.2 ? [0.32, 0.5, 0.22]
                         : [0.16, 0.46, 0.15];
                     colors[i * 3] = tint[0];
