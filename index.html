@@ -899,6 +899,15 @@
                 return explored.has(ix + ',' + iz);
             }
 
+            function levelColor(level) {
+                const mine = stats.level || 1;
+                const gap = mine - level;
+                if (gap >= grayLevels) return '#9a9a9a';
+                if (level >= mine + 6) return '#ff5a5a';
+                if (level >= mine + 3) return '#f0a050';
+                return '#8dff9a';
+            }
+
             function drawMinimap() {
                 revealHere(characterGroup.position.x, characterGroup.position.z);
                 const ctx = minimapCtx;
@@ -945,7 +954,8 @@
                 ctx.clip();
 
                 const span = 90;
-                if (mapLayers.grid) for (let ox = -1; ox <= 1; ox++) {
+                const designed = listDesignedZones();
+                if (mapLayers.grid && !designed.length) for (let ox = -1; ox <= 1; ox++) {
                     for (let oz = -1; oz <= 1; oz++) {
                         const originX = (here.zx + ox) * ZONE_SIZE - ZONE_SIZE / 2;
                         const originZ = (here.zz + oz) * ZONE_SIZE - ZONE_SIZE / 2;
@@ -967,6 +977,32 @@
                             ctx.moveTo(a.mx, a.mz);
                             ctx.lineTo(b.mx, b.mz);
                             ctx.stroke();
+                        }
+                    }
+                }
+
+                if (designed.length) {
+                    ctx.lineWidth = 2;
+                    for (const zone of designed) {
+                        const path = curvePoints(zone.points, zone.edges, true);
+                        ctx.beginPath();
+                        path.forEach((point, index) => {
+                            const spot = project(point[0], point[1]);
+                            if (index === 0) ctx.moveTo(spot.mx, spot.mz);
+                            else ctx.lineTo(spot.mx, spot.mz);
+                        });
+                        ctx.closePath();
+                        ctx.fillStyle = levelColor(zone.level) + '55';
+                        ctx.strokeStyle = levelColor(zone.level);
+                        ctx.fill();
+                        ctx.stroke();
+                        const c = path.reduce((sum, point) => [sum[0] + point[0], sum[1] + point[1]], [0, 0]);
+                        const label = place(c[0] / path.length, c[1] / path.length);
+                        if (label && seenAt(c[0] / path.length, c[1] / path.length)) {
+                            ctx.fillStyle = '#ffffff';
+                            ctx.font = '10px sans-serif';
+                            ctx.textAlign = 'center';
+                            ctx.fillText(zone.name, label.mx, label.mz - 4);
                         }
                     }
                 }
@@ -1093,12 +1129,15 @@
                 }
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
-                    for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
-                        const x0 = g.origin + (zx + WORLD_RADIUS) * g.cell;
-                        const y0 = g.origin + (zz + WORLD_RADIUS) * g.cell;
-                        ctx.strokeStyle = 'rgba(255,255,255,0.14)';
-                        ctx.strokeRect(x0 + 1, y0 + 1, g.cell - 2, g.cell - 2);
+                const designed = listDesignedZones();
+                if (!designed.length) {
+                    for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+                        for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+                            const x0 = g.origin + (zx + WORLD_RADIUS) * g.cell;
+                            const y0 = g.origin + (zz + WORLD_RADIUS) * g.cell;
+                            ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+                            ctx.strokeRect(x0 + 1, y0 + 1, g.cell - 2, g.cell - 2);
+                        }
                     }
                 }
                 ctx.fillStyle = '#1c4a28';
@@ -1113,36 +1152,35 @@
                     ctx.fillRect(a.mx, a.mz, Math.max(1, b.mx - a.mx), Math.max(1, b.mz - a.mz));
                 }
                 ctx.textAlign = 'center';
-                for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
-                    for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
-                        if (!exploredZones.has(zx + ',' + zz)) continue;
-                        const x0 = g.origin + (zx + WORLD_RADIUS) * g.cell;
-                        const y0 = g.origin + (zz + WORLD_RADIUS) * g.cell;
-                        ctx.fillStyle = '#f4f4f4';
-                        ctx.font = '11px sans-serif';
-                        ctx.fillText(zoneName(zx, zz), x0 + g.cell / 2, y0 + 14, g.cell - 10);
-                        const camp = zoneCamp(zx, zz);
-                        if (!seenAt(camp.x, camp.z)) continue;
-                        const mark = toMap(camp.x, camp.z);
-                        ctx.fillStyle = '#f1c40f';
-                        ctx.fillRect(mark.mx - 3, mark.mz - 3, 6, 6);
+                if (!designed.length) {
+                    for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+                        for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+                            if (!exploredZones.has(zx + ',' + zz)) continue;
+                            const x0 = g.origin + (zx + WORLD_RADIUS) * g.cell;
+                            const y0 = g.origin + (zz + WORLD_RADIUS) * g.cell;
+                            ctx.fillStyle = '#f4f4f4';
+                            ctx.font = '11px sans-serif';
+                            ctx.fillText(zoneName(zx, zz), x0 + g.cell / 2, y0 + 14, g.cell - 10);
+                            const camp = zoneCamp(zx, zz);
+                            if (!seenAt(camp.x, camp.z)) continue;
+                            const mark = toMap(camp.x, camp.z);
+                            ctx.fillStyle = '#f1c40f';
+                            ctx.fillRect(mark.mx - 3, mark.mz - 3, 6, 6);
+                        }
                     }
-                }
-                ctx.font = 'bold 14px sans-serif';
-                for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
-                    for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
-                        const drawn = designedZoneAt(zx * ZONE_SIZE, zz * ZONE_SIZE);
-                        const mob = drawn || zoneNpc(zx, zz);
-                        const mine = stats.level || 1;
-                        const gap = mine - mob.level;
-                        ctx.fillStyle = gap >= grayLevels ? '#9a9a9a' : mob.level >= mine + 6 ? '#ff5a5a' : mob.level >= mine + 3 ? '#f0a050' : '#8dff9a';
-                        const x0 = g.origin + (zx + WORLD_RADIUS) * g.cell;
-                        const y0 = g.origin + (zz + WORLD_RADIUS) * g.cell;
-                        ctx.fillText(String(mob.level), x0 + g.cell / 2, y0 + g.cell * 0.62);
+                    ctx.font = 'bold 14px sans-serif';
+                    for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+                        for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+                            const mob = zoneNpc(zx, zz);
+                            const x0 = g.origin + (zx + WORLD_RADIUS) * g.cell;
+                            const y0 = g.origin + (zz + WORLD_RADIUS) * g.cell;
+                            ctx.fillStyle = levelColor(mob.level);
+                            ctx.fillText(String(mob.level), x0 + g.cell / 2, y0 + g.cell * 0.62);
+                        }
                     }
                 }
                 ctx.lineWidth = 2;
-                for (const zone of listDesignedZones()) {
+                for (const zone of designed) {
                     const path = curvePoints(zone.points, zone.edges, true);
                     ctx.beginPath();
                     path.forEach((point, index) => {
@@ -1151,10 +1189,47 @@
                         else ctx.lineTo(spot.mx, spot.mz);
                     });
                     ctx.closePath();
-                    ctx.fillStyle = 'rgba(120, 190, 255, 0.2)';
-                    ctx.strokeStyle = '#d6ecff';
+                    ctx.fillStyle = levelColor(zone.level) + '66';
                     ctx.fill();
+                }
+                const { min } = worldBounds();
+                const cells = Math.ceil(g.span / FOG_CELL);
+                ctx.fillStyle = '#07090c';
+                for (let iz = 0; iz < cells; iz++) {
+                    for (let ix = 0; ix < cells; ix++) {
+                        if (explored.has(ix + ',' + iz)) continue;
+                        const x = min + ix * FOG_CELL;
+                        const z = min + iz * FOG_CELL;
+                        const a = toMap(x, z);
+                        const b = toMap(x + FOG_CELL, z + FOG_CELL);
+                        ctx.fillRect(a.mx, a.mz, Math.max(1, b.mx - a.mx) + 0.6, Math.max(1, b.mz - a.mz) + 0.6);
+                    }
+                }
+                for (const zone of designed) {
+                    const path = curvePoints(zone.points, zone.edges, true);
+                    ctx.beginPath();
+                    path.forEach((point, index) => {
+                        const spot = toMap(point[0], point[1]);
+                        if (index === 0) ctx.moveTo(spot.mx, spot.mz);
+                        else ctx.lineTo(spot.mx, spot.mz);
+                    });
+                    ctx.closePath();
+                    ctx.strokeStyle = levelColor(zone.level);
                     ctx.stroke();
+                    const sum = path.reduce((acc, point) => [acc[0] + point[0], acc[1] + point[1]], [0, 0]);
+                    const label = toMap(sum[0] / path.length, sum[1] / path.length);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '12px sans-serif';
+                    ctx.fillText(zone.name, label.mx, label.mz - 8, 110);
+                    ctx.font = 'bold 14px sans-serif';
+                    ctx.fillStyle = levelColor(zone.level);
+                    ctx.fillText(String(zone.level), label.mx, label.mz + 8);
+                    for (const camp of zone.camps) {
+                        if (!seenAt(camp.x, camp.z)) continue;
+                        const mark = toMap(camp.x, camp.z);
+                        ctx.fillStyle = '#f1c40f';
+                        ctx.fillRect(mark.mx - 3, mark.mz - 3, 6, 6);
+                    }
                 }
                 if (mapLayers.players) for (const entry of remotePlayers.values()) {
                     if (!seenAt(entry.mesh.position.x, entry.mesh.position.z)) continue;

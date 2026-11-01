@@ -162,6 +162,7 @@ export function zoneAt(x, z) {
     };
     const drawn = designedZoneAt(x, z);
     if (drawn) grid.name = drawn.name;
+    else if (designedZones.length) grid.name = 'Wilderness';
     return grid;
 }
 

@@ -105,7 +105,7 @@
         </div>
     </div>
     <script type="module">
-        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, zoneName, curvePoints, segmentCurve } from './worldgen.js';
+        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve } from './worldgen.js';
 
         const MOBS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
         const NODES = ['tree', 'rock', 'herb', 'sulfur'];
@@ -310,8 +310,6 @@
                     const q = toScreen(x0 + ZONE_SIZE, z0 + ZONE_SIZE);
                     ctx.strokeStyle = 'rgba(255,255,255,0.12)';
                     ctx.strokeRect(p.px, p.py, q.px - p.px, q.py - p.py);
-                    ctx.fillStyle = '#667';
-                    ctx.fillText(zoneName(zx, zz), (p.px + q.px) / 2, p.py + 14);
                 }
             }
             if (config.bounds && config.bounds.points && config.bounds.points.length >= 3) {
@@ -328,7 +326,8 @@
                     const c = centroid(entry.points);
                     const s = toScreen(c[0], c[1]);
                     ctx.fillStyle = '#fff';
-                    ctx.fillText(entry.level + ' ' + entry.mob, s.px, s.py);
+                    ctx.fillText(entry.name, s.px, s.py - 8);
+                    ctx.fillText(String(entry.level), s.px, s.py + 8);
                 }
             });
             if (draft.length) strokeZone(draft, draftEdges, 'rgba(255,255,255,0.15)', '#fff', false);
