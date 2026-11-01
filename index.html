@@ -1323,7 +1323,9 @@
                     pos.setY(i, y);
                     if (y < WATER_LEVEL + 0.15) wet = true;
                     const cliff = edgeKind === 'hills' && boundaryInset(wx, wz) < 18;
-                    const tint = y < WATER_LEVEL + 0.45
+                    const tint = y < WATER_LEVEL - 0.15
+                        ? [0.07, 0.2, 0.3]
+                        : y < WATER_LEVEL + 0.55
                         ? [0.76, 0.68, 0.42]
                         : cliff || y > 11 ? [0.45, 0.42, 0.36]
                         : y > 7.5 ? [0.42, 0.48, 0.34]
@@ -1372,10 +1374,11 @@
                 const water = new THREE.Mesh(
                     waterGeo,
                     new THREE.MeshLambertMaterial({
-                        color: 0x1d6ea0,
+                        color: 0x1a6fbf,
                         transparent: true,
-                        opacity: 0.72,
-                        depthWrite: false
+                        opacity: 0.9,
+                        depthWrite: false,
+                        side: THREE.DoubleSide
                     })
                 );
                 group.add(water);
@@ -3536,7 +3539,8 @@
                     characterGroup.position.z = edge.z;
                 }
 
-                const groundY = terrainHeight(characterGroup.position.x, characterGroup.position.z);
+                const bed = terrainHeight(characterGroup.position.x, characterGroup.position.z);
+                const groundY = bed < WATER_LEVEL - 0.05 ? WATER_LEVEL - 0.15 : bed;
                 if (keys.space && onGround) {
                     verticalVelocity = jumpSpeed;
                     onGround = false;
@@ -3622,7 +3626,8 @@
                     pull = Math.max(0.8, blocked[0].distance - 0.45);
                 }
                 camera.position.copy(camTarget).addScaledVector(rayDir, pull);
-                const floorY = terrainHeight(camera.position.x, camera.position.z) + 1.05;
+                const bedY = terrainHeight(camera.position.x, camera.position.z);
+                const floorY = (bedY < WATER_LEVEL ? WATER_LEVEL + 1.35 : bedY + 1.05);
                 if (camera.position.y < floorY) camera.position.y = floorY;
                 camera.lookAt(camTarget);
 
