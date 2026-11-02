@@ -68,7 +68,7 @@
         .slot.mana { background: #1d4e89; }
         .slot.armor { background: #3d4f6f; }
         #minimap {
-            position: absolute; bottom: 15px; left: 15px;
+            position: absolute; top: 12px; right: 12px;
             border: 2px solid rgba(255,255,255,0.7); border-radius: 8px;
             background: rgba(0,0,0,0.4); z-index: 10; cursor: pointer;
         }
@@ -87,19 +87,19 @@
         #worldmapReadout { margin-top: 8px; font-size: 13px; text-align: center; }
         #worldmapPanel .text-btn { margin-top: 8px; }
         #mapReadout {
-            position: absolute; bottom: 202px; left: 15px; width: 180px;
+            position: absolute; top: 200px; right: 12px; width: 180px;
             text-align: center; color: white; font-size: 12px; line-height: 1.25;
             text-shadow: 0 1px 2px #000; pointer-events: none; z-index: 10;
         }
         #zoneName { font-weight: bold; }
         #mapLayersButton {
-            position: absolute; left: 152px; bottom: 168px; z-index: 12;
+            position: absolute; right: 18px; top: 156px; z-index: 12;
             width: 36px; height: 20px; padding: 0; font-size: 11px; color: white;
             background: rgba(0,0,0,0.72); border: 1px solid rgba(255,255,255,0.45);
             border-radius: 4px; cursor: pointer;
         }
         #mapLayers {
-            position: absolute; left: 204px; bottom: 15px; z-index: 12;
+            position: absolute; right: 204px; top: 12px; z-index: 12;
             width: 128px; color: white; background: rgba(0,0,0,0.82);
             border: 1px solid rgba(255,255,255,0.35); border-radius: 6px;
             padding: 8px; font-size: 12px;
@@ -137,7 +137,7 @@
             border-radius: 4px; font-size: 16px; pointer-events: none; z-index: 10; display: none;
         }
         #log {
-            position: absolute; top: 12px; right: 12px; width: min(240px, 46vw);
+            position: absolute; bottom: 15px; left: 15px; width: min(240px, 46vw);
             max-height: 168px; overflow-y: auto; z-index: 14; pointer-events: auto;
             color: #eee; background: rgba(0,0,0,0.62); border-radius: 6px;
             font-size: 12px; line-height: 1.35; padding: 4px 8px;
@@ -291,6 +291,7 @@
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
         Train spells only while standing at a trainer. Gather herbs by hand and sulfur with a pickaxe<br>
+        M: World map. Right-click a spot to mark it. The minimap points the way<br>
         Click the minimap for the world map. Numbers are mob levels. Gray gives no XP<br>
         World setup is a separate page at /setup<br>
         Notices stay in the list at the top right<br>
@@ -308,7 +309,7 @@
             <div id="bagSlots"></div>
             <div id="supplyLabel">Supplies</div>
             <div id="supplySlots"></div>
-            <div id="bagHint">Right-click destroys one bag item or supply. Shift+right-click destroys the stack. Supplies and coins do not use bag slots.</div>
+            <div id="bagHint">Click a health or mana potion to drink it. You can also put one on the action bar. Right-click destroys one bag item or supply. Shift+right-click destroys the stack. Supplies and coins do not use bag slots.</div>
         </div>
         <span id="playerColor" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span>
         <input id="playerName" maxlength="16" placeholder="Name">
@@ -343,6 +344,7 @@
         <div id="worldmapPanel">
             <canvas id="worldmapCanvas" width="648" height="648"></canvas>
             <div id="worldmapReadout">World</div>
+            <button type="button" class="text-btn" id="markerClear">Clear marker</button>
             <button type="button" class="text-btn" id="worldmapClose">Close</button>
         </div>
     </div>
@@ -782,7 +784,9 @@
                 'arcane-bolt': { name: 'Arcane Missile', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Each rank fires another bolt. 5 mana.' },
                 'arcane-surge': { name: 'Arcane Surge', short: 'Srg', kind: 'spell', weapon: 'staff', hint: 'Mage talent spell. 8 mana.' },
                 mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Restore health. 4 mana.' },
-                gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.' }
+                gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.' },
+                health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion from your bag.' },
+                mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion from your bag.' }
             };
             const BAR_PAGES = 3;
             const BAR_SLOTS = 8;
@@ -857,7 +861,11 @@
                             qty.textContent = String(slot.qty);
                             cell.appendChild(qty);
                         }
-                        cell.title = slot.kind === 'recipe' ? slot.name + ' — click to learn' : slot.name + ' x' + slot.qty;
+                        cell.title = slot.kind === 'recipe'
+                            ? slot.name + ' — click to learn'
+                            : (slot.kind === 'health' || slot.kind === 'mana')
+                            ? slot.name + ' — click to drink'
+                            : slot.name + ' x' + slot.qty;
                     } else {
                         cell.title = 'Empty';
                     }
@@ -1001,6 +1009,7 @@
 
             const explored = new Set();
             const exploredZones = new Set();
+            let waypoint = null;
             function rememberFog(key) {
                 if (!key || explored.has(key)) return;
                 explored.add(key);
@@ -1066,7 +1075,8 @@
 
                 const here = zoneAt(px, pz);
                 zoneNameEl.textContent = here.name;
-                zoneCoordsEl.textContent = here.x.toFixed(1) + ',  ' + here.z.toFixed(1);
+                const markerDist = waypoint ? Math.round(Math.hypot(waypoint.x - px, waypoint.z - pz)) : null;
+                zoneCoordsEl.textContent = here.x.toFixed(1) + ',  ' + here.z.toFixed(1) + (markerDist != null ? '   ·   ' + markerDist + ' to marker' : '');
 
                 ctx.save();
                 ctx.beginPath();
@@ -1216,6 +1226,38 @@
                 ctx.closePath();
                 ctx.fillStyle = '#4169E1';
                 ctx.fill();
+                if (waypoint) {
+                    const aim = project(waypoint.x, waypoint.z);
+                    const adx = aim.mx - mapSize / 2;
+                    const adz = aim.mz - mapSize / 2;
+                    const adist = Math.hypot(adx, adz) || 1;
+                    ctx.save();
+                    ctx.fillStyle = '#ffe14a';
+                    ctx.strokeStyle = '#3a2a00';
+                    ctx.lineWidth = 1.5;
+                    if (adist <= radius - 8) {
+                        ctx.translate(aim.mx, aim.mz);
+                        ctx.beginPath();
+                        ctx.moveTo(0, -7);
+                        ctx.lineTo(5, 0);
+                        ctx.lineTo(0, 7);
+                        ctx.lineTo(-5, 0);
+                        ctx.closePath();
+                    } else {
+                        const rim = radius - 11;
+                        ctx.translate(mapSize / 2 + (adx / adist) * rim, mapSize / 2 + (adz / adist) * rim);
+                        ctx.rotate(Math.atan2(adz, adx));
+                        ctx.beginPath();
+                        ctx.moveTo(9, 0);
+                        ctx.lineTo(-7, 5);
+                        ctx.lineTo(-4, 0);
+                        ctx.lineTo(-7, -5);
+                        ctx.closePath();
+                    }
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
                 if (!document.getElementById('worldmap').classList.contains('open')) return;
                 drawWorldMap();
             }
@@ -1367,8 +1409,25 @@
                 ctx.lineWidth = 2;
                 ctx.strokeStyle = '#ffffff';
                 ctx.stroke();
+                if (waypoint) {
+                    const mark = toMap(waypoint.x, waypoint.z);
+                    ctx.save();
+                    ctx.translate(mark.mx, mark.mz);
+                    ctx.fillStyle = '#ffe14a';
+                    ctx.strokeStyle = '#3a2a00';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -8);
+                    ctx.lineTo(6, 0);
+                    ctx.lineTo(0, 8);
+                    ctx.lineTo(-6, 0);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
                 const known = exploredZones.has(here.zx + ',' + here.zz);
-                document.getElementById('worldmapReadout').textContent = (known ? here.name : 'Unexplored') + '  ' + here.x.toFixed(0) + ', ' + here.z.toFixed(0) + '   ·   gray levels give no XP';
+                document.getElementById('worldmapReadout').textContent = (known ? here.name : 'Unexplored') + '  ' + here.x.toFixed(0) + ', ' + here.z.toFixed(0) + '   ·   right-click to mark a point';
             }
 
             function worldFromMapEvent(e) {
@@ -1387,7 +1446,18 @@
                 if (open) drawWorldMap();
             }
             document.getElementById('minimap').addEventListener('click', () => toggleWorldMap(true));
+            document.getElementById('markerClear').addEventListener('click', () => {
+                waypoint = null;
+                drawWorldMap();
+            });
             document.getElementById('worldmapClose').addEventListener('click', () => toggleWorldMap(false));
+            worldCanvas.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                const spot = worldFromMapEvent(e);
+                waypoint = { x: spot.x, z: spot.z };
+                drawWorldMap();
+                showMessage('Marker set');
+            });
             document.getElementById('worldmap').addEventListener('click', (e) => {
                 if (e.target.id === 'worldmap') toggleWorldMap(false);
             });
@@ -1929,6 +1999,10 @@
             function useAction(id) {
                 const action = ACTIONS[id];
                 if (!action) return;
+                if (action.kind === 'potion') {
+                    usePotion(action.item);
+                    return;
+                }
                 if (action.kind === 'gather') {
                     tryGather();
                     return;
@@ -2556,7 +2630,8 @@
             const PICKER_GROUPS = [
                 ['Warrior', ['sword', 'power-strike', 'cleave']],
                 ['Mage', ['staff', 'arcane-bolt', 'mend', 'arcane-surge']],
-                ['Field', ['gather']]
+                ['Field', ['gather']],
+                ['Potions', ['health', 'mana']]
             ];
 
             function saveActionBar() {
@@ -2584,6 +2659,8 @@
                 else if (id === 'arcane-surge') { drawBolts(g, 1); g.strokeStyle = '#d6efff'; g.lineWidth = 2; g.strokeRect(8, 8, 48, 48); }
                 else if (id === 'mend') drawMend(g);
                 else if (id === 'gather') drawAxe(g);
+                else if (id === 'health') drawVial(g, '#e74c3c');
+                else if (id === 'mana') drawVial(g, '#3498db');
                 else if (id === 'bag') drawBag(g);
                 else if (id === 'character') drawCharacter(g);
                 return canvas;
@@ -3056,7 +3133,7 @@
                     heading.textContent = title;
                     picker.appendChild(heading);
                     for (const id of ids) {
-                        if (!spellKnown(id)) continue;
+                        if (ACTIONS[id].kind !== 'potion' && !spellKnown(id)) continue;
                         const choice = document.createElement('button');
                         choice.type = 'button';
                         choice.className = 'icon-btn';
@@ -3668,8 +3745,7 @@
                 if (k === 'f') tryLoot();
                 if (k === 't') tryTalk();
                 if (k === 'r') tryReclaim();
-                if (k === 'h') usePotion('health');
-                if (k === 'm') usePotion('mana');
+                if (k === 'm') toggleWorldMap();
             });
             document.addEventListener('keyup', (e) => {
                 const k = e.key.toLowerCase();

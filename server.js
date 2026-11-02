@@ -500,7 +500,7 @@ const ABILITIES = {
 
 const BAR_PAGES = 3;
 const BAR_SLOTS = 8;
-const ACTION_IDS = new Set(['sword', 'power-strike', 'cleave', 'staff', 'arcane-bolt', 'arcane-surge', 'mend', 'gather']);
+const ACTION_IDS = new Set(['sword', 'power-strike', 'cleave', 'staff', 'arcane-bolt', 'arcane-surge', 'mend', 'gather', 'health', 'mana']);
 
 function defaultActionBar() {
     return [
