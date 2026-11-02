@@ -134,6 +134,27 @@ export function chunkResources(cx, cz) {
         }
     }
     appendDesignedNodes(cx, cz, items);
+    const decor = mulberry32(chunkSeed(cx + 17, cz + 41));
+    const boulders = 3 + Math.floor(decor() * 3);
+    for (let i = 0; i < boulders; i++) {
+        const px = (decor() - 0.5) * CHUNK_SIZE * 0.9;
+        const pz = (decor() - 0.5) * CHUNK_SIZE * 0.9;
+        const x = cx * CHUNK_SIZE + px;
+        const z = cz * CHUNK_SIZE + pz;
+        if (terrainHeight(x, z) < WATER_LEVEL + 0.45) continue;
+        items.push({
+            id: 'b-' + cx + ',' + cz + ',' + i,
+            type: 'boulder',
+            x,
+            z,
+            px,
+            pz,
+            sx: 1.1 + decor() * 1.4,
+            sy: 0,
+            sz: 0,
+            hits: 0
+        });
+    }
     return items;
 }
 

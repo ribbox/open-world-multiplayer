@@ -508,30 +508,52 @@
             );
 
             let rockTemplate = null;
-            loader.load(
-                '/models/rock.glb',
-                (gltf) => {
-                    const model = gltf.scene;
-                    const box = new THREE.Box3().setFromObject(model);
-                    const size = box.getSize(new THREE.Vector3());
-                    model.scale.setScalar(1 / Math.max(size.x, size.y, size.z, 0.001));
-                    model.updateWorldMatrix(true, true);
-                    box.setFromObject(model);
-                    const center = box.getCenter(new THREE.Vector3());
-                    model.position.set(-center.x, -box.min.y, -center.z);
-                    model.traverse(obj => {
-                        if (!obj.isMesh) return;
-                        obj.castShadow = true;
-                        obj.receiveShadow = true;
-                    });
-                    const root = new THREE.Group();
-                    root.add(model);
-                    rockTemplate = root;
-                    if (loadedChunks.size) reloadChunks();
-                },
-                undefined,
-                (err) => console.warn('Rock model failed', err)
-            );
+            let mineTemplate = null;
+            let rockLoads = 2;
+            function fitProp(model) {
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                model.scale.setScalar(1 / Math.max(size.x, size.y, size.z, 0.001));
+                model.updateWorldMatrix(true, true);
+                box.setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                model.position.set(-center.x, -box.min.y, -center.z);
+                model.traverse(obj => {
+                    if (!obj.isMesh) return;
+                    obj.castShadow = true;
+                    obj.receiveShadow = true;
+                });
+                const root = new THREE.Group();
+                root.add(model);
+                root.userData.shared = true;
+                return root;
+            }
+            function placeProp(template, item, scale) {
+                const mesh = template.clone(true);
+                mesh.userData.shared = true;
+                mesh.scale.setScalar(scale);
+                mesh.rotation.y = (item.x * 12.9898 + item.z * 78.233) % (Math.PI * 2);
+                mesh.position.set(item.px, terrainHeight(item.x, item.z), item.pz);
+                return mesh;
+            }
+            function rockReady() {
+                rockLoads -= 1;
+                if (rockLoads <= 0 && loadedChunks.size) reloadChunks();
+            }
+            loader.load('/models/rock.glb', (gltf) => {
+                rockTemplate = fitProp(gltf.scene);
+                rockReady();
+            }, undefined, (err) => {
+                console.warn('Rock model failed', err);
+                rockReady();
+            });
+            loader.load('/models/mine-rock.glb', (gltf) => {
+                mineTemplate = fitProp(gltf.scene);
+                rockReady();
+            }, undefined, (err) => {
+                console.warn('Mining rock model failed', err);
+                rockReady();
+            });
 
             // Each NPC kind is a file in /models.
             const npcModels = new Map();
@@ -1471,11 +1493,13 @@
                         crystal.position.set(item.px, terrainHeight(item.x, item.z) + 0.35, item.pz);
                         group.add(crystal);
                         meshes.push(crystal);
-                    } else if (rockTemplate) {
-                        const rock = rockTemplate.clone(true);
-                        rock.scale.setScalar(0.85 + item.sx * 0.35);
-                        rock.rotation.y = (item.x * 12.9898 + item.z * 78.233) % (Math.PI * 2);
-                        rock.position.set(item.px, terrainHeight(item.x, item.z), item.pz);
+                    } else if (item.type === 'boulder') {
+                        if (!rockTemplate) continue;
+                        const rock = placeProp(rockTemplate, item, 1.15 + item.sx * 0.4);
+                        group.add(rock);
+                        meshes.push(rock);
+                    } else if (mineTemplate) {
+                        const rock = placeProp(mineTemplate, item, 0.85 + item.sx * 0.35);
                         group.add(rock);
                         meshes.push(rock);
                     } else {
@@ -1493,8 +1517,8 @@
                         id: item.id,
                         x: item.x,
                         z: item.z,
-                        r: (item.type === 'tree' ? 0.5 : item.type === 'herb' ? 0.2 : item.type === 'sulfur' ? 0.4 : 0.9) + characterRadius,
-                        type: item.type,
+                        r: (item.type === 'tree' ? 0.5 : item.type === 'herb' ? 0.2 : item.type === 'sulfur' ? 0.4 : item.type === 'boulder' ? 0.7 + item.sx * 0.25 : 0.9) + characterRadius,
+                        type: item.type === 'boulder' ? '' : item.type,
                         hits,
                         meshes,
                         parent: group
@@ -1534,8 +1558,9 @@
             function removeNode(c) {
                 c.meshes.forEach(m => {
                     c.parent.remove(m);
+                    if (m.userData && m.userData.shared) return;
                     if (m.geometry) m.geometry.dispose();
-                    if (m.material) m.material.dispose();
+                    if (m.material && m.material.dispose) m.material.dispose();
                 });
                 removeCollider(c);
             }
@@ -3505,7 +3530,7 @@
                     const pz = characterGroup.position.z;
                     let near = false;
                     for (const c of allColliders) {
-                        if (c.type && Math.hypot(px - c.x, pz - c.z) < 2.8) near = true;
+                        if (c.type && c.type !== 'boulder' && Math.hypot(px - c.x, pz - c.z) < 2.8) near = true;
                     }
                     if (near) tryGather();
                     else if ((character.class ? wornWeapon() : equippedWeapon) === 'sword') tryAttack('sword');

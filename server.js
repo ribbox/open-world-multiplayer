@@ -1510,6 +1510,10 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'gatherResult', ok: false, reason: 'Unknown node' });
                 return;
             }
+            if (node.type === 'boulder') {
+                send(ws, { type: 'gatherResult', ok: false, reason: 'That rock cannot be mined' });
+                return;
+            }
             const hits = hitsFor(node.id);
             if (hits <= 0) {
                 send(ws, { type: 'gatherResult', ok: false, reason: 'Already gone', id: node.id, hits: 0, inventory: inventoryOf(player) });
