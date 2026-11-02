@@ -54,7 +54,7 @@ node server.js
 ```
 
 ## Controls
-- W/S: move, A/D: turn. Turning eases in, and the camera swings behind you unless the right mouse button is held.
+- W/S or the arrow keys: move. A/D or Left/Right: turn. Turning eases in, and the camera swings behind you unless the right mouse button is held.
 - Space: jump, Shift: sprint
 - 1-8 use the current action-bar page. [ and ] change page. The slots, bag, and character buttons are icons. Right-click a slot to assign a trained action.
 - Click an NPC or another player, or press Tab, to select them. Attacks hit the NPC. Mend heals the selected player, or you if nobody is selected.

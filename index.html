@@ -279,8 +279,8 @@
     <div id="info">
         <button type="button" id="hideInfo" aria-label="Hide instructions">×</button>
         <strong>Open World Prototype</strong><br>
-        W/S: Forward / Back<br>
-        A/D: Turn. The camera follows behind unless you are holding the right mouse button<br>
+        W/S or the arrow keys: Forward / Back<br>
+        A/D or Left/Right: Turn. The camera follows behind unless you are holding the right mouse button<br>
         Space: Jump &nbsp; Shift: Sprint<br>
         1-8: Action bar &nbsp; [ ]: Change page<br>
         Right-click a slot to assign a trained action<br>
@@ -1500,6 +1500,7 @@
 
             // Movement
             const keys = { w: false, a: false, s: false, d: false, shift: false, space: false, e: false };
+            const arrows = { up: false, down: false, left: false, right: false };
             const baseSpeed = 10;
             const sprintMultiplier = 2;
             const jumpSpeed = 8;
@@ -3801,6 +3802,11 @@
                 }
                 if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
                 const k = e.key.toLowerCase();
+                if (k === 'arrowup' || k === 'arrowdown' || k === 'arrowleft' || k === 'arrowright') e.preventDefault();
+                if (k === 'arrowup') arrows.up = true;
+                if (k === 'arrowdown') arrows.down = true;
+                if (k === 'arrowleft') arrows.left = true;
+                if (k === 'arrowright') arrows.right = true;
                 if (k in keys) keys[k] = true;
                 if (e.key === 'Shift') keys.shift = true;
                 if (e.key === ' ') {
@@ -3837,6 +3843,10 @@
             });
             document.addEventListener('keyup', (e) => {
                 const k = e.key.toLowerCase();
+                if (k === 'arrowup') arrows.up = false;
+                if (k === 'arrowdown') arrows.down = false;
+                if (k === 'arrowleft') arrows.left = false;
+                if (k === 'arrowright') arrows.right = false;
                 if (k in keys) keys[k] = false;
                 if (e.key === 'Shift') keys.shift = false;
                 if (e.key === ' ') keys.space = false;
@@ -3930,9 +3940,9 @@
                 const delta = Math.min(clock.getDelta(), 0.05);
 
                 let turnInput = 0;
-                if (keys.a) turnInput -= 1;
-                if (keys.d) turnInput += 1;
-                const moving = keys.w || keys.s;
+                if (keys.a || arrows.left) turnInput -= 1;
+                if (keys.d || arrows.right) turnInput += 1;
+                const moving = keys.w || keys.s || arrows.up || arrows.down;
                 const rateLimit = moving ? maxYawRate * 0.82 : maxYawRate;
                 const targetRate = turnInput * rateLimit;
                 const rateError = targetRate - yawRate;
@@ -3954,8 +3964,8 @@
                 if (waterAt(feetX, feetZ)) moveSpeed *= 0.45;
                 const move = new THREE.Vector3();
 
-                if (keys.w) move.add(forward);
-                if (keys.s) move.sub(forward);
+                if (keys.w || arrows.up) move.add(forward);
+                if (keys.s || arrows.down) move.sub(forward);
 
                 if (move.lengthSq() > 0) {
                     move.normalize().multiplyScalar(moveSpeed * delta);
