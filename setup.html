@@ -37,10 +37,11 @@
         <a href="/">Back to the game</a>
         <span id="note"></span>
     </header>
-    <form id="login">
+        <form id="login" autocomplete="on">
         <h2>Admin login</h2>
         <p>This page is separate from the game. The first password is <b>admin</b> unless ADMIN_PASSWORD is set.</p>
-        <input id="password" type="password" autocomplete="current-password">
+        <input name="username" autocomplete="username" value="admin" hidden>
+        <input id="password" name="password" type="password" autocomplete="current-password">
         <button type="submit">Enter</button>
         <p id="loginError"></p>
     </form>
@@ -87,9 +88,12 @@
                 <label>Steepest climb. Higher is steeper. A steeper slope cannot be walked or jumped.</label>
                 <input id="maxSlope" type="number" min="0.3" max="1.4" step="0.05">
                 <p>A zone can override hit points. Blank uses this formula.</p>
-                <label>New admin password</label>
-                <input id="newPassword" type="password" autocomplete="new-password">
-                <button type="button" id="savePassword">Change password</button>
+                <form id="passwordForm" autocomplete="on">
+                    <input name="username" autocomplete="username" value="admin" hidden>
+                    <label>New admin password</label>
+                    <input id="newPassword" name="new-password" type="password" autocomplete="new-password">
+                    <button type="button" id="savePassword">Change password</button>
+                </form>
             </div>
             <div id="panelLoot" hidden>
                 <label>Loot table</label>
