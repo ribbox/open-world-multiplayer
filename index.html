@@ -1814,6 +1814,7 @@
             function selectNpc(id) {
                 selectedNpcId = id || null;
                 refreshTargetFrame();
+                refreshNameplates();
             }
 
             function cycleTarget(step) {
@@ -1968,29 +1969,60 @@
                 tryAttack(id);
             }
 
+            function sharpTexture(canvas) {
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.colorSpace = THREE.SRGBColorSpace;
+                tex.generateMipmaps = true;
+                tex.minFilter = THREE.LinearMipmapLinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.anisotropy = 8;
+                tex.needsUpdate = true;
+                return tex;
+            }
+
+            function refreshNameplates() {
+                for (const [id, entry] of worldCivs) {
+                    const label = entry.group.userData.label;
+                    if (label) label.visible = id === selectedNpcId;
+                }
+                for (const [id, entry] of worldNpcs) {
+                    const label = entry.group.userData.label;
+                    if (label) label.visible = id === selectedNpcId;
+                }
+                for (const [id, entry] of remotePlayers) {
+                    const label = entry.mesh && entry.mesh.userData.label;
+                    if (label) label.visible = id === selectedNpcId;
+                }
+                for (const [id, marker] of corpseMarkers) {
+                    const label = marker.userData.label;
+                    if (label) label.visible = id === selectedNpcId;
+                }
+            }
+
             function makeNpcSprite(name, level, hp, maxHp) {
                 const canvas = document.createElement('canvas');
-                canvas.width = 256;
-                canvas.height = 112;
+                canvas.width = 512;
+                canvas.height = 224;
                 const ctx = canvas.getContext('2d');
-                ctx.fillStyle = 'rgba(0,0,0,0.6)';
-                ctx.fillRect(8, 4, 240, 52);
+                ctx.fillStyle = 'rgba(0,0,0,0.72)';
+                ctx.fillRect(16, 8, 480, 104);
                 ctx.fillStyle = '#ff6666';
-                ctx.font = 'bold 20px Arial';
+                ctx.font = 'bold 40px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(name || 'Hostile', 128, 20);
-                ctx.font = '16px Arial';
-                ctx.fillText('Lv ' + level, 128, 42);
+                ctx.fillText(name || 'Hostile', 256, 40);
+                ctx.font = '32px Arial';
+                ctx.fillText('Lv ' + level, 256, 84);
                 ctx.fillStyle = '#222';
-                ctx.fillRect(28, 66, 200, 14);
-                const width = Math.max(0, Math.min(200, 200 * (hp / (maxHp || 1))));
+                ctx.fillRect(56, 132, 400, 28);
+                const width = Math.max(0, Math.min(400, 400 * (hp / (maxHp || 1))));
                 ctx.fillStyle = '#e74c3c';
-                ctx.fillRect(28, 66, width, 14);
-                const tex = new THREE.CanvasTexture(canvas);
+                ctx.fillRect(56, 132, width, 28);
+                const tex = sharpTexture(canvas);
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
                 sprite.scale.set(1.8, 0.78, 1);
                 sprite.position.y = 2.45;
+                sprite.visible = false;
                 sprite.userData.texture = tex;
                 return sprite;
             }
@@ -2012,23 +2044,24 @@
 
             function makeCivSprite(name, title, color) {
                 const canvas = document.createElement('canvas');
-                canvas.width = 256;
-                canvas.height = 96;
+                canvas.width = 512;
+                canvas.height = 192;
                 const ctx = canvas.getContext('2d');
-                ctx.fillStyle = 'rgba(0,0,0,0.6)';
-                ctx.fillRect(8, 8, 240, 56);
+                ctx.fillStyle = 'rgba(0,0,0,0.72)';
+                ctx.fillRect(16, 16, 480, 112);
                 ctx.fillStyle = color || '#2ecc71';
-                ctx.font = 'bold 22px Arial';
+                ctx.font = 'bold 44px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(name || 'NPC', 128, 26);
-                ctx.font = '16px Arial';
+                ctx.fillText(name || 'NPC', 256, 52);
+                ctx.font = '32px Arial';
                 ctx.fillStyle = '#e8ffe8';
-                ctx.fillText(title || '', 128, 48);
-                const tex = new THREE.CanvasTexture(canvas);
+                ctx.fillText(title || '', 256, 96);
+                const tex = sharpTexture(canvas);
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
                 sprite.scale.set(1.8, 0.68, 1);
                 sprite.position.y = 2.45;
+                sprite.visible = false;
                 sprite.userData.texture = tex;
                 return sprite;
             }
@@ -2061,7 +2094,9 @@
                 group.userData.civilId = civ.id;
                 const label = makeCivSprite(civ.name, civ.title, civ.tint);
                 label.position.y = group.userData.labelY;
+                label.visible = civ.id === selectedNpcId;
                 group.add(label);
+                group.userData.label = label;
                 scene.add(group);
                 worldCivs.set(civ.id, { group, id: civ.id, name: civ.name, title: civ.title, role: civ.role, text: civ.text, quest: civ.quest || '', tint: civ.tint, bob: Math.random() * Math.PI * 2 });
             }
@@ -2332,6 +2367,7 @@
                 }
                 const label = makeNpcSprite(state.name, state.level, state.hp, state.maxHp);
                 label.position.y = entry.group.userData.labelY || 2.45;
+                label.visible = state.id === selectedNpcId;
                 entry.group.add(label);
                 entry.group.userData.label = label;
                 entry.name = state.name || entry.name;
@@ -3896,21 +3932,22 @@
 
             function makeNameSprite(name, color) {
                 const canvas = document.createElement('canvas');
-                canvas.width = 256;
-                canvas.height = 64;
+                canvas.width = 512;
+                canvas.height = 128;
                 const ctx = canvas.getContext('2d');
-                ctx.clearRect(0, 0, 256, 64);
-                ctx.fillStyle = 'rgba(0,0,0,0.55)';
-                ctx.fillRect(16, 8, 224, 48);
+                ctx.clearRect(0, 0, 512, 128);
+                ctx.fillStyle = 'rgba(0,0,0,0.72)';
+                ctx.fillRect(32, 16, 448, 96);
                 ctx.fillStyle = color || '#ffffff';
-                ctx.font = 'bold 28px Arial';
+                ctx.font = 'bold 56px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText((name || 'Player').slice(0, 16), 128, 32);
-                const tex = new THREE.CanvasTexture(canvas);
+                ctx.fillText((name || 'Player').slice(0, 16), 256, 64);
+                const tex = sharpTexture(canvas);
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
                 sprite.scale.set(2.4, 0.6, 1);
                 sprite.position.y = 2.6;
+                sprite.visible = false;
                 sprite.userData.texture = tex;
                 return sprite;
             }
@@ -3959,6 +3996,7 @@
                     group.userData.fallback = body;
                 }
                 const label = makeNameSprite(p.name, p.color);
+                label.visible = p.id === selectedNpcId;
                 group.add(label);
                 group.userData.label = label;
                 group.userData.playerId = p.id;
@@ -3974,6 +4012,7 @@
                     if (old.userData.texture) old.userData.texture.dispose();
                 }
                 const label = makeNameSprite(name, color || entry.data.color);
+                label.visible = entry.mesh.userData.playerId === selectedNpcId;
                 entry.mesh.add(label);
                 entry.mesh.userData.label = label;
             }
@@ -4034,6 +4073,7 @@
                     }
                     const label = makeNameSprite((name || 'Body') + ' — body', color || '#c5d8f2');
                     label.position.y = 1.1;
+                    label.visible = id === selectedNpcId;
                     marker.add(label);
                     marker.userData.label = label;
                     scene.add(marker);
