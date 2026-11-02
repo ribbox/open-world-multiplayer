@@ -26,7 +26,9 @@
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         td { padding: 3px 2px; vertical-align: top; }
         #note { min-height: 1.2em; color: #9cf; }
-        .tabs button { margin-right: 4px; }
+        .camp { border-top: 1px solid #333; margin-top: 10px; padding-top: 6px; }
+        .camp label { display: flex; gap: 6px; align-items: center; }
+        .camp input[type="text"] { flex: 1; min-width: 0; }
     </style>
 </head>
 <body>
@@ -50,7 +52,7 @@
                 <button type="button" id="tabLoot">Loot</button>
             </div>
             <div id="panelMap">
-                <p>Draw a zone or the world edge. With two or more points, each side can be a straight line or an organic curve. Click a side to switch it.</p>
+                <p>Draw a zone or the world edge. Place a camp, then choose its buildings and which people are there. A camp does not need a shop, a trainer, and a quest giver.</p>
                 <div class="row">
                     <button type="button" id="editZones" class="on">Zones</button>
                     <button type="button" id="editBounds">World edge</button>
@@ -108,6 +110,16 @@
         import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve } from './worldgen.js';
 
         const MOBS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
+        const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes'];
+        const CAMP_COLOR = { hamlet: '#f1c40f', outpost: '#c0392b', market: '#e67e22', shrine: '#5dade2', ruin: '#95a5a6', ashes: '#6e2c00' };
+        const CAMP_PRESETS = [
+            { layout: 'hamlet', shop: 'Merchant', trainer: '', quest: '' },
+            { layout: 'outpost', shop: '', trainer: 'Warden', quest: '' },
+            { layout: 'market', shop: 'Vendor', trainer: '', quest: '' },
+            { layout: 'shrine', shop: '', trainer: '', quest: 'Guide' },
+            { layout: 'ruin', shop: '', trainer: '', quest: '' },
+            { layout: 'ashes', shop: '', trainer: 'Hermit', quest: '' }
+        ];
         const NODES = ['tree', 'rock', 'herb', 'sulfur'];
         const KINDS = ['junk', 'coins', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor'];
         const canvas = document.getElementById('map');
@@ -216,6 +228,55 @@
             }
             box.append(labelWrap('Name', name), labelWrap('Mob', mob), labelWrap('Level', level), labelWrap('Hit points, blank for the formula', hp), labelWrap('Loot table', loot));
             for (const el of [name, mob, level, hp, loot]) el.addEventListener('change', () => { readFields(); draw(); renderZones(); });
+            const campsTitle = document.createElement('h2');
+            campsTitle.textContent = 'Camps';
+            box.appendChild(campsTitle);
+            if (!current.camps.length) {
+                const empty = document.createElement('p');
+                empty.textContent = 'Use the Camp tool to place one inside this zone.';
+                box.appendChild(empty);
+            }
+            current.camps.forEach((camp, index) => {
+                if (!CAMP_LAYOUTS.includes(camp.layout)) camp.layout = 'hamlet';
+                const block = document.createElement('div');
+                block.className = 'camp';
+                const title = document.createElement('p');
+                title.textContent = 'Camp ' + (index + 1) + ' at ' + Math.round(camp.x) + ', ' + Math.round(camp.z);
+                block.appendChild(title);
+                const layout = document.createElement('select');
+                for (const id of CAMP_LAYOUTS) {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = id;
+                    if (id === camp.layout) option.selected = true;
+                    layout.appendChild(option);
+                }
+                layout.addEventListener('change', () => { camp.layout = layout.value; draw(); });
+                block.appendChild(labelWrap('Buildings', layout));
+                for (const [key, caption] of [['shop', 'Shop'], ['trainer', 'Trainer'], ['quest', 'Quest giver']]) {
+                    const on = document.createElement('input');
+                    on.type = 'checkbox';
+                    on.checked = Boolean(camp[key]);
+                    const nameInput = document.createElement('input');
+                    nameInput.type = 'text';
+                    nameInput.value = camp[key] || '';
+                    nameInput.placeholder = caption;
+                    nameInput.disabled = !on.checked;
+                    on.addEventListener('change', () => {
+                        camp[key] = on.checked ? (nameInput.value.trim() || caption) : '';
+                        nameInput.disabled = !on.checked;
+                        if (on.checked) nameInput.value = camp[key];
+                        draw();
+                    });
+                    nameInput.addEventListener('change', () => {
+                        camp[key] = on.checked ? nameInput.value.trim().slice(0, 16) : '';
+                    });
+                    const line = document.createElement('label');
+                    line.append(on, document.createTextNode(caption), nameInput);
+                    block.appendChild(line);
+                }
+                box.appendChild(block);
+            });
         }
         function field(caption, id, value) {
             const input = document.createElement('input');
@@ -317,7 +378,7 @@
             }
             config.zones.forEach((entry, index) => {
                 strokeZone(entry.points, entry.edges, index === selected ? 'rgba(241,196,15,0.35)' : 'rgba(90,170,255,0.28)', index === selected ? '#f1c40f' : '#9cf', true);
-                for (const camp of entry.camps) mark(camp.x, camp.z, '#f1c40f', 5);
+                for (const camp of entry.camps) mark(camp.x, camp.z, CAMP_COLOR[camp.layout] || '#f1c40f', 5);
                 for (const node of entry.nodes) {
                     const color = node.type === 'tree' ? '#2e8b57' : node.type === 'rock' ? '#888' : node.type === 'herb' ? '#7dff4a' : '#f4d03f';
                     mark(node.x, node.z, color, 3);
@@ -540,15 +601,21 @@
             const current = zone();
             if (!current) { note('Select a zone first'); return; }
             if (!inside(spot.x, spot.z, outlineSamples(current.points, current.edges))) { note('Place that inside the outline'); return; }
-            if (tool === 'camp') current.camps.push({ x: point[0], z: point[1], shop: 'Merchant', trainer: 'Trainer' });
+            if (tool === 'camp') {
+                const preset = CAMP_PRESETS[current.camps.length % CAMP_PRESETS.length];
+                current.camps.push({ x: point[0], z: point[1], layout: preset.layout, shop: preset.shop, trainer: preset.trainer, quest: preset.quest });
+                renderFields();
+            }
             else if (NODES.includes(tool)) current.nodes.push({ type: tool, x: point[0], z: point[1] });
             else if (tool === 'erase') {
                 const node = current.nodes.findIndex(item => Math.hypot(item.x - spot.x, item.z - spot.z) < 12);
                 if (node >= 0) current.nodes.splice(node, 1);
                 else {
                     const camp = current.camps.findIndex(item => Math.hypot(item.x - spot.x, item.z - spot.z) < 14);
-                    if (camp >= 0) current.camps.splice(camp, 1);
-                    else {
+                    if (camp >= 0) {
+                        current.camps.splice(camp, 1);
+                        renderFields();
+                    } else {
                         const vertex = nearest(current.points, spot.x, spot.z, 14);
                         if (vertex >= 0 && current.points.length > 3) {
                             current.points.splice(vertex, 1);

@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampFolk, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -112,6 +112,23 @@ const CIVILIANS = [
     { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' }
 ];
 
+function pushCampRole(list, camp, zone, index, role, title, tint, text) {
+    const name = camp[role];
+    if (!name) return;
+    const spot = campSpot(camp.layout, role, camp.x, camp.z);
+    list.push({
+        id: 'd' + role + '-' + zone.id + '-' + index,
+        name,
+        role,
+        title,
+        tint,
+        x: spot.x,
+        z: spot.z,
+        text,
+        quest: ''
+    });
+}
+
 function rebuildCivilians() {
     const home = CIVILIANS.filter(civ => civ.id === 'mira' || civ.id === 'bram' || civ.id === 'sela');
     CIVILIANS.length = 0;
@@ -119,36 +136,38 @@ function rebuildCivilians() {
     for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
         for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
             if (zx === 0 && zz === 0) continue;
-            const spot = zoneCamp(zx, zz);
-            const drawn = designedZoneAt(spot.x, spot.z);
+            const plan = zoneCampPlan(zx, zz);
+            const drawn = designedZoneAt(plan.x, plan.z);
             if (drawn && drawn.camps.length) continue;
-            CIVILIANS.push(...zoneCampFolk(zx, zz));
+            CIVILIANS.push(...plan.folk);
         }
     }
     for (const zone of listDesignedZones()) {
         zone.camps.forEach((camp, index) => {
-            CIVILIANS.push({
-                id: 'dshop-' + zone.id + '-' + index,
-                name: camp.shop,
-                role: 'shop',
-                title: 'Shop',
-                tint: '#f1c40f',
-                x: camp.x + 2.2,
-                z: camp.z,
-                text: 'I buy and sell in ' + zone.name + '.'
-            });
-            CIVILIANS.push({
-                id: 'dtrain-' + zone.id + '-' + index,
-                name: camp.trainer,
-                role: 'trainer',
-                title: 'Trainer',
-                tint: '#5dade2',
-                x: camp.x - 2.2,
-                z: camp.z,
-                text: 'I train spells in ' + zone.name + '.'
-            });
+            pushCampRole(CIVILIANS, camp, zone, index, 'shop', 'Shop', '#f1c40f', 'I buy and sell in ' + zone.name + '.');
+            pushCampRole(CIVILIANS, camp, zone, index, 'trainer', 'Trainer', '#5dade2', 'I train spells in ' + zone.name + '.');
+            pushCampRole(CIVILIANS, camp, zone, index, 'quest', 'Quest giver', '#2ecc71', 'I keep the road through ' + zone.name + '.');
         });
     }
+}
+
+function campSites() {
+    const sites = [{ id: 'glade', x: 0, z: 6, layout: 'hamlet' }];
+    for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+        for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+            if (zx === 0 && zz === 0) continue;
+            const plan = zoneCampPlan(zx, zz);
+            const drawn = designedZoneAt(plan.x, plan.z);
+            if (drawn && drawn.camps.length) continue;
+            sites.push({ id: plan.id, x: plan.x, z: plan.z, layout: plan.layout });
+        }
+    }
+    for (const zone of listDesignedZones()) {
+        zone.camps.forEach((camp, index) => {
+            sites.push({ id: 'dcamp-' + zone.id + '-' + index, x: camp.x, z: camp.z, layout: camp.layout || 'hamlet' });
+        });
+    }
+    return sites;
 }
 
 rebuildCivilians();
@@ -1391,6 +1410,7 @@ wss.on('connection', (ws) => {
                 stats: statsOf(player),
                 npcs: Array.from(npcs.values()).filter(n => n.alive).map(publicNpc),
                 civilians: CIVILIANS.map(publicCivilian),
+                camps: campSites(),
                 quests: player.quests,
                 questDefs: publicQuests(),
                 chests: Array.from(chests.values()).map(publicChest),
@@ -2205,6 +2225,7 @@ app.put('/api/setup/config', requireAdmin, (req, res) => {
         type: 'world',
         world: publicWorld(),
         civilians: CIVILIANS.map(publicCivilian),
+        camps: campSites(),
         npcs: Array.from(npcs.values()).filter(npc => npc.alive).map(publicNpc)
     });
     res.json({ ok: true, config: { ...publicWorld(), loot: lootTables } });

@@ -386,17 +386,56 @@ export function zoneCamp(zx, zz) {
 
 const CAMP_NAMES = ['Ada', 'Bex', 'Cal', 'Dax', 'Eve', 'Faye', 'Gil', 'Hana', 'Ivo', 'Jem', 'Kit', 'Len', 'Mae', 'Nim', 'Ora', 'Pim', 'Quill', 'Ren', 'Siv', 'Tor', 'Una', 'Vik', 'Wyn', 'Yara', 'Zed'];
 
-export function zoneCampFolk(zx, zz) {
+export const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes'];
+
+const ROLE_OFFSET = {
+    hamlet: { shop: [3.5, -2.4], trainer: [-3.6, -2.2], quest: [0.2, 3.5] },
+    outpost: { shop: [3.2, -2.8], trainer: [-0.6, -3.4], quest: [3.4, 2.2] },
+    market: { shop: [0.2, -3.1], trainer: [-3.4, 2.4], quest: [3.6, 2.2] },
+    shrine: { shop: [4.4, 0.2], trainer: [-4.4, 0.6], quest: [0, 4.6] },
+    ruin: { shop: [3.4, -2.6], trainer: [-3.4, -2.2], quest: [0.6, 3.4] },
+    ashes: { shop: [2.8, -1.8], trainer: [-2.8, -1.4], quest: [0.2, 2.8] }
+};
+
+export function campYaw(x, z) {
+    return (chunkSeed(Math.round(x), Math.round(z)) % 4) * (Math.PI / 2);
+}
+
+export function campSpot(layout, role, x, z) {
+    const table = ROLE_OFFSET[layout] || ROLE_OFFSET.hamlet;
+    const local = table[role] || [0, 2.5];
+    const yaw = campYaw(x, z);
+    const c = Math.cos(yaw);
+    const s = Math.sin(yaw);
+    return { x: x + local[0] * c - local[1] * s, z: z + local[0] * s + local[1] * c };
+}
+
+export function zoneCampPlan(zx, zz) {
     const camp = zoneCamp(zx, zz);
     const place = zoneName(zx, zz);
     const h = chunkSeed(zx + 3, zz + 9);
+    const layout = CAMP_LAYOUTS[h % CAMP_LAYOUTS.length];
+    const roll = (h >>> 4) % 6;
     const shopName = CAMP_NAMES[h % CAMP_NAMES.length];
     let trainName = CAMP_NAMES[(h >>> 8) % CAMP_NAMES.length];
     if (trainName === shopName) trainName = CAMP_NAMES[(h + 7) % CAMP_NAMES.length];
-    return [
-        { id: 'shop-' + zx + '-' + zz, name: shopName, role: 'shop', title: 'Shop', tint: '#f1c40f', x: camp.x + 2.4, z: camp.z - 1.2, text: 'I buy goods and sell crafting skills in ' + place + '.' },
-        { id: 'train-' + zx + '-' + zz, name: trainName, role: 'trainer', title: 'Trainer', tint: '#5dade2', x: camp.x - 2.4, z: camp.z - 1.2, text: 'I train spells in ' + place + '.' }
-    ];
+    const questName = CAMP_NAMES[(h >>> 16) % CAMP_NAMES.length];
+    const folk = [];
+    if (roll === 0 || roll === 3) {
+        folk.push({ id: 'shop-' + zx + '-' + zz, name: shopName, role: 'shop', title: 'Shop', tint: '#f1c40f', text: 'I buy goods and sell crafting skills in ' + place + '.' });
+    }
+    if (roll === 1 || roll === 3 || roll === 5) {
+        folk.push({ id: 'train-' + zx + '-' + zz, name: trainName, role: 'trainer', title: 'Trainer', tint: '#5dade2', text: 'I train spells in ' + place + '.' });
+    }
+    if (roll === 2 || roll === 5) {
+        folk.push({ id: 'quest-' + zx + '-' + zz, name: questName, role: 'quest', title: 'Quest giver', tint: '#2ecc71', text: 'Travelers still stop in ' + place + '.', quest: '' });
+    }
+    for (const person of folk) {
+        const spot = campSpot(layout, person.role, camp.x, camp.z);
+        person.x = spot.x;
+        person.z = spot.z;
+    }
+    return { id: 'camp-' + zx + '-' + zz, x: camp.x, z: camp.z, layout, folk };
 }
 
 const SELL_RARITY = {
@@ -488,8 +527,10 @@ export function applyWorldConfig(config) {
             if (!Number.isFinite(x) || !Number.isFinite(z)) continue;
             entry.camps.push({
                 x, z,
-                shop: String(camp.shop || 'Merchant').slice(0, 16),
-                trainer: String(camp.trainer || 'Trainer').slice(0, 16)
+                layout: CAMP_LAYOUTS.includes(camp.layout) ? camp.layout : 'hamlet',
+                shop: String(camp.shop || '').trim().slice(0, 16),
+                trainer: String(camp.trainer || '').trim().slice(0, 16),
+                quest: String(camp.quest || '').trim().slice(0, 16)
             });
         }
         for (const node of (Array.isArray(zone.nodes) ? zone.nodes : []).slice(0, 40)) {

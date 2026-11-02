@@ -15,7 +15,7 @@ All of them are served by the Node.js server (no embedding).
 docker-compose up --build
 ```
 
-Open http://localhost:9898 for the game. World setup is a separate page at http://localhost:9898/setup . The first password is `admin`. Set `ADMIN_PASSWORD` on the container to lock it. From setup you can change the world size, choose a hill wall or a sea at the edge, draw zone outlines with straight or organic sides, and edit mobs, loot, camps, and resources. A steep slope cannot be climbed, and swimming only reaches a short way from shore.
+Open http://localhost:9898 for the game. World setup is a separate page at http://localhost:9898/setup . The first password is `admin`. Set `ADMIN_PASSWORD` on the container to lock it. From setup you can change the world size, choose a hill wall or a sea at the edge, draw zone outlines with straight or organic sides, and edit mobs, loot, camps, and resources. Each camp can be a hamlet, outpost, market, shrine, ruin, or ash ring, and it only has the shop, trainer, or quest giver you turn on. A steep slope cannot be climbed, and swimming only reaches a short way from shore.
 Host port 9898 is mapped to the app inside the container (port 3000) so it does not collide with anything already using 3000 or 8080. If 9898 is also taken, change the left side in `docker-compose.yml` (for example `"9900:3000"`) and open that port instead.
 
 ## Manual Node.js run
