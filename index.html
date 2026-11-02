@@ -507,6 +507,32 @@
                 (err) => showError('Failed to load player model: ' + err.message)
             );
 
+            let rockTemplate = null;
+            loader.load(
+                '/models/rock.glb',
+                (gltf) => {
+                    const model = gltf.scene;
+                    const box = new THREE.Box3().setFromObject(model);
+                    const size = box.getSize(new THREE.Vector3());
+                    model.scale.setScalar(1 / Math.max(size.x, size.y, size.z, 0.001));
+                    model.updateWorldMatrix(true, true);
+                    box.setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    model.position.set(-center.x, -box.min.y, -center.z);
+                    model.traverse(obj => {
+                        if (!obj.isMesh) return;
+                        obj.castShadow = true;
+                        obj.receiveShadow = true;
+                    });
+                    const root = new THREE.Group();
+                    root.add(model);
+                    rockTemplate = root;
+                    if (loadedChunks.size) reloadChunks();
+                },
+                undefined,
+                (err) => console.warn('Rock model failed', err)
+            );
+
             // Each NPC kind is a file in /models.
             const npcModels = new Map();
             let npcModelsReady = false;
@@ -1445,6 +1471,13 @@
                         crystal.position.set(item.px, terrainHeight(item.x, item.z) + 0.35, item.pz);
                         group.add(crystal);
                         meshes.push(crystal);
+                    } else if (rockTemplate) {
+                        const rock = rockTemplate.clone(true);
+                        rock.scale.setScalar(0.85 + item.sx * 0.35);
+                        rock.rotation.y = (item.x * 12.9898 + item.z * 78.233) % (Math.PI * 2);
+                        rock.position.set(item.px, terrainHeight(item.x, item.z), item.pz);
+                        group.add(rock);
+                        meshes.push(rock);
                     } else {
                         const rock = new THREE.Mesh(
                             new THREE.BoxGeometry(item.sx, item.sy, item.sz),
