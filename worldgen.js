@@ -85,13 +85,14 @@ export function chunkResources(cx, cz) {
     const n = 6 + Math.floor(rand() * 7);
     const items = [];
     for (let i = 0; i < n; i++) {
-        const type = rand() > 0.65 ? 'tree' : 'rock';
+        const roll = rand();
+        const type = roll > 0.7 ? 'tree' : roll > 0.035 ? 'boulder' : 'rock';
         const px = (rand() - 0.5) * CHUNK_SIZE * 0.85;
         const pz = (rand() - 0.5) * CHUNK_SIZE * 0.85;
         let sx = 0;
         let sy = 0;
         let sz = 0;
-        if (type === 'rock') {
+        if (type === 'rock' || type === 'boulder') {
             sx = 0.8 + rand() * 1.2;
             sy = 0.4 + rand() * 0.8;
             sz = 0.8 + rand() * 1.2;
@@ -109,7 +110,7 @@ export function chunkResources(cx, cz) {
             sx,
             sy,
             sz,
-            hits: type === 'tree' ? 3 : 4
+            hits: type === 'tree' ? 3 : type === 'boulder' ? 0 : 4
         });
     }
     const extra = mulberry32(chunkSeed(cx + 91, cz - 13));
@@ -135,7 +136,7 @@ export function chunkResources(cx, cz) {
     }
     appendDesignedNodes(cx, cz, items);
     const decor = mulberry32(chunkSeed(cx + 17, cz + 41));
-    const boulders = 3 + Math.floor(decor() * 3);
+    const boulders = 5 + Math.floor(decor() * 4);
     for (let i = 0; i < boulders; i++) {
         const px = (decor() - 0.5) * CHUNK_SIZE * 0.9;
         const pz = (decor() - 0.5) * CHUNK_SIZE * 0.9;

@@ -1491,7 +1491,7 @@
                 const colliders = [];
                 for (const item of chunkResources(cx, cz)) {
                     const hits = resourceHits.has(item.id) ? resourceHits.get(item.id) : item.hits;
-                    if (hits <= 0) continue;
+                    if (item.type !== 'boulder' && hits <= 0) continue;
 
                     const meshes = [];
                     if (item.type === 'tree') {
