@@ -11,6 +11,17 @@ Browser-based open-world game with multiplayer support, packaged for Docker. The
 - `/models/mine-rock.glb` — mining rocks. These are the nodes a pickaxe gathers.
 All of them are served by the Node.js server (no embedding).
 
+Further GLB files should be taken from [Open Source 3D Assets](https://www.opensource3dassets.com/en). Check the asset page for the license, then add the original name, collection, and license to the credits below.
+
+## Credits
+These models are from [Open Source 3D Assets](https://www.opensource3dassets.com/en). The registry is maintained by ToxSam. The models were made by Polygonal Mind and are CC0, so they can be used and changed without asking. Credit is given here anyway.
+
+| Game file | Original name | Collection |
+| --- | --- | --- |
+| `models/terrain-grass.glb` | TerrainGrass01 | Avatar Garden |
+| `models/rock.glb` | Rock_01 | Transit |
+| `models/mine-rock.glb` | Rock02_Art | Tomb Chaser 2 |
+
 ## Run with Docker
 
 ```bash
