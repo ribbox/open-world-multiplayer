@@ -548,12 +548,11 @@
                 rockReady();
             });
             let grassMat = null;
-            loader.load('/models/terrain-grass.glb', (gltf) => {
-                let source = null;
-                gltf.scene.traverse(obj => {
-                    if (obj.isMesh && obj.material && !source) source = obj.material;
-                });
-                if (!source) return;
+            let sandReady = false;
+            const sandPlaceholder = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+            sandPlaceholder.needsUpdate = true;
+            const sandMapUniform = { value: sandPlaceholder };
+            function groundMaterial(source) {
                 const mat = new THREE.MeshStandardMaterial({
                     map: source.map || null,
                     normalMap: source.normalMap || null,
@@ -563,23 +562,53 @@
                     metalness: source.metalness == null ? 0 : source.metalness,
                     vertexColors: true
                 });
-                for (const tex of [mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap]) {
+                for (const tex of [mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap, sandMapUniform.value]) {
                     if (!tex) continue;
                     tex.wrapS = THREE.RepeatWrapping;
                     tex.wrapT = THREE.RepeatWrapping;
                     tex.needsUpdate = true;
                 }
                 mat.onBeforeCompile = (shader) => {
+                    shader.uniforms.sandMap = sandMapUniform;
                     shader.vertexShader = shader.vertexShader
                         .replace('#include <common>', '#include <common>\nattribute float biome;\nvarying float vBiome;')
                         .replace('#include <uv_vertex>', '#include <uv_vertex>\nvBiome = biome;');
                     shader.fragmentShader = shader.fragmentShader
-                        .replace('#include <common>', '#include <common>\nvarying float vBiome;')
-                        .replace('#include <color_fragment>', '#include <color_fragment>\nif (vBiome < 0.5) diffuseColor.rgb = vColor.rgb;');
+                        .replace('#include <common>', '#include <common>\nvarying float vBiome;\nuniform sampler2D sandMap;')
+                        .replace('#include <color_fragment>', '#include <color_fragment>\nif (vBiome < 0.5) diffuseColor.rgb = vColor.rgb;\nelse if (vBiome > 1.5) diffuseColor.rgb = texture2D(sandMap, vMapUv).rgb;');
                 };
-                grassMat = mat;
+                return mat;
+            }
+            function refreshGround() {
                 if (loadedChunks.size) reloadChunks();
+            }
+            loader.load('/models/terrain-grass.glb', (gltf) => {
+                let source = null;
+                gltf.scene.traverse(obj => {
+                    if (obj.isMesh && obj.material && !source) source = obj.material;
+                });
+                if (!source) return;
+                grassMat = groundMaterial(source);
+                refreshGround();
             }, undefined, (err) => console.warn('Grass terrain failed', err));
+            loader.load('/models/terrain-sand.glb', (gltf) => {
+                let source = null;
+                gltf.scene.traverse(obj => {
+                    if (obj.isMesh && obj.material && obj.material.map && !source) source = obj.material;
+                });
+                if (!source || !source.map) return;
+                sandMapUniform.value = source.map;
+                sandMapUniform.value.wrapS = THREE.RepeatWrapping;
+                sandMapUniform.value.wrapT = THREE.RepeatWrapping;
+                sandMapUniform.value.needsUpdate = true;
+                sandReady = true;
+                refreshGround();
+            }, undefined, (err) => console.warn('Sand terrain failed', err));
+            let treeTemplate = null;
+            loader.load('/models/tree.glb', (gltf) => {
+                treeTemplate = fitProp(gltf.scene);
+                refreshGround();
+            }, undefined, (err) => console.warn('Tree model failed', err));
             loader.load('/models/mine-rock.glb', (gltf) => {
                 mineTemplate = fitProp(gltf.scene);
                 rockReady();
@@ -1407,9 +1436,10 @@
                     uv.setXY(i, wx / 20, wz / 20);
                     if (y < WATER_LEVEL + 0.15) wet = true;
                     const cliff = edgeKind === 'hills' && boundaryInset(wx, wz) < 18;
-                    const grass = grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
-                    biome[i] = grass ? 1 : 0;
-                    const tint = grass
+                    const sand = sandReady && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
+                    const grass = !sand && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
+                    biome[i] = sand ? 2 : grass ? 1 : 0;
+                    const tint = grass || sand
                         ? [1, 1, 1]
                         : y < WATER_LEVEL - 0.15
                         ? [0.07, 0.2, 0.3]
@@ -1494,7 +1524,11 @@
                     if (item.type !== 'boulder' && hits <= 0) continue;
 
                     const meshes = [];
-                    if (item.type === 'tree') {
+                    if (item.type === 'tree' && treeTemplate) {
+                        const tree = placeProp(treeTemplate, item, 4.6 + (Math.abs(Math.sin(item.x * 0.17 + item.z)) * 1.3));
+                        group.add(tree);
+                        meshes.push(tree);
+                    } else if (item.type === 'tree') {
                         const trunk = new THREE.Mesh(
                             new THREE.CylinderGeometry(0.3, 0.45, 3, 8),
                             new THREE.MeshLambertMaterial({ color: 0x8B4513 })
