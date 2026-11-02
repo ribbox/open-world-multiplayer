@@ -547,6 +547,39 @@
                 console.warn('Rock model failed', err);
                 rockReady();
             });
+            let grassMat = null;
+            loader.load('/models/terrain-grass.glb', (gltf) => {
+                let source = null;
+                gltf.scene.traverse(obj => {
+                    if (obj.isMesh && obj.material && !source) source = obj.material;
+                });
+                if (!source) return;
+                const mat = new THREE.MeshStandardMaterial({
+                    map: source.map || null,
+                    normalMap: source.normalMap || null,
+                    roughnessMap: source.roughnessMap || null,
+                    metalnessMap: source.metalnessMap || null,
+                    roughness: source.roughness == null ? 1 : source.roughness,
+                    metalness: source.metalness == null ? 0 : source.metalness,
+                    vertexColors: true
+                });
+                for (const tex of [mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap]) {
+                    if (!tex) continue;
+                    tex.wrapS = THREE.RepeatWrapping;
+                    tex.wrapT = THREE.RepeatWrapping;
+                    tex.needsUpdate = true;
+                }
+                mat.onBeforeCompile = (shader) => {
+                    shader.vertexShader = shader.vertexShader
+                        .replace('#include <common>', '#include <common>\nattribute float biome;\nvarying float vBiome;')
+                        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvBiome = biome;');
+                    shader.fragmentShader = shader.fragmentShader
+                        .replace('#include <common>', '#include <common>\nvarying float vBiome;')
+                        .replace('#include <color_fragment>', '#include <color_fragment>\nif (vBiome < 0.5) diffuseColor.rgb = vColor.rgb;');
+                };
+                grassMat = mat;
+                if (loadedChunks.size) reloadChunks();
+            }, undefined, (err) => console.warn('Grass terrain failed', err));
             loader.load('/models/mine-rock.glb', (gltf) => {
                 mineTemplate = fitProp(gltf.scene);
                 rockReady();
@@ -1362,6 +1395,8 @@
                 geo.rotateX(-Math.PI / 2);
                 const pos = geo.attributes.position;
                 const colors = new Float32Array(pos.count * 3);
+                const biome = new Float32Array(pos.count);
+                const uv = geo.attributes.uv;
                 const edgeKind = worldShape().edge;
                 let wet = false;
                 for (let i = 0; i < pos.count; i++) {
@@ -1369,9 +1404,14 @@
                     const wz = cz * chunkSize + pos.getZ(i);
                     const y = terrainHeight(wx, wz);
                     pos.setY(i, y);
+                    uv.setXY(i, wx / 20, wz / 20);
                     if (y < WATER_LEVEL + 0.15) wet = true;
                     const cliff = edgeKind === 'hills' && boundaryInset(wx, wz) < 18;
-                    const tint = y < WATER_LEVEL - 0.15
+                    const grass = grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
+                    biome[i] = grass ? 1 : 0;
+                    const tint = grass
+                        ? [1, 1, 1]
+                        : y < WATER_LEVEL - 0.15
                         ? [0.07, 0.2, 0.3]
                         : y < WATER_LEVEL + 0.55
                         ? [0.76, 0.68, 0.42]
@@ -1384,10 +1424,14 @@
                     colors[i * 3 + 2] = tint[2];
                 }
                 geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geo.setAttribute('biome', new THREE.BufferAttribute(biome, 1));
                 geo.computeVertexNormals();
+                if (grassMat && grassMat.normalMap) {
+                    try { geo.computeTangents(); } catch { /* the color still tiles if tangents fail */ }
+                }
                 const mesh = new THREE.Mesh(
                     geo,
-                    new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.FrontSide })
+                    grassMat || new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.FrontSide })
                 );
                 mesh.receiveShadow = true;
                 mesh.userData.terrain = true;

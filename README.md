@@ -6,6 +6,7 @@ Browser-based open-world game with multiplayer support, packaged for Docker. The
 - `/models/player.glb` — more human low-poly civilian (CC0) used for the local player.
 - `/models/npc.glb` — older shared minion, no longer used in game.
 - `/models/boar.glb`, `wolf.glb`, `spider.glb`, `bandit.glb`, `ogre.glb`, `wisp.glb`, `knight.glb`, `cultist.glb` — one file per hostile type.
+- `/models/terrain-grass.glb` — grass ground. Hills, sand, and rock keep their own colors.
 - `/models/rock.glb` — static rocks. They block movement and cannot be mined.
 - `/models/mine-rock.glb` — mining rocks. These are the nodes a pickaxe gathers.
 All of them are served by the Node.js server (no embedding).
