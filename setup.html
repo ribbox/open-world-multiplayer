@@ -693,6 +693,7 @@
             URL.revokeObjectURL(link.href);
             note('Map exported');
         });
+        document.getElementById('savePassword').addEventListener('click', async () => {
             try {
                 await api('/api/setup/password', { method: 'POST', body: JSON.stringify({ password: document.getElementById('newPassword').value }) });
                 note('Password changed');
