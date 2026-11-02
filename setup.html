@@ -53,7 +53,7 @@
                 <button type="button" id="tabLoot">Loot</button>
             </div>
             <div id="panelMap">
-                <p>Draw a zone or the world edge. Place a camp, then choose its buildings. Every camp has an innkeeper. Shop, trainer, and quest giver are optional.</p>
+                <p>Drag the map to move it, and scroll to zoom. Draw a zone or the world edge. A zone that crosses the coast is cut back to the shoreline. Place a camp, then choose its buildings. Every camp has an innkeeper. Shop, trainer, and quest giver are optional.</p>
                 <div class="row">
                     <button type="button" id="editZones" class="on">Zones</button>
                     <button type="button" id="editBounds">World edge</button>
@@ -112,7 +112,7 @@
         </div>
     </div>
     <script type="module">
-        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve } from './worldgen.js';
+        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve, polygonIntersection, downsampleRing } from './worldgen.js';
 
         const MOBS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
         const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes'];
@@ -431,6 +431,27 @@
         function outlineSamples(points, edges) {
             return points.length >= 3 ? curvePoints(points, edges || [], true) : points;
         }
+        function landOutline() {
+            const bounds = config.bounds || {};
+            if (bounds.points && bounds.points.length >= 3) return curvePoints(bounds.points, bounds.edges || [], true);
+            const half = Number(bounds.half) || 900;
+            return [[-half, -half], [half, -half], [half, half], [-half, half]];
+        }
+        function ringArea(points) {
+            let area = 0;
+            for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+                area += points[j][0] * points[i][1] - points[i][0] * points[j][1];
+            }
+            return Math.abs(area / 2);
+        }
+        function coastFit(points, edges) {
+            const zone = outlineSamples(points, edges);
+            const clipped = polygonIntersection(zone, landOutline());
+            if (clipped.length < 3) return null;
+            if (ringArea(zone) - ringArea(clipped) < Math.max(8, ringArea(zone) * 0.01)) return { points, edges, cut: false };
+            const next = downsampleRing(clipped, 78).map(point => [Math.round(point[0]), Math.round(point[1])]);
+            return { points: next, edges: next.map(() => 'line'), cut: true };
+        }
         function nearestEdge(points, edges, x, z) {
             if (!points || points.length < 2) return -1;
             const closed = points.length >= 3;
@@ -512,8 +533,10 @@
                 draw();
                 return;
             }
-            addZone(points, edges);
-            note('Zone added. Set its mob, then save.');
+            const fitted = coastFit(points, edges);
+            if (!fitted) { note('That zone is outside the coast'); return; }
+            addZone(fitted.points, fitted.edges);
+            note(fitted.cut ? 'Zone trimmed to the coast. Set its mob, then save.' : 'Zone added. Set its mob, then save.');
         });
         document.getElementById('clearBounds').addEventListener('click', () => {
             config.bounds.points = [];
@@ -550,17 +573,65 @@
             draw();
         });
         canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+        canvas.addEventListener('auxclick', (event) => event.preventDefault());
+        let arm = null;
+        let swallowClick = false;
         canvas.addEventListener('mousedown', (event) => {
+            swallowClick = false;
+            if (event.button === 1) event.preventDefault();
+            if (event.button === 1 || event.button === 2) {
+                drag = { mode: 'pan', x: event.clientX, y: event.clientY, vx: view.x, vz: view.z };
+                canvas.style.cursor = 'grabbing';
+                return;
+            }
+            if (event.button !== 0) return;
             const spot = worldFromEvent(event);
-            if (event.button === 2) { drag = { mode: 'pan', x: event.clientX, y: event.clientY, vx: view.x, vz: view.z }; return; }
             const current = activeOutline();
             if (tool === 'select' && current && current.points) {
                 const index = nearest(current.points, spot.x, spot.z, 18 / view.scale);
-                if (index >= 0) drag = { mode: 'point', index, outline: current };
+                if (index >= 0) {
+                    drag = {
+                        mode: 'point',
+                        index,
+                        outline: current,
+                        points: current.points.map(point => point.slice()),
+                        edges: (current.edges || []).slice()
+                    };
+                    return;
+                }
             }
+            arm = { x: event.clientX, y: event.clientY, vx: view.x, vz: view.z };
         });
-        window.addEventListener('mouseup', () => { drag = null; });
+        window.addEventListener('mouseup', () => {
+            if (drag && drag.mode === 'pan') swallowClick = true;
+            if (drag && drag.mode === 'point' && drag.outline && drawing === 'zone') {
+                const fitted = coastFit(drag.outline.points, drag.outline.edges);
+                if (!fitted) {
+                    drag.outline.points = drag.points;
+                    drag.outline.edges = drag.edges;
+                    note('That stays outside the coast');
+                } else if (fitted.cut) {
+                    drag.outline.points = fitted.points;
+                    drag.outline.edges = fitted.edges;
+                    drag.outline.camps = (drag.outline.camps || []).filter(camp => inside(camp.x, camp.z, fitted.points));
+                    drag.outline.nodes = (drag.outline.nodes || []).filter(node => inside(node.x, node.z, fitted.points));
+                    note('Zone trimmed to the coast');
+                    renderFields();
+                }
+            }
+            drag = null;
+            arm = null;
+            canvas.style.cursor = 'crosshair';
+        });
         canvas.addEventListener('mousemove', (event) => {
+            if (arm && !drag) {
+                const dx = event.clientX - arm.x;
+                const dy = event.clientY - arm.y;
+                if (dx * dx + dy * dy > 25) {
+                    drag = { mode: 'pan', x: arm.x, y: arm.y, vx: arm.vx, vz: arm.vz };
+                    canvas.style.cursor = 'grabbing';
+                }
+            }
             if (!drag) return;
             if (drag.mode === 'pan') {
                 view.x = drag.vx - (event.clientX - drag.x) / view.scale;
@@ -581,6 +652,7 @@
             draw();
         }, { passive: false });
         canvas.addEventListener('click', (event) => {
+            if (swallowClick) { swallowClick = false; return; }
             if (event.button !== 0) return;
             const spot = worldFromEvent(event);
             const point = [Math.round(spot.x), Math.round(spot.z)];
