@@ -11,6 +11,8 @@ Browser-based open-world game with multiplayer support, packaged for Docker. The
 - `/models/tree.glb` — trees that can be chopped.
 - `/models/rock.glb` — static rocks. They block movement and cannot be mined.
 - `/models/mine-rock.glb` — mining rocks. These are the nodes a pickaxe gathers.
+- `/models/camp.glb`, `inn.glb`, `cabin.glb` — camp site, inn, and huts.
+- `/models/chest.glb` — loot chests.
 All of them are served by the Node.js server (no embedding).
 
 Further GLB files should be taken from [Open Source 3D Assets](https://www.opensource3dassets.com/en). Check the asset page for the license, then add the original name, collection, and license to the credits below.
@@ -25,6 +27,15 @@ These models are from [Open Source 3D Assets](https://www.opensource3dassets.com
 | `models/tree.glb` | Tree01 | Avatar Garden |
 | `models/rock.glb` | Rock_01 | Transit |
 | `models/mine-rock.glb` | Rock02_Art | Tomb Chaser 2 |
+
+Camp, inn, cabin, and chest are by [GuipGomes](https://sketchfab.com/GuipGomes) on Sketchfab. The license is [CC-BY-NC-SA 4.0](http://creativecommons.org/licenses/by-nc-sa/4.0/): credit is required, commercial use is not allowed, and changes must stay under the same license.
+
+| Game file | Original name | Source |
+| --- | --- | --- |
+| `models/camp.glb` | Camp | https://sketchfab.com/3d-models/camp-ea0532fa7bfb4f5988113980a85eeb7e |
+| `models/inn.glb` | Inn | https://sketchfab.com/3d-models/inn-bfe11cb5e3f64776bdf284648d64cd0c |
+| `models/cabin.glb` | Cabin | https://sketchfab.com/3d-models/cabin-ec40bbe71e9442899f3f22b6fea0e010 |
+| `models/chest.glb` | Chest | https://sketchfab.com/3d-models/chest-15a7657f143a4939a32457ebd9daffda |
 
 ## Run with Docker
 
