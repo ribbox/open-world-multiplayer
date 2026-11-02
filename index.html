@@ -552,6 +552,7 @@
             const sandPlaceholder = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
             sandPlaceholder.needsUpdate = true;
             const sandMapUniform = { value: sandPlaceholder };
+            const sandOnUniform = { value: 0 };
             function groundMaterial(source) {
                 const mat = new THREE.MeshStandardMaterial({
                     map: source.map || null,
@@ -570,12 +571,23 @@
                 }
                 mat.onBeforeCompile = (shader) => {
                     shader.uniforms.sandMap = sandMapUniform;
+                    shader.uniforms.sandOn = sandOnUniform;
+                    shader.uniforms.waterLevel = { value: WATER_LEVEL };
                     shader.vertexShader = shader.vertexShader
-                        .replace('#include <common>', '#include <common>\nattribute float biome;\nvarying float vBiome;')
-                        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvBiome = biome;');
+                        .replace('#include <common>', '#include <common>\nattribute float biome;\nvarying float vBiome;\nvarying float vGroundY;')
+                        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvBiome = biome;\nvGroundY = position.y;');
                     shader.fragmentShader = shader.fragmentShader
-                        .replace('#include <common>', '#include <common>\nvarying float vBiome;\nuniform sampler2D sandMap;')
-                        .replace('#include <color_fragment>', '#include <color_fragment>\nif (vBiome < 0.5) diffuseColor.rgb = vColor.rgb;\nelse if (vBiome > 1.5) diffuseColor.rgb = texture2D(sandMap, vMapUv).rgb;');
+                        .replace('#include <common>', '#include <common>\nvarying float vBiome;\nvarying float vGroundY;\nuniform sampler2D sandMap;\nuniform float sandOn;\nuniform float waterLevel;')
+                        .replace('#include <color_fragment>', `#include <color_fragment>
+                            if (vGroundY < waterLevel + 0.05) {
+                                diffuseColor.rgb = vec3(0.07, 0.20, 0.30);
+                            } else if (vGroundY < waterLevel + 0.8 && vBiome > 0.25) {
+                                diffuseColor.rgb = sandOn > 0.5 ? texture2D(sandMap, vMapUv).rgb : vec3(0.76, 0.68, 0.42);
+                            } else if (vBiome < 0.5) {
+                                diffuseColor.rgb = vColor.rgb;
+                            } else if (vBiome > 1.5) {
+                                diffuseColor.rgb = sandOn > 0.5 ? texture2D(sandMap, vMapUv).rgb : vec3(0.76, 0.68, 0.42);
+                            }`);
                 };
                 return mat;
             }
@@ -602,6 +614,7 @@
                 sandMapUniform.value.wrapT = THREE.RepeatWrapping;
                 sandMapUniform.value.needsUpdate = true;
                 sandReady = true;
+                sandOnUniform.value = 1;
                 refreshGround();
             }, undefined, (err) => console.warn('Sand terrain failed', err));
             let treeTemplate = null;
