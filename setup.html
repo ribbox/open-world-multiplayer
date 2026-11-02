@@ -437,19 +437,43 @@
             const half = Number(bounds.half) || 900;
             return [[-half, -half], [half, -half], [half, half], [-half, half]];
         }
-        function ringArea(points) {
-            let area = 0;
-            for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-                area += points[j][0] * points[i][1] - points[i][0] * points[j][1];
-            }
-            return Math.abs(area / 2);
-        }
         function coastFit(points, edges) {
             const zone = outlineSamples(points, edges);
-            const clipped = polygonIntersection(zone, landOutline());
+            const land = landOutline();
+            const past = zone.some((point, index) => {
+                const next = zone[(index + 1) % zone.length];
+                for (let step = 0; step <= 8; step++) {
+                    const x = point[0] + (next[0] - point[0]) * step / 8;
+                    const z = point[1] + (next[1] - point[1]) * step / 8;
+                    if (inside(x, z, land)) continue;
+                    let nearest = Infinity;
+                    for (let i = 0, j = land.length - 1; i < land.length; j = i++) {
+                        const ax = land[j][0];
+                        const az = land[j][1];
+                        const bx = land[i][0];
+                        const bz = land[i][1];
+                        const dx = bx - ax;
+                        const dz = bz - az;
+                        const len = dx * dx + dz * dz || 1;
+                        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / len));
+                        nearest = Math.min(nearest, Math.hypot(x - (ax + dx * t), z - (az + dz * t)));
+                    }
+                    if (nearest > 1.5) return true;
+                }
+                return false;
+            });
+            if (!past) return { points, edges, cut: false };
+            const clipped = polygonIntersection(zone, land);
             if (clipped.length < 3) return null;
-            if (ringArea(zone) - ringArea(clipped) < Math.max(8, ringArea(zone) * 0.01)) return { points, edges, cut: false };
-            const next = downsampleRing(clipped, 78).map(point => [Math.round(point[0]), Math.round(point[1])]);
+            const next = [];
+            for (const point of downsampleRing(clipped, 78)) {
+                const rounded = [Math.round(point[0]), Math.round(point[1])];
+                const prev = next[next.length - 1];
+                if (prev && prev[0] === rounded[0] && prev[1] === rounded[1]) continue;
+                next.push(rounded);
+            }
+            if (next.length > 2 && next[0][0] === next[next.length - 1][0] && next[0][1] === next[next.length - 1][1]) next.pop();
+            if (next.length < 3) return null;
             return { points: next, edges: next.map(() => 'line'), cut: true };
         }
         function nearestEdge(points, edges, x, z) {

@@ -245,143 +245,145 @@ function ccwRing(points) {
     return ring;
 }
 
-function linkRing(points) {
-    const nodes = points.map(point => ({
-        x: point[0],
-        y: point[1],
-        intersect: false,
-        alpha: 0,
-        entry: false,
-        visited: false,
-        neighbor: null,
-        next: null,
-        prev: null,
-        end: null
-    }));
-    for (let i = 0; i < nodes.length; i++) {
-        nodes[i].next = nodes[(i + 1) % nodes.length];
-        nodes[i].prev = nodes[(i - 1 + nodes.length) % nodes.length];
-        nodes[i].end = nodes[(i + 1) % nodes.length];
-    }
-    return nodes[0];
+function sideOf(a, b, p) {
+    return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
 }
 
-function edgeCross(a, b, c, d) {
-    const rx = b.x - a.x;
-    const ry = b.y - a.y;
-    const sx = d.x - c.x;
-    const sy = d.y - c.y;
-    const den = rx * sy - ry * sx;
-    if (Math.abs(den) < 1e-8) return null;
-    const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den;
-    const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
-    if (t <= 0.0008 || t >= 0.9992 || u <= 0.0008 || u >= 0.9992) return null;
-    return { x: a.x + rx * t, y: a.y + ry * t, t, u };
+function lineCross(s, e, a, b) {
+    const dx = e[0] - s[0];
+    const dy = e[1] - s[1];
+    const ex = b[0] - a[0];
+    const ey = b[1] - a[1];
+    const den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-9) return null;
+    const t = ((a[0] - s[0]) * ey - (a[1] - s[1]) * ex) / den;
+    return [s[0] + dx * t, s[1] + dy * t];
 }
 
-function insertHit(from, end, node) {
-    let cursor = from;
-    while (cursor.next !== end && cursor.next.alpha <= node.alpha) cursor = cursor.next;
-    node.prev = cursor;
-    node.next = cursor.next;
-    cursor.next.prev = node;
-    cursor.next = node;
-}
-
-function markEntries(start, other) {
-    const dx = start.end.x - start.x;
-    const dy = start.end.y - start.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const probe = len * 0.0004;
-    let inside = pointInPoly(start.x + (dx / len) * probe, start.y + (dy / len) * probe, other);
-    let node = start;
-    do {
-        if (node.intersect) {
-            node.entry = !inside;
-            inside = !inside;
+function clipToConvex(subject, clip) {
+    let output = subject.map(point => [point[0], point[1]]);
+    for (let i = 0; i < clip.length; i++) {
+        const a = clip[i];
+        const b = clip[(i + 1) % clip.length];
+        const input = output;
+        output = [];
+        if (!input.length) return [];
+        for (let j = 0; j < input.length; j++) {
+            const start = input[j];
+            const end = input[(j + 1) % input.length];
+            const startIn = sideOf(a, b, start) >= -1e-6;
+            const endIn = sideOf(a, b, end) >= -1e-6;
+            if (endIn) {
+                if (!startIn) {
+                    const hit = lineCross(start, end, a, b);
+                    if (hit) output.push(hit);
+                }
+                output.push(end);
+            } else if (startIn) {
+                const hit = lineCross(start, end, a, b);
+                if (hit) output.push(hit);
+            }
         }
-        node = node.next;
-    } while (node !== start);
-}
-
-function traceLoop(start) {
-    const loop = [];
-    let current = start;
-    let guard = 0;
-    do {
-        if (current.visited && current !== start) break;
-        current.visited = true;
-        loop.push([current.x, current.y]);
-        if (current.entry) {
-            do {
-                current = current.next;
-                loop.push([current.x, current.y]);
-            } while (!current.intersect && guard++ < 8000);
-        } else {
-            do {
-                current = current.prev;
-                loop.push([current.x, current.y]);
-            } while (!current.intersect && guard++ < 8000);
-        }
-        current = current.neighbor;
-        guard += 1;
-    } while (current && current !== start && guard < 8000);
-    return loop;
-}
-
-function cleanRing(points) {
-    const out = [];
-    for (const point of points) {
-        const prev = out[out.length - 1];
-        if (prev && Math.hypot(prev[0] - point[0], prev[1] - point[1]) < 0.4) continue;
-        out.push([Math.round(point[0] * 10) / 10, Math.round(point[1] * 10) / 10]);
     }
-    if (out.length > 1 && Math.hypot(out[0][0] - out[out.length - 1][0], out[0][1] - out[out.length - 1][1]) < 0.4) out.pop();
-    return out;
+    return output;
+}
+
+function triangulate(points) {
+    const ring = ccwRing(points).filter((point, index, all) => {
+        const prev = all[(index - 1 + all.length) % all.length];
+        return Math.hypot(point[0] - prev[0], point[1] - prev[1]) > 0.05;
+    });
+    const verts = ring.map(point => ({ x: point[0], y: point[1] }));
+    const tris = [];
+    const turn = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    const contains = (p, a, b, c) => turn(a, b, p) >= -1e-6 && turn(b, c, p) >= -1e-6 && turn(c, a, p) >= -1e-6;
+    let guard = verts.length * verts.length + 8;
+    while (verts.length > 3 && guard-- > 0) {
+        let clipped = false;
+        for (let i = 0; i < verts.length; i++) {
+            const a = verts[(i + verts.length - 1) % verts.length];
+            const b = verts[i];
+            const c = verts[(i + 1) % verts.length];
+            if (turn(a, b, c) <= 1e-6) continue;
+            let ear = true;
+            for (const point of verts) {
+                if (point === a || point === b || point === c) continue;
+                if (contains(point, a, b, c)) { ear = false; break; }
+            }
+            if (!ear) continue;
+            tris.push([[a.x, a.y], [b.x, b.y], [c.x, c.y]]);
+            verts.splice(i, 1);
+            clipped = true;
+            break;
+        }
+        if (!clipped) break;
+    }
+    if (verts.length === 3) tris.push(verts.map(point => [point.x, point.y]));
+    return tris;
+}
+
+function pointKey(point) {
+    return (Math.round(point[0] * 100) / 100) + ',' + (Math.round(point[1] * 100) / 100);
+}
+
+function traceBoundary(pieces) {
+    const count = new Map();
+    const add = (a, b) => {
+        const forward = pointKey(a) + '>' + pointKey(b);
+        const back = pointKey(b) + '>' + pointKey(a);
+        if ((count.get(back) || 0) > 0) {
+            count.set(back, count.get(back) - 1);
+            if (count.get(back) === 0) count.delete(back);
+            return;
+        }
+        count.set(forward, (count.get(forward) || 0) + 1);
+    };
+    for (const piece of pieces) {
+        if (piece.length < 3) continue;
+        for (let i = 0; i < piece.length; i++) add(piece[i], piece[(i + 1) % piece.length]);
+    }
+    const next = new Map();
+    for (const [edge, times] of count) {
+        if (times <= 0) continue;
+        const [from, to] = edge.split('>');
+        if (!next.has(from)) next.set(from, []);
+        next.get(from).push(to);
+    }
+    const used = new Set();
+    const loops = [];
+    for (const [from, tos] of next) {
+        for (const to of tos) {
+            if (used.has(from + '>' + to)) continue;
+            const loop = [];
+            let current = from;
+            let upcoming = to;
+            let guard = 0;
+            while (guard++ < 5000 && !used.has(current + '>' + upcoming)) {
+                used.add(current + '>' + upcoming);
+                loop.push(current.split(',').map(Number));
+                const choices = next.get(upcoming) || [];
+                const step = choices.find(candidate => !used.has(upcoming + '>' + candidate));
+                if (!step) break;
+                current = upcoming;
+                upcoming = step;
+            }
+            if (loop.length >= 3) loops.push(loop);
+        }
+    }
+    loops.sort((p, q) => Math.abs(polyArea(q)) - Math.abs(polyArea(p)));
+    return loops.length ? loops[0] : [];
 }
 
 export function polygonIntersection(subject, clip) {
-    const aPoints = ccwRing(subject);
-    const bPoints = ccwRing(clip);
-    if (aPoints.length < 3 || bPoints.length < 3) return [];
-    const a0 = linkRing(aPoints);
-    const b0 = linkRing(bPoints);
-    const aEdges = [];
-    const bEdges = [];
-    let node = a0;
-    do { aEdges.push(node); node = node.end; } while (node !== a0);
-    node = b0;
-    do { bEdges.push(node); node = node.end; } while (node !== b0);
-    let hits = 0;
-    for (const edge of aEdges) {
-        for (const other of bEdges) {
-            const hit = edgeCross(edge, edge.end, other, other.end);
-            if (!hit) continue;
-            const left = { x: hit.x, y: hit.y, intersect: true, alpha: hit.t, entry: false, visited: false, neighbor: null, next: null, prev: null, end: null };
-            const right = { x: hit.x, y: hit.y, intersect: true, alpha: hit.u, entry: false, visited: false, neighbor: null, next: null, prev: null, end: null };
-            left.neighbor = right;
-            right.neighbor = left;
-            insertHit(edge, edge.end, left);
-            insertHit(other, other.end, right);
-            hits += 1;
-        }
+    const zone = ccwRing(subject);
+    const land = ccwRing(clip);
+    if (zone.length < 3 || land.length < 3) return [];
+    const pieces = [];
+    for (const triangle of triangulate(land)) {
+        const piece = clipToConvex(zone, triangle);
+        if (piece.length >= 3) pieces.push(piece);
     }
-    if (!hits) {
-        if (pointInPoly(aPoints[0][0], aPoints[0][1], bPoints)) return aPoints;
-        if (pointInPoly(bPoints[0][0], bPoints[0][1], aPoints)) return bPoints;
-        return [];
-    }
-    markEntries(a0, bPoints);
-    markEntries(b0, aPoints);
-    const loops = [];
-    node = a0;
-    do {
-        if (node.intersect && node.entry && !node.visited) loops.push(traceLoop(node));
-        node = node.next;
-    } while (node !== a0);
-    loops.sort((p, q) => Math.abs(polyArea(q)) - Math.abs(polyArea(p)));
-    const best = loops.find(loop => cleanRing(loop).length >= 3);
-    return best ? cleanRing(best) : [];
+    return traceBoundary(pieces);
 }
 
 export function downsampleRing(points, max = 80) {
