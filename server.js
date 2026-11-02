@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -120,6 +120,7 @@ function pushCampRole(list, camp, zone, index, role, title, tint, text) {
     const name = camp[role];
     if (!name) return;
     const spot = campSpot(camp.layout, role, camp.x, camp.z);
+    if (!onLand(spot.x, spot.z)) return;
     list.push({
         id: 'd' + role + '-' + zone.id + '-' + index,
         name,
@@ -133,21 +134,43 @@ function pushCampRole(list, camp, zone, index, role, title, tint, text) {
     });
 }
 
+function onLand(x, z) {
+    return boundaryInset(x, z) >= 6 && !waterAt(x, z);
+}
+
+function mapSpawn() {
+    if (customMap()) {
+        const sites = campSites();
+        if (sites[0]) {
+            const spot = campSpot(sites[0].layout || 'hamlet', 'inn', sites[0].x, sites[0].z);
+            if (onLand(spot.x, spot.z)) return { x: spot.x, z: spot.z, name: 'Inn' };
+            if (onLand(sites[0].x, sites[0].z)) return { x: sites[0].x, z: sites[0].z, name: 'Camp' };
+        }
+        const zone = listDesignedZones()[0];
+        if (zone && zone.points && zone.points[0]) return { x: zone.points[0][0], z: zone.points[0][1], name: zone.name || 'Camp' };
+    }
+    return DEFAULT_SPAWN;
+}
+
 function rebuildCivilians() {
     const home = CIVILIANS.filter(civ => civ.id === 'mira' || civ.id === 'bram' || civ.id === 'sela' || civ.id === 'holt');
     CIVILIANS.length = 0;
-    CIVILIANS.push(...home);
-    for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
-        for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
-            if (zx === 0 && zz === 0) continue;
-            const plan = zoneCampPlan(zx, zz);
-            const drawn = designedZoneAt(plan.x, plan.z);
-            if (drawn && drawn.camps.length) continue;
-            CIVILIANS.push(...plan.folk);
+    if (!customMap()) CIVILIANS.push(...home);
+    if (!customMap()) {
+        for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+            for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+                if (zx === 0 && zz === 0) continue;
+                const plan = zoneCampPlan(zx, zz);
+                if (!onLand(plan.x, plan.z)) continue;
+                const drawn = designedZoneAt(plan.x, plan.z);
+                if (drawn && drawn.camps.length) continue;
+                CIVILIANS.push(...plan.folk.filter(person => onLand(person.x, person.z)));
+            }
         }
     }
     for (const zone of listDesignedZones()) {
         zone.camps.forEach((camp, index) => {
+            if (!onLand(camp.x, camp.z)) return;
             pushCampRole(CIVILIANS, camp, zone, index, 'inn', 'Innkeeper', '#e67e22', 'I keep the inn in ' + zone.name + '. You can set your spawn here.');
             pushCampRole(CIVILIANS, camp, zone, index, 'shop', 'Shop', '#f1c40f', 'I buy and sell in ' + zone.name + '.');
             pushCampRole(CIVILIANS, camp, zone, index, 'trainer', 'Trainer', '#5dade2', 'I train spells in ' + zone.name + '.');
@@ -157,18 +180,23 @@ function rebuildCivilians() {
 }
 
 function campSites() {
-    const sites = [{ id: 'glade', x: 0, z: 6, layout: 'hamlet' }];
-    for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
-        for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
-            if (zx === 0 && zz === 0) continue;
-            const plan = zoneCampPlan(zx, zz);
-            const drawn = designedZoneAt(plan.x, plan.z);
-            if (drawn && drawn.camps.length) continue;
-            sites.push({ id: plan.id, x: plan.x, z: plan.z, layout: plan.layout });
+    const sites = [];
+    if (!customMap() && onLand(0, 6)) sites.push({ id: 'glade', x: 0, z: 6, layout: 'hamlet' });
+    if (!customMap()) {
+        for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+            for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+                if (zx === 0 && zz === 0) continue;
+                const plan = zoneCampPlan(zx, zz);
+                if (!onLand(plan.x, plan.z)) continue;
+                const drawn = designedZoneAt(plan.x, plan.z);
+                if (drawn && drawn.camps.length) continue;
+                sites.push({ id: plan.id, x: plan.x, z: plan.z, layout: plan.layout });
+            }
         }
     }
     for (const zone of listDesignedZones()) {
         zone.camps.forEach((camp, index) => {
+            if (!onLand(camp.x, camp.z)) return;
             sites.push({ id: 'dcamp-' + zone.id + '-' + index, x: camp.x, z: camp.z, layout: camp.layout || 'hamlet' });
         });
     }
@@ -197,7 +225,8 @@ function readSpawn(prof) {
     const spawn = prof && prof.spawn;
     const x = Number(spawn && spawn.x);
     const z = Number(spawn && spawn.z);
-    if (!Number.isFinite(x) || !Number.isFinite(z)) return { x: DEFAULT_SPAWN.x, z: DEFAULT_SPAWN.z, name: DEFAULT_SPAWN.name };
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return mapSpawn();
+    if (customMap() && boundaryInset(x, z) < 0) return mapSpawn();
     return { x, z, name: String(spawn.name || 'Inn').slice(0, 16) };
 }
 
@@ -360,13 +389,18 @@ function pickWander(npc) {
 
 function ensureZone(zx, zz) {
     if (!zoneInWorld(zx, zz)) return;
-    if (boundaryInset(zx * ZONE_SIZE, zz * ZONE_SIZE) < 30) return;
+    const cx = zx * ZONE_SIZE;
+    const cz = zz * ZONE_SIZE;
+    if (boundaryInset(cx, cz) < 24) return;
+    if (customMap() && !designedZoneAt(cx, cz)) return;
     const key = zoneKey(zx, zz);
     if (seededZones.has(key)) return;
     seededZones.add(key);
     for (let i = 0; i < 2; i++) {
         const npc = { id: 'z' + zx + '_' + zz + '_' + i, zx, zz };
         placeNpc(npc);
+        if (customMap() && !designedZoneAt(npc.x, npc.z)) continue;
+        if (!onLand(npc.x, npc.z)) continue;
         npcs.set(npc.id, npc);
     }
 }
@@ -418,7 +452,7 @@ function becomeGhost(player, now) {
     if (player.ghost) return;
     player.ghost = true;
     player.corpse = { x: player.x, z: player.z };
-    const home = player.spawn || DEFAULT_SPAWN;
+    const home = player.spawn || mapSpawn();
     player.hp = 0;
     player.x = home.x;
     player.y = 0;
@@ -1087,7 +1121,7 @@ function savePlayer(player) {
     prof.spellRanks = player.spellRanks || {};
     prof.recipes = player.recipes || [];
     prof.quests = player.quests || {};
-    prof.spawn = player.spawn || { x: DEFAULT_SPAWN.x, z: DEFAULT_SPAWN.z, name: DEFAULT_SPAWN.name };
+    prof.spawn = player.spawn || mapSpawn();
     prof.level = player.level;
     prof.xp = player.xp;
     prof.coins = player.coins || 0;

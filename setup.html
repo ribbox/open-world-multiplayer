@@ -104,6 +104,7 @@
             <h2>Selected zone</h2>
             <div id="zoneFields">Select or draw a zone.</div>
             <button type="button" id="save">Save world</button>
+            <button type="button" id="exportMap">Export map</button>
         </div>
     </div>
     <script type="module">
@@ -673,7 +674,25 @@
                 note(err.message);
             }
         });
-        document.getElementById('savePassword').addEventListener('click', async () => {
+        document.getElementById('exportMap').addEventListener('click', () => {
+            readFields();
+            const copy = {
+                hpBase: config.hpBase,
+                hpPerLevel: config.hpPerLevel,
+                grayLevels: config.grayLevels,
+                xpPerMobLevel: config.xpPerMobLevel,
+                bounds: config.bounds,
+                zones: config.zones,
+                loot: config.loot
+            };
+            const blob = new Blob([JSON.stringify(copy, null, 2)], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'world-map.json';
+            link.click();
+            URL.revokeObjectURL(link.href);
+            note('Map exported');
+        });
             try {
                 await api('/api/setup/password', { method: 'POST', body: JSON.stringify({ password: document.getElementById('newPassword').value }) });
                 note('Password changed');

@@ -81,81 +81,83 @@ export function terrainHeight(x, z) {
 
 // Same sequence the client uses to place trees and rocks.
 export function chunkResources(cx, cz) {
-    const rand = mulberry32(chunkSeed(cx, cz));
-    const n = 6 + Math.floor(rand() * 7);
     const items = [];
-    for (let i = 0; i < n; i++) {
-        const roll = rand();
-        const type = roll > 0.7 ? 'tree' : roll > 0.035 ? 'boulder' : 'rock';
-        const px = (rand() - 0.5) * CHUNK_SIZE * 0.85;
-        const pz = (rand() - 0.5) * CHUNK_SIZE * 0.85;
-        let sx = 0;
-        let sy = 0;
-        let sz = 0;
-        if (type === 'rock' || type === 'boulder') {
-            sx = 0.8 + rand() * 1.2;
-            sy = 0.4 + rand() * 0.8;
-            sz = 0.8 + rand() * 1.2;
+    if (!customMap()) {
+        const rand = mulberry32(chunkSeed(cx, cz));
+        const n = 6 + Math.floor(rand() * 7);
+        for (let i = 0; i < n; i++) {
+            const roll = rand();
+            const type = roll > 0.7 ? 'tree' : roll > 0.035 ? 'boulder' : 'rock';
+            const px = (rand() - 0.5) * CHUNK_SIZE * 0.85;
+            const pz = (rand() - 0.5) * CHUNK_SIZE * 0.85;
+            let sx = 0;
+            let sy = 0;
+            let sz = 0;
+            if (type === 'rock' || type === 'boulder') {
+                sx = 0.8 + rand() * 1.2;
+                sy = 0.4 + rand() * 0.8;
+                sz = 0.8 + rand() * 1.2;
+            }
+            const x = cx * CHUNK_SIZE + px;
+            const z = cz * CHUNK_SIZE + pz;
+            if (terrainHeight(x, z) < WATER_LEVEL + 0.2 || boundaryInset(x, z) < 8) continue;
+            items.push({
+                id: `${cx},${cz},${i}`,
+                type,
+                x,
+                z,
+                px,
+                pz,
+                sx,
+                sy,
+                sz,
+                hits: type === 'tree' ? 3 : type === 'boulder' ? 0 : 4
+            });
         }
-        const x = cx * CHUNK_SIZE + px;
-        const z = cz * CHUNK_SIZE + pz;
-        if (terrainHeight(x, z) < WATER_LEVEL + 0.2) continue;
-        items.push({
-            id: `${cx},${cz},${i}`,
-            type,
-            x,
-            z,
-            px,
-            pz,
-            sx,
-            sy,
-            sz,
-            hits: type === 'tree' ? 3 : type === 'boulder' ? 0 : 4
-        });
-    }
-    const extra = mulberry32(chunkSeed(cx + 91, cz - 13));
-    const herbs = 1 + Math.floor(extra() * 2);
-    for (let n = 0; n < herbs; n++) {
-        const px = (extra() - 0.5) * CHUNK_SIZE * 0.8;
-        const pz = (extra() - 0.5) * CHUNK_SIZE * 0.8;
-        const x = cx * CHUNK_SIZE + px;
-        const z = cz * CHUNK_SIZE + pz;
-        if (terrainHeight(x, z) < WATER_LEVEL + 0.35) continue;
-        const index = items.length;
-        items.push({ id: `${cx},${cz},${index}`, type: 'herb', x, z, px, pz, sx: 0, sy: 0, sz: 0, hits: 2 });
-    }
-    if (extra() < 0.45) {
-        const px = (extra() - 0.5) * CHUNK_SIZE * 0.8;
-        const pz = (extra() - 0.5) * CHUNK_SIZE * 0.8;
-        const x = cx * CHUNK_SIZE + px;
-        const z = cz * CHUNK_SIZE + pz;
-        if (terrainHeight(x, z) >= WATER_LEVEL + 0.35) {
+        const extra = mulberry32(chunkSeed(cx + 91, cz - 13));
+        const herbs = 1 + Math.floor(extra() * 2);
+        for (let n = 0; n < herbs; n++) {
+            const px = (extra() - 0.5) * CHUNK_SIZE * 0.8;
+            const pz = (extra() - 0.5) * CHUNK_SIZE * 0.8;
+            const x = cx * CHUNK_SIZE + px;
+            const z = cz * CHUNK_SIZE + pz;
+            if (terrainHeight(x, z) < WATER_LEVEL + 0.35 || boundaryInset(x, z) < 8) continue;
             const index = items.length;
-            items.push({ id: `${cx},${cz},${index}`, type: 'sulfur', x, z, px, pz, sx: 0.45, sy: 0.7, sz: 0.45, hits: 3 });
+            items.push({ id: `${cx},${cz},${index}`, type: 'herb', x, z, px, pz, sx: 0, sy: 0, sz: 0, hits: 2 });
+        }
+        if (extra() < 0.45) {
+            const px = (extra() - 0.5) * CHUNK_SIZE * 0.8;
+            const pz = (extra() - 0.5) * CHUNK_SIZE * 0.8;
+            const x = cx * CHUNK_SIZE + px;
+            const z = cz * CHUNK_SIZE + pz;
+            if (terrainHeight(x, z) >= WATER_LEVEL + 0.35 && boundaryInset(x, z) >= 8) {
+                const index = items.length;
+                items.push({ id: `${cx},${cz},${index}`, type: 'sulfur', x, z, px, pz, sx: 0.45, sy: 0.7, sz: 0.45, hits: 3 });
+            }
+        }
+        const decor = mulberry32(chunkSeed(cx + 17, cz + 41));
+        const boulders = 5 + Math.floor(decor() * 4);
+        for (let i = 0; i < boulders; i++) {
+            const px = (decor() - 0.5) * CHUNK_SIZE * 0.9;
+            const pz = (decor() - 0.5) * CHUNK_SIZE * 0.9;
+            const x = cx * CHUNK_SIZE + px;
+            const z = cz * CHUNK_SIZE + pz;
+            if (terrainHeight(x, z) < WATER_LEVEL + 0.45 || boundaryInset(x, z) < 8) continue;
+            items.push({
+                id: 'b-' + cx + ',' + cz + ',' + i,
+                type: 'boulder',
+                x,
+                z,
+                px,
+                pz,
+                sx: 1.1 + decor() * 1.4,
+                sy: 0,
+                sz: 0,
+                hits: 0
+            });
         }
     }
     appendDesignedNodes(cx, cz, items);
-    const decor = mulberry32(chunkSeed(cx + 17, cz + 41));
-    const boulders = 5 + Math.floor(decor() * 4);
-    for (let i = 0; i < boulders; i++) {
-        const px = (decor() - 0.5) * CHUNK_SIZE * 0.9;
-        const pz = (decor() - 0.5) * CHUNK_SIZE * 0.9;
-        const x = cx * CHUNK_SIZE + px;
-        const z = cz * CHUNK_SIZE + pz;
-        if (terrainHeight(x, z) < WATER_LEVEL + 0.45) continue;
-        items.push({
-            id: 'b-' + cx + ',' + cz + ',' + i,
-            type: 'boulder',
-            x,
-            z,
-            px,
-            pz,
-            sx: 1.1 + decor() * 1.4,
-            sy: 0,
-            sz: 0,
-            hits: 0
-        });
-    }
     return items;
 }
 
@@ -571,6 +573,10 @@ export function applyWorldConfig(config) {
     }
 }
 
+export function customMap() {
+    return designedZones.length > 0;
+}
+
 export function designedZoneAt(x, z) {
     for (let i = designedZones.length - 1; i >= 0; i--) {
         if (pointInPoly(x, z, designedZones[i].samples || designedZones[i].points)) return designedZones[i];
@@ -596,6 +602,9 @@ export function listDesignedZones() {
 function appendDesignedNodes(cx, cz, items) {
     for (const node of designedNodes) {
         if (Math.floor(node.x / CHUNK_SIZE) !== cx || Math.floor(node.z / CHUNK_SIZE) !== cz) continue;
+        if (terrainHeight(node.x, node.z) < WATER_LEVEL + 0.35) continue;
+        if (boundaryInset(node.x, node.z) < 4) continue;
+        if (!designedZoneAt(node.x, node.z)) continue;
         const index = items.length;
         const rock = node.type === 'rock';
         const sulfur = node.type === 'sulfur';
