@@ -1559,6 +1559,7 @@
             }
 
             let ghost = false;
+            let boundSpawn = null;
             let myCorpse = null;
             const corpseMarkers = new Map();
 
@@ -1884,7 +1885,8 @@
             }
 
             function cloneNpcModel(kind) {
-                const template = npcModels.get(kind) || npcModels.get('boar');
+                const key = kind === 'inn' && !npcModels.has('inn') ? 'shop' : kind;
+                const template = npcModels.get(key) || npcModels.get('boar');
                 if (!template) return null;
                 const model = template.clone(true);
                 model.traverse(obj => {
@@ -1898,6 +1900,7 @@
                 if (!civ || !npcModelsReady || worldCivs.has(civ.id)) return;
                 const body = cloneNpcModel(civ.role);
                 if (!body) return;
+                if (civ.role === 'inn') tintHostile(body, civ.tint || '#e67e22', 0.55);
                 const group = new THREE.Group();
                 body.updateWorldMatrix(true, true);
                 const bounds = new THREE.Box3().setFromObject(body);
@@ -3006,7 +3009,15 @@
                 const body = document.createElement('p');
                 body.textContent = entry.text || '';
                 panel.appendChild(body);
-                if (entry.role === 'shop') {
+                if (entry.role === 'inn') {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn gold-btn';
+                    const here = boundSpawn && entry.group && Math.hypot(boundSpawn.x - entry.group.position.x, boundSpawn.z - entry.group.position.z) < 1.5;
+                    button.textContent = here ? 'This is your spawn' : 'Set spawn here';
+                    button.addEventListener('click', () => sendCharacter('setSpawn', { id: entry.id }));
+                    panel.appendChild(button);
+                } else if (entry.role === 'shop') {
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.className = 'text-btn gold-btn';
@@ -3964,6 +3975,10 @@
                         if (data.npcs) syncNpcs(data.npcs);
                         if (data.civilians) spawnCivilians(data.civilians);
                         if (data.camps) spawnCamps(data.camps);
+                        if (data.spawn && Number.isFinite(data.spawn.x) && Number.isFinite(data.spawn.z)) {
+                            boundSpawn = data.spawn;
+                            characterGroup.position.set(data.spawn.x, terrainHeight(data.spawn.x, data.spawn.z), data.spawn.z);
+                        }
                         if (data.questDefs) questDefs = data.questDefs;
                         if (data.quests) quests = data.quests;
                         if (data.chests) data.chests.forEach(addChest);
@@ -4038,8 +4053,17 @@
                         showHurt();
                         floatText(characterGroup.position.x, 1.8, characterGroup.position.z, '-' + data.damage, '#ff5a5a');
                         showMessage('-' + data.damage + ' HP');
+                    } else if (data.type === 'spawn') {
+                        if (!data.ok) showMessage(data.reason || 'Cannot set spawn');
+                        else {
+                            boundSpawn = data.spawn;
+                            closeTalk();
+                            showMessage(data.note || 'Spawn set');
+                        }
                     } else if (data.type === 'died') {
-                        characterGroup.position.set(data.x || 0, 0, data.z || 0);
+                        const x = Number.isFinite(data.x) ? data.x : 0;
+                        const z = Number.isFinite(data.z) ? data.z : 0;
+                        characterGroup.position.set(x, terrainHeight(x, z), z);
                         verticalVelocity = 0;
                         onGround = true;
                         applyStats(data);

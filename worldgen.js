@@ -389,12 +389,12 @@ const CAMP_NAMES = ['Ada', 'Bex', 'Cal', 'Dax', 'Eve', 'Faye', 'Gil', 'Hana', 'I
 export const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes'];
 
 const ROLE_OFFSET = {
-    hamlet: { shop: [3.5, -2.4], trainer: [-3.6, -2.2], quest: [0.2, 3.5] },
-    outpost: { shop: [3.2, -2.8], trainer: [-0.6, -3.4], quest: [3.4, 2.2] },
-    market: { shop: [0.2, -3.1], trainer: [-3.4, 2.4], quest: [3.6, 2.2] },
-    shrine: { shop: [4.4, 0.2], trainer: [-4.4, 0.6], quest: [0, 4.6] },
-    ruin: { shop: [3.4, -2.6], trainer: [-3.4, -2.2], quest: [0.6, 3.4] },
-    ashes: { shop: [2.8, -1.8], trainer: [-2.8, -1.4], quest: [0.2, 2.8] }
+    hamlet: { shop: [3.5, -2.4], trainer: [-3.6, -2.2], quest: [0.2, 3.5], inn: [0.4, 1.3] },
+    outpost: { shop: [3.2, -2.8], trainer: [-0.6, -3.4], quest: [3.4, 2.2], inn: [-3.2, 0.4] },
+    market: { shop: [0.2, -3.1], trainer: [-3.4, 2.4], quest: [3.6, 2.2], inn: [0.1, 1.7] },
+    shrine: { shop: [4.4, 0.2], trainer: [-4.4, 0.6], quest: [0, 4.6], inn: [0.2, -4.2] },
+    ruin: { shop: [3.4, -2.6], trainer: [-3.4, -2.2], quest: [0.6, 3.4], inn: [-0.2, 2.6] },
+    ashes: { shop: [2.8, -1.8], trainer: [-2.8, -1.4], quest: [0.2, 2.8], inn: [1.5, 1.5] }
 };
 
 export function campYaw(x, z) {
@@ -420,7 +420,10 @@ export function zoneCampPlan(zx, zz) {
     let trainName = CAMP_NAMES[(h >>> 8) % CAMP_NAMES.length];
     if (trainName === shopName) trainName = CAMP_NAMES[(h + 7) % CAMP_NAMES.length];
     const questName = CAMP_NAMES[(h >>> 16) % CAMP_NAMES.length];
+    let innName = CAMP_NAMES[(h >>> 12) % CAMP_NAMES.length];
+    if (innName === shopName || innName === trainName || innName === questName) innName = CAMP_NAMES[(h + 11) % CAMP_NAMES.length];
     const folk = [];
+    folk.push({ id: 'inn-' + zx + '-' + zz, name: innName, role: 'inn', title: 'Innkeeper', tint: '#e67e22', text: 'I keep the inn in ' + place + '. You can set your spawn here.' });
     if (roll === 0 || roll === 3) {
         folk.push({ id: 'shop-' + zx + '-' + zz, name: shopName, role: 'shop', title: 'Shop', tint: '#f1c40f', text: 'I buy goods and sell crafting skills in ' + place + '.' });
     }
@@ -530,7 +533,8 @@ export function applyWorldConfig(config) {
                 layout: CAMP_LAYOUTS.includes(camp.layout) ? camp.layout : 'hamlet',
                 shop: String(camp.shop || '').trim().slice(0, 16),
                 trainer: String(camp.trainer || '').trim().slice(0, 16),
-                quest: String(camp.quest || '').trim().slice(0, 16)
+                quest: String(camp.quest || '').trim().slice(0, 16),
+                inn: String(camp.inn || 'Innkeeper').trim().slice(0, 16) || 'Innkeeper'
             });
         }
         for (const node of (Array.isArray(zone.nodes) ? zone.nodes : []).slice(0, 40)) {

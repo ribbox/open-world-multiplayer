@@ -106,10 +106,14 @@ const NPC_KINDS = {
     cultist: { id: 'cultist', name: 'Cultist', tint: '#8e44ad', loot: 'magic' }
 };
 
+const GLADE_INN = campSpot('hamlet', 'inn', 0, 6);
+const DEFAULT_SPAWN = { x: GLADE_INN.x, z: GLADE_INN.z, name: 'Holt' };
+
 const CIVILIANS = [
     { id: 'mira', name: 'Mira', role: 'shop', title: 'Shop assistant', tint: '#f1c40f', x: 10, z: 4, text: 'I buy what you carry and sell crafting skills. Bring coins.' },
     { id: 'bram', name: 'Bram', role: 'trainer', title: 'Trainer', tint: '#5dade2', x: -10, z: 4, text: 'Choose a class, then train your spells with me.' },
-    { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' }
+    { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' },
+    { id: 'holt', name: 'Holt', role: 'inn', title: 'Innkeeper', tint: '#e67e22', x: GLADE_INN.x, z: GLADE_INN.z, text: 'I keep the inn. You can set your spawn here.' }
 ];
 
 function pushCampRole(list, camp, zone, index, role, title, tint, text) {
@@ -130,7 +134,7 @@ function pushCampRole(list, camp, zone, index, role, title, tint, text) {
 }
 
 function rebuildCivilians() {
-    const home = CIVILIANS.filter(civ => civ.id === 'mira' || civ.id === 'bram' || civ.id === 'sela');
+    const home = CIVILIANS.filter(civ => civ.id === 'mira' || civ.id === 'bram' || civ.id === 'sela' || civ.id === 'holt');
     CIVILIANS.length = 0;
     CIVILIANS.push(...home);
     for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
@@ -144,6 +148,7 @@ function rebuildCivilians() {
     }
     for (const zone of listDesignedZones()) {
         zone.camps.forEach((camp, index) => {
+            pushCampRole(CIVILIANS, camp, zone, index, 'inn', 'Innkeeper', '#e67e22', 'I keep the inn in ' + zone.name + '. You can set your spawn here.');
             pushCampRole(CIVILIANS, camp, zone, index, 'shop', 'Shop', '#f1c40f', 'I buy and sell in ' + zone.name + '.');
             pushCampRole(CIVILIANS, camp, zone, index, 'trainer', 'Trainer', '#5dade2', 'I train spells in ' + zone.name + '.');
             pushCampRole(CIVILIANS, camp, zone, index, 'quest', 'Quest giver', '#2ecc71', 'I keep the road through ' + zone.name + '.');
@@ -186,6 +191,14 @@ function publicQuests() {
         out[id] = { name: quest.name, text: quest.text, count: quest.count, coins: quest.coins, xp: quest.xp };
     }
     return out;
+}
+
+function readSpawn(prof) {
+    const spawn = prof && prof.spawn;
+    const x = Number(spawn && spawn.x);
+    const z = Number(spawn && spawn.z);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return { x: DEFAULT_SPAWN.x, z: DEFAULT_SPAWN.z, name: DEFAULT_SPAWN.name };
+    return { x, z, name: String(spawn.name || 'Inn').slice(0, 16) };
 }
 
 function loadQuests(prof) {
@@ -405,14 +418,15 @@ function becomeGhost(player, now) {
     if (player.ghost) return;
     player.ghost = true;
     player.corpse = { x: player.x, z: player.z };
+    const home = player.spawn || DEFAULT_SPAWN;
     player.hp = 0;
-    player.x = 0;
+    player.x = home.x;
     player.y = 0;
-    player.z = 0;
+    player.z = home.z;
     player.invulnUntil = now + 1500;
     const revealed = revealFog(player);
     if (revealed.length) send(player.ws, { type: 'fog', add: revealed });
-    send(player.ws, { type: 'died', x: 0, y: 0, z: 0, corpse: player.corpse, ...statsOf(player) });
+    send(player.ws, { type: 'died', x: player.x, y: 0, z: player.z, corpse: player.corpse, ...statsOf(player) });
     broadcast({ type: 'ghost', ...publicPlayer(player.persistentId, player) });
 }
 
@@ -1073,6 +1087,7 @@ function savePlayer(player) {
     prof.spellRanks = player.spellRanks || {};
     prof.recipes = player.recipes || [];
     prof.quests = player.quests || {};
+    prof.spawn = player.spawn || { x: DEFAULT_SPAWN.x, z: DEFAULT_SPAWN.z, name: DEFAULT_SPAWN.name };
     prof.level = player.level;
     prof.xp = player.xp;
     prof.coins = player.coins || 0;
@@ -1355,12 +1370,14 @@ wss.on('connection', (ws) => {
                 try { existing.ws.close(); } catch { /* already closing */ }
             }
 
+            const spawn = readSpawn(prof);
+            prof.spawn = spawn;
             const player = {
                 ws,
                 persistentId,
-                x: 0,
+                x: spawn.x,
                 y: 0,
-                z: 0,
+                z: spawn.z,
                 rotY: 0,
                 tool: 'axe',
                 name: prof.name,
@@ -1392,6 +1409,7 @@ wss.on('connection', (ws) => {
                 lastAttack: 0,
                 ghost: false,
                 corpse: null,
+                spawn,
                 explored: new Set(Array.isArray(prof.explored) ? prof.explored.filter(key => typeof key === 'string') : []),
                 persistentId
             };
@@ -1411,6 +1429,7 @@ wss.on('connection', (ws) => {
                 npcs: Array.from(npcs.values()).filter(n => n.alive).map(publicNpc),
                 civilians: CIVILIANS.map(publicCivilian),
                 camps: campSites(),
+                spawn: player.spawn,
                 quests: player.quests,
                 questDefs: publicQuests(),
                 chests: Array.from(chests.values()).map(publicChest),
@@ -1768,6 +1787,18 @@ wss.on('connection', (ws) => {
                 inventory: inventoryOf(player),
                 ...statsOf(player)
             });
+            return;
+        }
+
+        if (data.type === 'setSpawn') {
+            const civ = nearCivilian(player, data.id);
+            if (!civ || civ.role !== 'inn') {
+                send(ws, { type: 'spawn', ok: false, reason: civ ? 'Not an innkeeper' : 'Too far', spawn: player.spawn });
+                return;
+            }
+            player.spawn = { x: civ.x, z: civ.z, name: civ.name };
+            savePlayer(player);
+            send(ws, { type: 'spawn', ok: true, spawn: player.spawn, note: 'Spawn set to ' + civ.name });
             return;
         }
 

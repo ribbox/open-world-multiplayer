@@ -52,7 +52,7 @@
                 <button type="button" id="tabLoot">Loot</button>
             </div>
             <div id="panelMap">
-                <p>Draw a zone or the world edge. Place a camp, then choose its buildings and which people are there. A camp does not need a shop, a trainer, and a quest giver.</p>
+                <p>Draw a zone or the world edge. Place a camp, then choose its buildings. Every camp has an innkeeper. Shop, trainer, and quest giver are optional.</p>
                 <div class="row">
                     <button type="button" id="editZones" class="on">Zones</button>
                     <button type="button" id="editBounds">World edge</button>
@@ -113,12 +113,12 @@
         const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes'];
         const CAMP_COLOR = { hamlet: '#f1c40f', outpost: '#c0392b', market: '#e67e22', shrine: '#5dade2', ruin: '#95a5a6', ashes: '#6e2c00' };
         const CAMP_PRESETS = [
-            { layout: 'hamlet', shop: 'Merchant', trainer: '', quest: '' },
-            { layout: 'outpost', shop: '', trainer: 'Warden', quest: '' },
-            { layout: 'market', shop: 'Vendor', trainer: '', quest: '' },
-            { layout: 'shrine', shop: '', trainer: '', quest: 'Guide' },
-            { layout: 'ruin', shop: '', trainer: '', quest: '' },
-            { layout: 'ashes', shop: '', trainer: 'Hermit', quest: '' }
+            { layout: 'hamlet', shop: 'Merchant', trainer: '', quest: '', inn: 'Innkeeper' },
+            { layout: 'outpost', shop: '', trainer: 'Warden', quest: '', inn: 'Innkeeper' },
+            { layout: 'market', shop: 'Vendor', trainer: '', quest: '', inn: 'Host' },
+            { layout: 'shrine', shop: '', trainer: '', quest: 'Guide', inn: 'Keeper' },
+            { layout: 'ruin', shop: '', trainer: '', quest: '', inn: 'Innkeeper' },
+            { layout: 'ashes', shop: '', trainer: 'Hermit', quest: '', inn: 'Hearth' }
         ];
         const NODES = ['tree', 'rock', 'herb', 'sulfur'];
         const KINDS = ['junk', 'coins', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor'];
@@ -253,6 +253,15 @@
                 }
                 layout.addEventListener('change', () => { camp.layout = layout.value; draw(); });
                 block.appendChild(labelWrap('Buildings', layout));
+                const innName = document.createElement('input');
+                innName.type = 'text';
+                innName.value = camp.inn || 'Innkeeper';
+                camp.inn = innName.value;
+                innName.addEventListener('change', () => {
+                    camp.inn = innName.value.trim().slice(0, 16) || 'Innkeeper';
+                    innName.value = camp.inn;
+                });
+                block.appendChild(labelWrap('Innkeeper', innName));
                 for (const [key, caption] of [['shop', 'Shop'], ['trainer', 'Trainer'], ['quest', 'Quest giver']]) {
                     const on = document.createElement('input');
                     on.type = 'checkbox';
@@ -603,7 +612,7 @@
             if (!inside(spot.x, spot.z, outlineSamples(current.points, current.edges))) { note('Place that inside the outline'); return; }
             if (tool === 'camp') {
                 const preset = CAMP_PRESETS[current.camps.length % CAMP_PRESETS.length];
-                current.camps.push({ x: point[0], z: point[1], layout: preset.layout, shop: preset.shop, trainer: preset.trainer, quest: preset.quest });
+                current.camps.push({ x: point[0], z: point[1], layout: preset.layout, shop: preset.shop, trainer: preset.trainer, quest: preset.quest, inn: preset.inn });
                 renderFields();
             }
             else if (NODES.includes(tool)) current.nodes.push({ type: tool, x: point[0], z: point[1] });
