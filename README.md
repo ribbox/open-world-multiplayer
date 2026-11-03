@@ -14,7 +14,7 @@ Browser-based open-world game with multiplayer support, packaged for Docker. The
 - `/models/mine-rock.glb` — rocks placed in world setup that a pickaxe can mine.
 - `/models/camp.glb`, `inn.glb`, `cabin.glb` — camp site, inn, and huts.
 - `/models/chest.glb` — loot chests.
-All of them are served by the Node.js server (no embedding).
+All of them are served by the Node.js server (no embedding). [GRAPHICS.md](GRAPHICS.md) lists every graphic and the object it stands for. An empty object means the graphic is only an effect.
 
 Further GLB files should be taken from [Open Source 3D Assets](https://www.opensource3dassets.com/en). Check the asset page for the license, then add the original name, collection, and license to the credits below.
 
