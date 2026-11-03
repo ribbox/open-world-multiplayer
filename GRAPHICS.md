@@ -62,13 +62,13 @@ A `*` at the start of a graphic name means that graphic should be used by the ga
 
 These are drawn on the character while that tool is in use. They are not separate world objects.
 
-| Graphic | Object |
-| --- | --- |
-| Axe mesh | Axe |
-| Pickaxe mesh | Pickaxe |
-| Sword mesh | Sword |
-| Staff mesh | Staff |
-| Target ring | Selected target |
+| Graphic | Object | Link |
+| --- | --- | --- |
+| Axe mesh | Axe | |
+| Pickaxe mesh | Pickaxe | |
+| Sword mesh | Sword | |
+| * wizards_staff.glb | Staff | https://skfb.ly/6CPOA |
+| Target ring | Selected target | |
 
 ## World models
 
