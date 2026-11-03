@@ -65,7 +65,8 @@ node server.js
 - Bag slots show an icon for the item. A count appears only when a stack is more than one. Right-click a slot to destroy one item. Shift+right-click destroys the whole stack, which frees room for new loot.
 - Crafting is on the character sheet. Core sets are bought from a shop assistant, grouped by rarity. There is no shop button on the bar. Extra patterns drop in chests. Click a pattern in the bag to learn it.
 - F: loot a chest. Click a health or mana potion in the bag to drink it, or put it on the action bar.
-- M opens the world map. Right-click a spot to mark it. The minimap shows the point, or an arrow toward it. Left-click still teleports.
+- M opens the world map. Scroll the wheel, or use + and −, to zoom. Right-click a spot to mark it. The minimap shows the point, or an arrow toward it. Left-click still teleports.
+- While you are a ghost, the minimap shows a pale arrow toward your body, and the distance under the map.
 - Hold Right Mouse + move: orbit camera
 - Mouse wheel: zoom in/out on the character
 
