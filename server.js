@@ -358,15 +358,27 @@ function questDoneByName(player, name) {
     return Object.entries(player.quests || {}).some(([id, row]) => row.state === 'done' && QUESTS[id] && QUESTS[id].name.toLowerCase() === needle);
 }
 
+function civInZone(zoneId, role, camp, name) {
+    if (zoneId && role && Number.isInteger(camp)) {
+        const exact = CIVILIANS.find(civ => civ.id === 'd' + role + '-' + zoneId + '-' + camp);
+        if (exact) return exact;
+    }
+    if (zoneId && name) {
+        const inZone = CIVILIANS.find(civ => civ.id.includes('-' + zoneId + '-') && civ.name.toLowerCase() === name.toLowerCase() && (!role || civ.role === role));
+        if (inZone) return inZone;
+    }
+    return null;
+}
+
 function bindQuestGivers() {
     for (const civ of CIVILIANS) {
         civ.quests = civ.quest && QUESTS[civ.quest] ? [civ.quest] : [];
     }
     for (const [id, quest] of Object.entries(QUESTS)) {
         if (!quest.designed || !quest.giver) continue;
-        const needle = quest.giver.toLowerCase();
-        const giver = CIVILIANS.find(civ => civ.role === 'quest' && civ.name.toLowerCase() === needle)
-            || CIVILIANS.find(civ => civ.name.toLowerCase() === needle);
+        const giver = civInZone(quest.zoneId, quest.giverRole, quest.giverCamp, quest.giver)
+            || CIVILIANS.find(civ => civ.role === 'quest' && civ.name.toLowerCase() === quest.giver.toLowerCase())
+            || CIVILIANS.find(civ => civ.name.toLowerCase() === quest.giver.toLowerCase());
         if (!giver) continue;
         if (!giver.quests.includes(id)) giver.quests.push(id);
         giver.quest = giver.quests[0] || '';
@@ -405,13 +417,15 @@ function installQuests(list) {
 }
 
 function giverOf(quest) {
-    const needle = String(quest.giver || '').toLowerCase();
-    return CIVILIANS.find(civ => civ.name.toLowerCase() === needle) || null;
+    return civInZone(quest.zoneId, quest.giverRole, quest.giverCamp, quest.giver)
+        || CIVILIANS.find(civ => civ.name.toLowerCase() === String(quest.giver || '').toLowerCase())
+        || null;
 }
 
 function protectTarget(quest) {
-    const needle = String(quest.named || '').toLowerCase();
-    return CIVILIANS.find(civ => civ.name.toLowerCase() === needle) || null;
+    return civInZone(quest.zoneId, quest.protectRole, quest.protectCamp, quest.named)
+        || CIVILIANS.find(civ => civ.name.toLowerCase() === String(quest.named || '').toLowerCase())
+        || null;
 }
 
 function someoneNeeds(questId) {
@@ -2764,6 +2778,11 @@ function sanitizeQuests(input) {
             name: String(raw.name || 'Quest').slice(0, 32),
             minLevel: clampNum(raw.minLevel, 1, 1, 30),
             giver: String(raw.giver || '').trim().slice(0, 24),
+            giverRole: ['inn', 'shop', 'trainer', 'quest'].includes(raw.giverRole) ? raw.giverRole : '',
+            giverCamp: clampNum(raw.giverCamp, 0, 0, 5),
+            zoneId: String(raw.zoneId || '').slice(0, 24),
+            protectRole: ['inn', 'shop', 'trainer', 'quest'].includes(raw.protectRole) ? raw.protectRole : '',
+            protectCamp: clampNum(raw.protectCamp, 0, 0, 5),
             requires: String(raw.requires || '').trim().slice(0, 32),
             type,
             mob: MOB_IDS.includes(raw.mob) ? raw.mob : 'boar',
