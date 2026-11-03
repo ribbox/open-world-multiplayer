@@ -82,38 +82,59 @@ export function terrainHeight(x, z) {
 // Same sequence the client uses to place trees and rocks.
 export function chunkResources(cx, cz) {
     const items = [];
-    if (!customMap()) {
-        const rand = mulberry32(chunkSeed(cx, cz));
-        const n = 6 + Math.floor(rand() * 7);
-        for (let i = 0; i < n; i++) {
-            const roll = rand();
-            const type = roll > 0.7 ? 'plain-tree' : roll > 0.035 ? 'boulder' : 'plain-rock';
-            const px = (rand() - 0.5) * CHUNK_SIZE * 0.85;
-            const pz = (rand() - 0.5) * CHUNK_SIZE * 0.85;
-            let sx = 0;
-            let sy = 0;
-            let sz = 0;
-            if (type !== 'plain-tree') {
-                sx = 0.8 + rand() * 1.2;
-                sy = 0.4 + rand() * 0.8;
-                sz = 0.8 + rand() * 1.2;
-            }
-            const x = cx * CHUNK_SIZE + px;
-            const z = cz * CHUNK_SIZE + pz;
-            if (terrainHeight(x, z) < WATER_LEVEL + 0.2 || boundaryInset(x, z) < 8) continue;
-            items.push({
-                id: `${cx},${cz},${i}`,
-                type,
-                x,
-                z,
-                px,
-                pz,
-                sx,
-                sy,
-                sz,
-                hits: 0
-            });
+    const rand = mulberry32(chunkSeed(cx, cz));
+    const n = 6 + Math.floor(rand() * 7);
+    for (let i = 0; i < n; i++) {
+        const roll = rand();
+        const type = roll > 0.7 ? 'plain-tree' : roll > 0.035 ? 'boulder' : 'plain-rock';
+        const px = (rand() - 0.5) * CHUNK_SIZE * 0.85;
+        const pz = (rand() - 0.5) * CHUNK_SIZE * 0.85;
+        let sx = 0;
+        let sy = 0;
+        let sz = 0;
+        if (type !== 'plain-tree') {
+            sx = 0.8 + rand() * 1.2;
+            sy = 0.4 + rand() * 0.8;
+            sz = 0.8 + rand() * 1.2;
         }
+        const x = cx * CHUNK_SIZE + px;
+        const z = cz * CHUNK_SIZE + pz;
+        if (terrainHeight(x, z) < WATER_LEVEL + 0.2 || boundaryInset(x, z) < 8) continue;
+        items.push({
+            id: 's-' + cx + '-' + cz + '-' + i,
+            type,
+            x,
+            z,
+            px,
+            pz,
+            sx,
+            sy,
+            sz,
+            hits: 0
+        });
+    }
+    const decor = mulberry32(chunkSeed(cx + 17, cz + 41));
+    const boulders = 5 + Math.floor(decor() * 4);
+    for (let i = 0; i < boulders; i++) {
+        const px = (decor() - 0.5) * CHUNK_SIZE * 0.9;
+        const pz = (decor() - 0.5) * CHUNK_SIZE * 0.9;
+        const x = cx * CHUNK_SIZE + px;
+        const z = cz * CHUNK_SIZE + pz;
+        if (terrainHeight(x, z) < WATER_LEVEL + 0.45 || boundaryInset(x, z) < 8) continue;
+        items.push({
+            id: 'b-' + cx + '-' + cz + '-' + i,
+            type: 'boulder',
+            x,
+            z,
+            px,
+            pz,
+            sx: 1.1 + decor() * 1.4,
+            sy: 0,
+            sz: 0,
+            hits: 0
+        });
+    }
+    if (!customMap()) {
         const extra = mulberry32(chunkSeed(cx + 91, cz - 13));
         const herbs = 1 + Math.floor(extra() * 2);
         for (let n = 0; n < herbs; n++) {
@@ -134,27 +155,6 @@ export function chunkResources(cx, cz) {
                 const index = items.length;
                 items.push({ id: `${cx},${cz},${index}`, type: 'sulfur', x, z, px, pz, sx: 0.45, sy: 0.7, sz: 0.45, hits: 3 });
             }
-        }
-        const decor = mulberry32(chunkSeed(cx + 17, cz + 41));
-        const boulders = 5 + Math.floor(decor() * 4);
-        for (let i = 0; i < boulders; i++) {
-            const px = (decor() - 0.5) * CHUNK_SIZE * 0.9;
-            const pz = (decor() - 0.5) * CHUNK_SIZE * 0.9;
-            const x = cx * CHUNK_SIZE + px;
-            const z = cz * CHUNK_SIZE + pz;
-            if (terrainHeight(x, z) < WATER_LEVEL + 0.45 || boundaryInset(x, z) < 8) continue;
-            items.push({
-                id: 'b-' + cx + ',' + cz + ',' + i,
-                type: 'boulder',
-                x,
-                z,
-                px,
-                pz,
-                sx: 1.1 + decor() * 1.4,
-                sy: 0,
-                sz: 0,
-                hits: 0
-            });
         }
     }
     appendDesignedNodes(cx, cz, items);
@@ -723,7 +723,7 @@ export function applyWorldConfig(config) {
                 inn: String(camp.inn || 'Innkeeper').trim().slice(0, 16) || 'Innkeeper'
             });
         }
-        for (const node of (Array.isArray(zone.nodes) ? zone.nodes : []).slice(0, 40)) {
+        for (const node of (Array.isArray(zone.nodes) ? zone.nodes : []).slice(0, 160)) {
             const x = Number(node.x);
             const z = Number(node.z);
             if (!Number.isFinite(x) || !Number.isFinite(z) || !NODE_TYPES.includes(node.type)) continue;

@@ -1829,11 +1829,9 @@
             function applyResourceState(id, hits) {
                 resourceHits.set(id, hits);
                 const c = colliderById.get(id);
-                if (hits <= 0) {
-                    if (c) removeNode(c);
-                } else if (c) {
-                    c.hits = hits;
-                }
+                if (!c || !c.gather) return;
+                if (hits <= 0) removeNode(c);
+                else c.hits = hits;
             }
 
             function tryGather() {
