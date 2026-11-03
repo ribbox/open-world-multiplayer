@@ -2,6 +2,8 @@
 
 Each graphic used by the game, and the object it stands for. The object cell is empty when the graphic is only an effect and is not tied to a thing in the world.
 
+A `*` at the start of a graphic name means that graphic should be used by the game. Once it is, the `*` is removed and this table shows the graphic the game actually uses.
+
 ## Effects
 
 | Graphic | Object |
