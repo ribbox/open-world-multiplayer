@@ -176,6 +176,19 @@
         #log:empty { display: none; }
         #log .note { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
         #log time { opacity: 0.55; margin-right: 6px; }
+        #questTracker {
+            position: absolute; top: 258px; right: 12px; width: 220px; z-index: 11;
+            color: white; pointer-events: none; font-size: 13px;
+        }
+        #questTracker[hidden] { display: none; }
+        .quest-track {
+            background: rgba(0,0,0,0.58); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px;
+            border-left: 3px solid #f1c40f; text-shadow: 0 1px 2px #000;
+        }
+        .quest-track.ready { border-left-color: #2ecc71; }
+        .quest-track.failed { border-left-color: #e74c3c; }
+        .quest-track h3 { margin: 0 0 2px; font-size: 13px; font-weight: bold; }
+        .quest-track p { margin: 0; color: #eee; font-size: 12px; line-height: 1.3; }
         #actionbar {
             position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
             z-index: 12; color: white; font-size: 13px; user-select: none;
@@ -324,6 +337,7 @@
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
         Train spells only while standing at a trainer. Gather herbs by hand and sulfur with a pickaxe<br>
         M: World map. Scroll or +/− to zoom. Right-click a spot to mark it. The minimap points the way<br>
+        Active quests stay on the right, with progress<br>
         As a ghost, the minimap arrow points back to your body<br>
         Click the minimap for the world map. Numbers are mob levels. Gray gives no XP<br>
         World setup is a separate page at /setup<br>
@@ -396,6 +410,7 @@
         <label><input type="checkbox" data-layer="bodies" checked> <i style="background:#d6ecff;border-radius:50%"></i> Bodies</label>
         <label><input type="checkbox" data-layer="players" checked> <i style="background:#5dade2;border-radius:50%"></i> Players</label>
     </div>
+    <div id="questTracker" hidden></div>
     <div id="party" hidden></div>
     <div id="partyPrompt" hidden>
         <div id="partyPromptText">Party invite</div>
@@ -3522,7 +3537,30 @@
                     quests = next;
                 }
                 if (talkingId && worldCivs.get(talkingId)) renderTalk(worldCivs.get(talkingId));
+                renderQuestTracker();
                 return note;
+            }
+
+            function renderQuestTracker() {
+                const panel = document.getElementById('questTracker');
+                panel.textContent = '';
+                const active = Object.entries(quests).filter(([, row]) => row && row.state === 'active');
+                panel.hidden = active.length === 0;
+                for (const [id, row] of active) {
+                    const def = questDefs[id] || { name: 'Quest', text: '', count: 1 };
+                    const need = def.count || 1;
+                    const done = !row.failed && row.count >= need;
+                    const block = document.createElement('div');
+                    block.className = 'quest-track' + (row.failed ? ' failed' : done ? ' ready' : '');
+                    const title = document.createElement('h3');
+                    title.textContent = def.name || 'Quest';
+                    const line = document.createElement('p');
+                    if (row.failed) line.textContent = 'Failed. Speak to the giver.';
+                    else if (done) line.textContent = 'Done ' + need + '/' + need + '. Turn it in.';
+                    else line.textContent = (def.text || 'Objective') + '  ' + Math.min(row.count, need) + '/' + need;
+                    block.append(title, line);
+                    panel.appendChild(block);
+                }
             }
 
             function closeTalk() {
@@ -4578,7 +4616,10 @@
                             characterGroup.position.set(data.spawn.x, terrainHeight(data.spawn.x, data.spawn.z), data.spawn.z);
                         }
                         if (data.questDefs) questDefs = data.questDefs;
-                        if (data.quests) quests = data.quests;
+                        if (data.quests) {
+                            quests = data.quests;
+                            renderQuestTracker();
+                        }
                         if (data.chests) data.chests.forEach(addChest);
                         if (Array.isArray(data.actionbar)) {
                             actionBar = data.actionbar;
@@ -4770,6 +4811,7 @@
                         applyWorldConfig(data.world || {});
                         if (data.world && data.world.grayLevels) grayLevels = data.world.grayLevels;
                         if (data.questDefs) questDefs = data.questDefs;
+                        renderQuestTracker();
                         reloadChunks();
                         if (data.civilians) spawnCivilians(data.civilians);
                         if (data.camps) spawnCamps(data.camps);
