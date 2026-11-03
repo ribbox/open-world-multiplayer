@@ -13,7 +13,7 @@
         button.on { background: #f1c40f; color: #241c04; }
         input, select { background: #0e1218; color: #fff; border: 1px solid #456; border-radius: 4px; padding: 4px 6px; }
         #login { max-width: 360px; }
-        #app { display: none; height: calc(100vh - 52px); grid-template-columns: 280px 1fr 300px; }
+        #app { display: none; height: calc(100vh - 52px); grid-template-columns: 320px 1fr 300px; }
         #app.open { display: grid; }
         aside, #side { overflow: auto; padding: 12px; background: #181d28; }
         #stage { position: relative; }
@@ -28,7 +28,9 @@
         #note { min-height: 1.2em; color: #9cf; }
         .camp { border-top: 1px solid #333; margin-top: 10px; padding-top: 6px; }
         .camp label { display: flex; gap: 6px; align-items: center; }
-        .camp input[type="text"] { flex: 1; min-width: 0; }
+        #panelQuests input, #panelQuests select, #panelQuests textarea { width: 100%; box-sizing: border-box; }
+        #panelQuests textarea { min-height: 72px; }
+        #questPreview { font-size: 12px; color: #9cf; }
     </style>
 </head>
 <body>
@@ -51,6 +53,7 @@
                 <button type="button" id="tabMap" class="on">Map</button>
                 <button type="button" id="tabRules">Rules</button>
                 <button type="button" id="tabLoot">Loot</button>
+                <button type="button" id="tabQuests">Quests</button>
             </div>
             <div id="panelMap">
                 <p>Drag the map to move it, and scroll to zoom. Draw a zone or the world edge. A zone that crosses the coast is cut back to the shoreline. Chop tree and Mine rock can be gathered. Tree and Rock are scenery and cannot. Place a camp, then choose its buildings. Every camp has an innkeeper. Shop, trainer, and quest giver are optional.</p>
@@ -101,6 +104,12 @@
                 <button type="button" id="addTable">New table</button>
                 <table id="lootRows"></table>
                 <button type="button" id="addRow">Add drop</button>
+            </div>
+            <div id="panelQuests" hidden>
+                <p>Choose a mob or item from the lists. The quest text is filled in for you, or you can write it. A mob named by an active quest can drop that quest's item.</p>
+                <button type="button" id="addQuest">New quest</button>
+                <div id="questList"></div>
+                <div id="questForm"></div>
             </div>
         </aside>
         <div id="stage"><canvas id="map" width="900" height="900"></canvas></div>
@@ -739,14 +748,215 @@
         document.getElementById('tabMap').addEventListener('click', () => showTab('Map'));
         document.getElementById('tabRules').addEventListener('click', () => showTab('Rules'));
         document.getElementById('tabLoot').addEventListener('click', () => { showTab('Loot'); renderLoot(); });
+        document.getElementById('tabQuests').addEventListener('click', () => { showTab('Quests'); renderQuests(); });
         function showTab(name) {
             document.getElementById('panelMap').hidden = name !== 'Map';
             document.getElementById('panelRules').hidden = name !== 'Rules';
             document.getElementById('panelLoot').hidden = name !== 'Loot';
+            document.getElementById('panelQuests').hidden = name !== 'Quests';
             document.getElementById('tabMap').classList.toggle('on', name === 'Map');
             document.getElementById('tabRules').classList.toggle('on', name === 'Rules');
             document.getElementById('tabLoot').classList.toggle('on', name === 'Loot');
+            document.getElementById('tabQuests').classList.toggle('on', name === 'Quests');
         }
+        const MOB_LABEL = { boar: 'Wild Boar', wolf: 'Wolf', spider: 'Moss Spider', bandit: 'Bandit', ogre: 'Hill Ogre', wisp: 'Fen Wisp', knight: 'Plate Knight', cultist: 'Cultist' };
+        let questPick = 0;
+        function questSentence(quest) {
+            const label = MOB_LABEL[quest.mob] || 'creature';
+            const many = Number(quest.count) === 1 ? label : label + 's';
+            if (quest.custom && quest.text) return quest.text;
+            if (quest.type === 'gather') return 'Gather ' + (quest.count || 1) + ' ' + (quest.item || 'items') + '. ' + (quest.named || many) + ' drop them.';
+            if (quest.type === 'named') return 'Kill ' + (quest.named || label) + '.';
+            if (quest.type === 'protect') return 'Protect ' + (quest.named || 'the villager') + '. Defeat ' + (quest.count || 1) + ' attackers.';
+            return 'Kill ' + (quest.count || 1) + ' ' + many + '.';
+        }
+        function giverChoices() {
+            const names = new Set();
+            for (const zone of config.zones || []) {
+                for (const camp of zone.camps || []) {
+                    for (const key of ['quest', 'shop', 'trainer', 'inn']) if (camp[key]) names.add(camp[key]);
+                }
+            }
+            return [...names];
+        }
+        function renderQuests() {
+            if (!Array.isArray(config.quests)) config.quests = [];
+            const list = document.getElementById('questList');
+            list.replaceChildren();
+            config.quests.forEach((quest, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'zone' + (index === questPick ? ' on' : '');
+                button.textContent = quest.name || 'Quest';
+                button.addEventListener('click', () => { questPick = index; renderQuests(); });
+                list.appendChild(button);
+            });
+            const form = document.getElementById('questForm');
+            form.replaceChildren();
+            const quest = config.quests[questPick];
+            if (!quest) return;
+            const addField = (caption, value, apply, kind) => {
+                const label = document.createElement('label');
+                label.textContent = caption;
+                const input = document.createElement(kind === 'area' ? 'textarea' : 'input');
+                if (kind === 'number') input.type = 'number';
+                input.value = value == null ? '' : value;
+                input.addEventListener('change', () => { apply(kind === 'number' ? Number(input.value) : input.value); renderQuests(); });
+                form.append(label, input);
+                return input;
+            };
+            addField('Name', quest.name, value => { quest.name = value; });
+            addField('Minimum level', quest.minLevel, value => { quest.minLevel = value; }, 'number');
+            const giverLabel = document.createElement('label');
+            giverLabel.textContent = 'Who gives it';
+            const giver = document.createElement('input');
+            giver.value = quest.giver || '';
+            giver.setAttribute('list', 'giverNames');
+            giver.addEventListener('change', () => { quest.giver = giver.value; renderQuests(); });
+            const names = document.createElement('datalist');
+            names.id = 'giverNames';
+            for (const name of giverChoices()) {
+                const option = document.createElement('option');
+                option.value = name;
+                names.appendChild(option);
+            }
+            form.append(giverLabel, giver, names);
+            const known = giverChoices();
+            if (quest.giver && !known.some(name => name.toLowerCase() === quest.giver.toLowerCase())) {
+                const warn = document.createElement('p');
+                warn.textContent = 'No camp NPC uses this name yet.';
+                form.appendChild(warn);
+            }
+            const reqLabel = document.createElement('label');
+            reqLabel.textContent = 'Must have finished';
+            const req = document.createElement('select');
+            const none = document.createElement('option');
+            none.value = '';
+            none.textContent = 'Nothing';
+            req.appendChild(none);
+            for (const other of config.quests) {
+                if (other === quest || !other.name) continue;
+                const option = document.createElement('option');
+                option.value = other.name;
+                option.textContent = other.name;
+                req.appendChild(option);
+            }
+            req.value = quest.requires || '';
+            req.addEventListener('change', () => { quest.requires = req.value; });
+            form.append(reqLabel, req);
+            const typeLabel = document.createElement('label');
+            typeLabel.textContent = 'Type';
+            const type = document.createElement('select');
+            for (const [id, caption] of [['kill', 'Kill a number'], ['gather', 'Gather items'], ['named', 'Kill a named mob'], ['protect', 'Protect a named person']]) {
+                const option = document.createElement('option');
+                option.value = id;
+                option.textContent = caption;
+                type.appendChild(option);
+            }
+            type.value = quest.type || 'kill';
+            type.addEventListener('change', () => { quest.type = type.value; renderQuests(); });
+            form.append(typeLabel, type);
+            if (quest.type !== 'protect') {
+                const mobLabel = document.createElement('label');
+                mobLabel.textContent = quest.type === 'gather' ? 'Drops from' : 'Mob';
+                const mob = document.createElement('select');
+                for (const id of MOBS) {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = MOB_LABEL[id];
+                    mob.appendChild(option);
+                }
+                mob.value = quest.mob || 'boar';
+                mob.addEventListener('change', () => { quest.mob = mob.value; renderQuests(); });
+                form.append(mobLabel, mob);
+            } else {
+                const mobLabel = document.createElement('label');
+                mobLabel.textContent = 'Attackers';
+                const mob = document.createElement('select');
+                for (const id of MOBS) {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = MOB_LABEL[id];
+                    mob.appendChild(option);
+                }
+                mob.value = quest.mob || 'boar';
+                mob.addEventListener('change', () => { quest.mob = mob.value; });
+                form.append(mobLabel, mob);
+            }
+            if (quest.type !== 'named') addField(quest.type === 'protect' ? 'Attackers to defeat' : 'How many', quest.count, value => { quest.count = value; }, 'number');
+            if (quest.type === 'gather' || quest.type === 'named') addField('Item they drop', quest.item, value => { quest.item = value; });
+            if (quest.type === 'named' || quest.type === 'protect' || quest.type === 'gather') {
+                addField(quest.type === 'protect' ? 'Person to protect' : (quest.type === 'gather' ? 'Only this mob name, optional' : 'Mob name'), quest.named, value => { quest.named = value; });
+            }
+            const customLabel = document.createElement('label');
+            const custom = document.createElement('input');
+            custom.type = 'checkbox';
+            custom.checked = !!quest.custom;
+            custom.addEventListener('change', () => { quest.custom = custom.checked; renderQuests(); });
+            customLabel.append(custom, document.createTextNode(' Write the text myself'));
+            form.appendChild(customLabel);
+            if (quest.custom) addField('Quest text', quest.text, value => { quest.text = value; }, 'area');
+            const preview = document.createElement('p');
+            preview.id = 'questPreview';
+            preview.textContent = questSentence(quest);
+            form.appendChild(preview);
+            addField('Reward coins', quest.coins, value => { quest.coins = value; }, 'number');
+            addField('Reward XP', quest.xp, value => { quest.xp = value; }, 'number');
+            const rewardLabel = document.createElement('label');
+            rewardLabel.textContent = 'Reward item';
+            const reward = document.createElement('select');
+            const blank = document.createElement('option');
+            blank.value = '';
+            blank.textContent = 'None';
+            reward.appendChild(blank);
+            for (const kind of KINDS) {
+                if (kind === 'coins') continue;
+                const option = document.createElement('option');
+                option.value = kind;
+                option.textContent = kind;
+                reward.appendChild(option);
+            }
+            reward.value = quest.rewardKind || '';
+            reward.addEventListener('change', () => { quest.rewardKind = reward.value; renderQuests(); });
+            form.append(rewardLabel, reward);
+            if (quest.rewardKind) {
+                addField('Reward item name', quest.rewardName, value => { quest.rewardName = value; });
+                addField('Reward amount', quest.rewardQty || 1, value => { quest.rewardQty = value; }, 'number');
+            }
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.textContent = 'Delete quest';
+            remove.addEventListener('click', () => {
+                config.quests.splice(questPick, 1);
+                questPick = Math.max(0, questPick - 1);
+                renderQuests();
+            });
+            form.appendChild(remove);
+        }
+        document.getElementById('addQuest').addEventListener('click', () => {
+            if (!Array.isArray(config.quests)) config.quests = [];
+            config.quests.push({
+                id: 'q' + Math.random().toString(36).slice(2, 8),
+                name: 'New quest',
+                minLevel: 1,
+                giver: '',
+                requires: '',
+                type: 'kill',
+                mob: 'boar',
+                count: 3,
+                item: '',
+                named: '',
+                custom: false,
+                text: '',
+                coins: 10,
+                xp: 40,
+                rewardKind: '',
+                rewardName: '',
+                rewardQty: 1
+            });
+            questPick = config.quests.length - 1;
+            renderQuests();
+        });
         document.getElementById('lootPick').addEventListener('change', renderLoot);
         document.getElementById('addRow').addEventListener('click', () => {
             const name = document.getElementById('lootPick').value;
@@ -783,7 +993,8 @@
                 xpPerMobLevel: config.xpPerMobLevel,
                 bounds: config.bounds,
                 zones: config.zones,
-                loot: config.loot
+                loot: config.loot,
+                quests: config.quests || []
             };
             const blob = new Blob([JSON.stringify(copy, null, 2)], { type: 'application/json' });
             const link = document.createElement('a');

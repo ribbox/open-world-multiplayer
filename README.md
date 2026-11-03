@@ -68,6 +68,7 @@ node server.js
 - Crafting is on the character sheet. Core sets are bought from a shop assistant, grouped by rarity. There is no shop button on the bar. Extra patterns drop in chests. Click a pattern in the bag to learn it.
 - F: loot a chest. Click a health or mana potion in the bag to drink it, or put it on the action bar.
 - M opens the world map. Scroll the wheel, or use + and −, to zoom. Right-click a spot to mark it. The minimap shows the point, or an arrow toward it. Left-click still teleports.
+- World setup has a Quests tab. A quest needs a minimum level, a reward, a giver, and an optional earlier quest. Types are kill a number, gather items, kill a named mob, or protect a named person. The text is filled in from the mob or item you pick, unless you write your own. A mob named by an active quest can drop that quest's item.
 - Target another player and press P to invite them. A party holds you and up to four others. The frames on the left show each name, health, and mana.
 - While you are a ghost, the minimap shows a pale arrow toward your body, and the distance under the map.
 - Hold Right Mouse + move: orbit camera

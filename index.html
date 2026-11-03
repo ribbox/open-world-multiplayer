@@ -2379,7 +2379,7 @@
                 group.add(label);
                 group.userData.label = label;
                 scene.add(group);
-                worldCivs.set(civ.id, { group, id: civ.id, name: civ.name, title: civ.title, role: civ.role, text: civ.text, quest: civ.quest || '', tint: civ.tint, bob: Math.random() * Math.PI * 2 });
+                worldCivs.set(civ.id, { group, id: civ.id, name: civ.name, title: civ.title, role: civ.role, text: civ.text, quest: civ.quest || '', quests: civ.quests || (civ.quest ? [civ.quest] : []), tint: civ.tint, bob: Math.random() * Math.PI * 2 });
             }
 
             function spawnCivilians(list) {
@@ -3107,7 +3107,7 @@
                 else if (kind === 'herb') drawHerb(g);
                 else if (kind === 'powder') drawPowder(g);
                 else if (kind === 'bomb') drawBomb(g);
-                else if (kind === 'recipe') drawScroll(g);
+                else if (kind === 'recipe' || kind === 'quest') drawScroll(g);
                 else drawGear(g, slot || 'chest', item.style);
                 if (item.magic && kind !== 'weapon') {
                     g.fillStyle = '#7fdbff';
@@ -3581,6 +3581,50 @@
                         else renderSheet();
                     });
                     panel.appendChild(button);
+                }
+                if (entry.quests && entry.quests.length) {
+                    for (const questId of entry.quests) {
+                        const def = questDefs[questId] || { name: 'Quest', text: '', count: 1, coins: 0, xp: 0 };
+                        const row = quests[questId];
+                        const block = document.createElement('div');
+                        const line = document.createElement('p');
+                        const progress = row ? '  ' + Math.min(row.count, def.count) + '/' + def.count : '';
+                        line.textContent = def.name + ' — ' + (def.text || '') + progress;
+                        block.appendChild(line);
+                        const reward = document.createElement('p');
+                        const bits = [];
+                        if (def.coins) bits.push(def.coins + ' coins');
+                        if (def.xp) bits.push(def.xp + ' XP');
+                        if (def.rewardName) bits.push((def.rewardQty > 1 ? def.rewardQty + ' ' : '') + def.rewardName);
+                        reward.textContent = bits.length ? 'Reward: ' + bits.join(', ') : '';
+                        if (reward.textContent) block.appendChild(reward);
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'text-btn';
+                        const doneNamed = Object.entries(quests).some(([id, item]) => item.state === 'done' && questDefs[id] && questDefs[id].name === def.requires);
+                        if (def.requires && !doneNamed && (!row || row.state !== 'done')) {
+                            button.textContent = 'Requires ' + def.requires;
+                            button.disabled = true;
+                        } else if ((stats.level || 1) < (def.minLevel || 1) && (!row || row.state !== 'active')) {
+                            button.textContent = 'Requires level ' + def.minLevel;
+                            button.disabled = true;
+                        } else if (!row || row.failed) {
+                            button.textContent = row && row.failed ? 'Try again' : 'Accept';
+                            button.addEventListener('click', () => sendCharacter('acceptQuest', { id: entry.id, quest: questId }));
+                        } else if (row.state === 'done') {
+                            button.textContent = 'Complete';
+                            button.disabled = true;
+                        } else if (row.count >= def.count) {
+                            button.textContent = 'Turn in';
+                            button.className = 'text-btn gold-btn';
+                            button.addEventListener('click', () => sendCharacter('turnIn', { id: entry.id, quest: questId }));
+                        } else {
+                            button.textContent = row.count + '/' + def.count;
+                            button.disabled = true;
+                        }
+                        block.appendChild(button);
+                        panel.appendChild(block);
+                    }
                 } else if (entry.role === 'quest' && entry.quest) {
                     const def = questDefs[entry.quest] || { name: 'Quest', text: '', count: 1, coins: 0 };
                     const row = quests[entry.quest];
@@ -4658,6 +4702,7 @@
                         applyStats(data);
                         showMessage('Defeated. Respawned.');
                     } else if (data.type === 'quests') {
+                        if (data.questDefs) questDefs = data.questDefs;
                         if (data.inventory) applyInventory(data.inventory);
                         applyStats(data);
                         if (data.quests) applyQuests(data.quests);
@@ -4666,8 +4711,10 @@
                         if (!data.ok) showMessage(data.reason || 'Miss');
                         else {
                             applyStats(data);
+                            if (data.inventory) applyInventory(data.inventory);
                             const ready = data.quests ? applyQuests(data.quests) : '';
-                            if (data.heal) showMessage('+' + data.heal + ' HP');
+                            if (data.questNote) showMessage(data.questNote);
+                            else if (data.heal) showMessage('+' + data.heal + ' HP');
                             else if (data.killed) {
                                 const xp = data.gained > 0
                                     ? (data.leveled ? 'Level ' + data.level + '! +' + data.gained + ' XP' : '+' + data.gained + ' XP')
@@ -4722,6 +4769,7 @@
                     } else if (data.type === 'world') {
                         applyWorldConfig(data.world || {});
                         if (data.world && data.world.grayLevels) grayLevels = data.world.grayLevels;
+                        if (data.questDefs) questDefs = data.questDefs;
                         reloadChunks();
                         if (data.civilians) spawnCivilians(data.civilians);
                         if (data.camps) spawnCamps(data.camps);

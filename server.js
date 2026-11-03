@@ -205,18 +205,70 @@ function campSites() {
 
 rebuildCivilians();
 
-const QUESTS = {
-    'boar-tusks': { name: 'Boar Tusks', text: 'Kill 3 wild boars in Camp Glade.', kind: 'boar', count: 3, coins: 20, xp: 50 }
-};
-
 function publicCivilian(civ) {
-    return { id: civ.id, name: civ.name, role: civ.role, title: civ.title, tint: civ.tint, x: civ.x, z: civ.z, text: civ.text, quest: civ.quest || '' };
+    const quests = Array.isArray(civ.quests) ? civ.quests : (civ.quest ? [civ.quest] : []);
+    return { id: civ.id, name: civ.name, role: civ.role, title: civ.title, tint: civ.tint, x: civ.x, z: civ.z, text: civ.text, quest: quests[0] || '', quests };
 }
+
+const QUEST_TYPES = ['kill', 'gather', 'named', 'protect'];
+const MOB_IDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
+
+function questBlurb(quest) {
+    if (quest.custom && quest.text) return quest.text;
+    const mob = NPC_KINDS[quest.mob];
+    const label = mob ? mob.name : 'creature';
+    const many = quest.count === 1 ? label : label + 's';
+    if (quest.type === 'gather') {
+        const who = quest.named || many;
+        return 'Gather ' + quest.count + ' ' + (quest.item || 'items') + '. ' + who + ' drop them.';
+    }
+    if (quest.type === 'named') return 'Kill ' + (quest.named || label) + '.';
+    if (quest.type === 'protect') return 'Protect ' + (quest.named || 'the villager') + '. Defeat ' + quest.count + ' attackers.';
+    return 'Kill ' + quest.count + ' ' + many + '.';
+}
+
+const QUESTS = {
+    'boar-tusks': {
+        id: 'boar-tusks',
+        name: 'Boar Tusks',
+        text: 'Kill 3 wild boars in Camp Glade.',
+        custom: true,
+        type: 'kill',
+        mob: 'boar',
+        kind: 'boar',
+        count: 3,
+        coins: 20,
+        xp: 50,
+        minLevel: 1,
+        giver: 'Sela',
+        requires: '',
+        item: '',
+        named: '',
+        rewardKind: '',
+        rewardName: '',
+        rewardQty: 1,
+        designed: false
+    }
+};
 
 function publicQuests() {
     const out = {};
     for (const [id, quest] of Object.entries(QUESTS)) {
-        out[id] = { name: quest.name, text: quest.text, count: quest.count, coins: quest.coins, xp: quest.xp };
+        out[id] = {
+            name: quest.name,
+            text: questBlurb(quest),
+            count: quest.count,
+            coins: quest.coins,
+            xp: quest.xp,
+            type: quest.type || 'kill',
+            minLevel: quest.minLevel || 1,
+            requires: quest.requires || '',
+            item: quest.item || '',
+            named: quest.named || '',
+            rewardKind: quest.rewardKind || '',
+            rewardName: quest.rewardName || '',
+            rewardQty: quest.rewardQty || 1
+        };
     }
     return out;
 }
@@ -235,7 +287,11 @@ function loadQuests(prof) {
     const raw = prof.quests && typeof prof.quests === 'object' ? prof.quests : {};
     for (const [id, row] of Object.entries(raw)) {
         if (!QUESTS[id] || !row) continue;
-        next[id] = { state: row.state === 'done' ? 'done' : 'active', count: Math.max(0, Math.min(QUESTS[id].count, Number(row.count) || 0)) };
+        next[id] = {
+            state: row.state === 'done' ? 'done' : 'active',
+            count: Math.max(0, Math.min(QUESTS[id].count, Number(row.count) || 0)),
+            failed: !!row.failed
+        };
     }
     prof.quests = next;
 }
@@ -261,15 +317,215 @@ function placePlayer(player, data) {
 
 function noteKill(player, npc) {
     let changed = false;
+    let item = false;
     for (const [id, quest] of Object.entries(QUESTS)) {
         const row = player.quests && player.quests[id];
-        if (!row || row.state !== 'active' || quest.kind !== npc.kind) continue;
-        if (row.count >= quest.count) continue;
-        row.count += 1;
-        changed = true;
+        if (!row || row.state !== 'active' || row.failed || row.count >= quest.count) continue;
+        const namedHit = quest.named && npc.name === quest.named;
+        const kindHit = quest.mob && npc.kind === quest.mob;
+        if (quest.type === 'kill' && kindHit) {
+            row.count += 1;
+            changed = true;
+        } else if (quest.type === 'named' && (npc.questId === id || namedHit)) {
+            row.count = 1;
+            changed = true;
+            if (quest.item) {
+                const leftover = addToSlots(player, { kind: 'quest', name: quest.item, qty: 1 });
+                if (leftover) player.questNote = 'Bag full';
+                else item = true;
+            }
+        } else if (quest.type === 'protect' && npc.questId === id) {
+            row.count += 1;
+            changed = true;
+        } else if (quest.type === 'gather' && quest.item && (namedHit || (!quest.named && kindHit))) {
+            const leftover = addToSlots(player, { kind: 'quest', name: quest.item, qty: 1 });
+            if (leftover) player.questNote = 'Bag full';
+            else {
+                row.count += 1;
+                changed = true;
+                item = true;
+            }
+        }
     }
+    if (changed || item) player.questDirty = true;
     if (changed) savePlayer(player);
-    return changed;
+    return { changed, item };
+}
+
+function questDoneByName(player, name) {
+    const needle = String(name || '').trim().toLowerCase();
+    if (!needle) return true;
+    return Object.entries(player.quests || {}).some(([id, row]) => row.state === 'done' && QUESTS[id] && QUESTS[id].name.toLowerCase() === needle);
+}
+
+function bindQuestGivers() {
+    for (const civ of CIVILIANS) {
+        civ.quests = civ.quest && QUESTS[civ.quest] ? [civ.quest] : [];
+    }
+    for (const [id, quest] of Object.entries(QUESTS)) {
+        if (!quest.designed || !quest.giver) continue;
+        const needle = quest.giver.toLowerCase();
+        const giver = CIVILIANS.find(civ => civ.role === 'quest' && civ.name.toLowerCase() === needle)
+            || CIVILIANS.find(civ => civ.name.toLowerCase() === needle);
+        if (!giver) continue;
+        if (!giver.quests.includes(id)) giver.quests.push(id);
+        giver.quest = giver.quests[0] || '';
+    }
+}
+
+function installQuests(list) {
+    for (const key of Object.keys(QUESTS)) delete QUESTS[key];
+    if (!customMap()) {
+        QUESTS['boar-tusks'] = {
+            id: 'boar-tusks',
+            name: 'Boar Tusks',
+            text: 'Kill 3 wild boars in Camp Glade.',
+            custom: true,
+            type: 'kill',
+            mob: 'boar',
+            kind: 'boar',
+            count: 3,
+            coins: 20,
+            xp: 50,
+            minLevel: 1,
+            giver: 'Sela',
+            requires: '',
+            item: '',
+            named: '',
+            rewardKind: '',
+            rewardName: '',
+            rewardQty: 1,
+            designed: false
+        };
+    }
+    for (const quest of list || []) {
+        QUESTS[quest.id] = { ...quest, designed: true, guardHp: 0, guardMax: 0 };
+    }
+    bindQuestGivers();
+}
+
+function giverOf(quest) {
+    const needle = String(quest.giver || '').toLowerCase();
+    return CIVILIANS.find(civ => civ.name.toLowerCase() === needle) || null;
+}
+
+function protectTarget(quest) {
+    const needle = String(quest.named || '').toLowerCase();
+    return CIVILIANS.find(civ => civ.name.toLowerCase() === needle) || null;
+}
+
+function someoneNeeds(questId) {
+    const quest = QUESTS[questId];
+    if (!quest) return false;
+    for (const player of players.values()) {
+        const row = player.quests && player.quests[questId];
+        if (row && row.state === 'active' && !row.failed && row.count < quest.count) return true;
+    }
+    return false;
+}
+
+function dropQuestMob(npc) {
+    if (!npcs.has(npc.id)) return;
+    npcs.delete(npc.id);
+    broadcast({ type: 'npcUnload', ids: [npc.id] });
+}
+
+function spawnQuestMob(quest, questId, index, x, z, guardId) {
+    const kind = NPC_KINDS[quest.mob] || NPC_KINDS.boar;
+    const npc = {
+        id: guardId ? 'qa-' + questId + '-' + index : 'qn-' + questId,
+        zx: Math.round(x / ZONE_SIZE),
+        zz: Math.round(z / ZONE_SIZE),
+        pinned: true,
+        questId,
+        guardId: guardId || '',
+        x, z,
+        kind: kind.id,
+        name: quest.type === 'named' ? (quest.named || kind.name) : kind.name,
+        tint: kind.tint,
+        loot: kind.loot,
+        level: Math.max(1, quest.minLevel || 1),
+        alive: true,
+        aggroId: null,
+        attackAt: 0
+    };
+    npc.maxHp = npcMaxHp(npc.level);
+    npc.hp = npc.maxHp;
+    npc.homeX = x;
+    npc.homeZ = z;
+    pickWander(npc);
+    npcs.set(npc.id, npc);
+    return npc;
+}
+
+function spotNear(x, z, index) {
+    const angle = index * 1.7;
+    let px = x + Math.cos(angle) * (8 + index * 2);
+    let pz = z + Math.sin(angle) * (8 + index * 2);
+    if (!onLand(px, pz)) {
+        px = x;
+        pz = z;
+    }
+    return { x: px, z: pz };
+}
+
+function respawnPinned(npc) {
+    const quest = QUESTS[npc.questId];
+    if (!quest || !someoneNeeds(npc.questId) || (quest.type === 'protect' && (quest.guardHp || 0) <= 0)) {
+        dropQuestMob(npc);
+        return;
+    }
+    npc.alive = true;
+    npc.hp = npc.maxHp;
+    npc.aggroId = null;
+    pickWander(npc);
+}
+
+function failProtect(questId) {
+    const quest = QUESTS[questId];
+    if (!quest) return;
+    quest.guardHp = 0;
+    for (const npc of [...npcs.values()]) {
+        if (npc.questId === questId) dropQuestMob(npc);
+    }
+    for (const player of players.values()) {
+        const row = player.quests && player.quests[questId];
+        if (!row || row.state !== 'active' || row.failed) continue;
+        row.failed = true;
+        row.count = 0;
+        savePlayer(player);
+        send(player.ws, { type: 'quests', ok: false, reason: (quest.named || 'They') + ' has fallen', quests: player.quests });
+    }
+}
+
+let lastQuestSync = 0;
+function syncQuestActors(now) {
+    if (now - lastQuestSync < 1000) return;
+    lastQuestSync = now;
+    for (const [id, quest] of Object.entries(QUESTS)) {
+        if (quest.type === 'named') {
+            const mobs = [...npcs.values()].filter(npc => npc.questId === id);
+            if (!someoneNeeds(id)) {
+                for (const npc of mobs) if (!npc.alive) dropQuestMob(npc);
+                continue;
+            }
+            if (mobs.some(npc => npc.alive || npc.respawnAt > now)) continue;
+            const giver = giverOf(quest) || { x: 0, z: 8 };
+            const spot = spotNear(giver.x, giver.z, 1);
+            spawnQuestMob(quest, id, 0, spot.x, spot.z, '');
+        } else if (quest.type === 'protect') {
+            if (!someoneNeeds(id)) continue;
+            const civ = protectTarget(quest);
+            if (!civ) continue;
+            if (!quest.guardMax) quest.guardMax = 50 + quest.count * 20;
+            if (!quest.guardHp) quest.guardHp = quest.guardMax;
+            const alive = [...npcs.values()].filter(npc => npc.questId === id && (npc.alive || npc.respawnAt > now));
+            for (let i = alive.length; i < quest.count; i++) {
+                const spot = spotNear(civ.x, civ.z, i + 1);
+                spawnQuestMob(quest, id, i, spot.x, spot.z, civ.id);
+            }
+        }
+    }
 }
 
 function coinRoom() {
@@ -422,6 +678,7 @@ function refreshNpcZones() {
     }
     const unload = [];
     for (const [id, npc] of npcs) {
+        if (npc.pinned) continue;
         if (want.has(zoneKey(npc.zx, npc.zz))) continue;
         unload.push(id);
         npcs.delete(id);
@@ -1091,7 +1348,7 @@ const BASE_SLOTS = 16;
 function stackLimit(item) {
     if (item.kind === 'coins') return 99;
     if (item.kind === 'wood' || item.kind === 'stone' || item.kind === 'cloth' || item.kind === 'leather' || item.kind === 'ore') return 20;
-    if (item.kind === 'junk' || item.kind === 'gem' || item.kind === 'recipe') return 10;
+    if (item.kind === 'junk' || item.kind === 'gem' || item.kind === 'recipe' || item.kind === 'quest') return 10;
     if (item.kind === 'health' || item.kind === 'mana' || item.kind === 'armor' || item.kind === 'bomb') return 5;
     return 1;
 }
@@ -1395,8 +1652,37 @@ function tickNpcs() {
 
     for (const npc of npcs.values()) {
         if (!npc.alive) {
-            if (now >= npc.respawnAt) placeNpc(npc);
+            if (now >= npc.respawnAt) {
+                if (npc.pinned) respawnPinned(npc);
+                else placeNpc(npc);
+            }
             continue;
+        }
+        if (npc.guardId) {
+            const civ = CIVILIANS.find(entry => entry.id === npc.guardId);
+            const quest = QUESTS[npc.questId];
+            const playerNear = civ && [...players.values()].some(entry => {
+                const row = entry.quests && entry.quests[npc.questId];
+                return row && row.state === 'active' && !row.failed && Math.hypot(entry.x - civ.x, entry.z - civ.z) < 42;
+            });
+            if (civ && quest && playerNear && !nearestPlayer(npc, AGGRO_RANGE)) {
+                const dx = civ.x - npc.x;
+                const dz = civ.z - npc.z;
+                const dist = Math.hypot(dx, dz) || 0;
+                npc.rotY = Math.atan2(dx, dz);
+                if (dist <= 1.8) {
+                    if (now >= npc.attackAt) {
+                        npc.attackAt = now + 1500;
+                        quest.guardHp = (quest.guardHp || 0) - 4;
+                        if (quest.guardHp <= 0) failProtect(npc.questId);
+                    }
+                    continue;
+                }
+                const step = Math.min(3.2 * dt, dist);
+                npc.x += (dx / dist) * step;
+                npc.z += (dz / dist) * step;
+                continue;
+            }
         }
         const target = nearestPlayer(npc, AGGRO_RANGE);
         let tx = npc.wanderX;
@@ -1464,6 +1750,7 @@ function tickNpcs() {
         if (wss.clients.size) broadcast({ type: 'npcs', npcs: living });
     }
     syncPartyVitals();
+    syncQuestActors(now);
 }
 
 setInterval(tickNpcs, 50);
@@ -1830,8 +2117,12 @@ wss.on('connection', (ws) => {
                     ability: data.ability || 'sword',
                     chest: chest ? publicChest(chest) : null,
                     quests: player.quests,
+                    inventory: player.questDirty ? inventoryOf(player) : undefined,
+                    questNote: player.questNote || '',
                     ...statsOf(player)
                 });
+                player.questDirty = false;
+                player.questNote = '';
             };
             const land = () => {
                 if (!npc.alive) return { dealt: 0, killed: false, gained: 0, leveled: false, chest: null };
@@ -1958,42 +2249,87 @@ wss.on('connection', (ws) => {
 
         if (data.type === 'acceptQuest') {
             const civ = nearCivilian(player, data.id);
-            const questId = civ && civ.quest;
+            const offered = civ && (civ.quests || (civ.quest ? [civ.quest] : []));
+            const questId = offered && data.quest && offered.includes(data.quest) ? data.quest : (offered && offered[0]);
             const quest = questId && QUESTS[questId];
-            if (!civ || civ.role !== 'quest' || !quest) {
-                send(ws, { type: 'quests', ok: false, reason: civ ? 'Not a quest giver' : 'Too far', quests: player.quests });
+            if (!civ || !quest) {
+                send(ws, { type: 'quests', ok: false, reason: civ ? 'No quest here' : 'Too far', quests: player.quests });
                 return;
             }
-            if (player.quests[questId]) {
+            const row = player.quests[questId];
+            if (row && row.state === 'done') {
+                send(ws, { type: 'quests', ok: false, reason: 'Already complete', quests: player.quests });
+                return;
+            }
+            if (row && row.state === 'active' && !row.failed) {
                 send(ws, { type: 'quests', ok: false, reason: 'Already taken', quests: player.quests });
                 return;
             }
-            player.quests[questId] = { state: 'active', count: 0 };
+            if ((player.level || 1) < (quest.minLevel || 1)) {
+                send(ws, { type: 'quests', ok: false, reason: 'Requires level ' + quest.minLevel, quests: player.quests });
+                return;
+            }
+            if (!questDoneByName(player, quest.requires)) {
+                send(ws, { type: 'quests', ok: false, reason: 'Requires ' + quest.requires, quests: player.quests });
+                return;
+            }
+            if (quest.type === 'protect' && !protectTarget(quest)) {
+                send(ws, { type: 'quests', ok: false, reason: 'That person is not in the world', quests: player.quests });
+                return;
+            }
+            const already = quest.type === 'protect' && someoneNeeds(questId);
+            player.quests[questId] = { state: 'active', count: 0, failed: false };
+            if (quest.type === 'protect') {
+                quest.guardMax = 50 + quest.count * 20;
+                if (!already || !quest.guardHp) quest.guardHp = quest.guardMax;
+            }
             savePlayer(player);
-            send(ws, { type: 'quests', ok: true, note: 'Quest accepted', quests: player.quests });
+            lastQuestSync = 0;
+            syncQuestActors(Date.now());
+            send(ws, { type: 'quests', ok: true, note: 'Quest accepted', quests: player.quests, questDefs: publicQuests() });
             return;
         }
 
         if (data.type === 'turnIn') {
             const civ = nearCivilian(player, data.id);
-            const questId = civ && civ.quest;
+            const offered = civ && (civ.quests || (civ.quest ? [civ.quest] : []));
+            const questId = offered && data.quest && offered.includes(data.quest) ? data.quest : (offered && offered[0]);
             const quest = questId && QUESTS[questId];
             const row = questId && player.quests[questId];
             if (!civ || !quest || !row || row.state !== 'active') {
                 send(ws, { type: 'quests', ok: false, reason: civ ? 'Nothing to turn in' : 'Too far', quests: player.quests });
                 return;
             }
+            if (row.failed) {
+                send(ws, { type: 'quests', ok: false, reason: 'The defense failed', quests: player.quests });
+                return;
+            }
             if (row.count < quest.count) {
                 send(ws, { type: 'quests', ok: false, reason: row.count + '/' + quest.count, quests: player.quests });
                 return;
             }
-            if (!coinRoom()) {
-                send(ws, { type: 'quests', ok: false, reason: 'Inventory full', quests: player.quests });
-                return;
+            if (quest.rewardKind && quest.rewardKind !== 'coins') {
+                const leftover = addToSlots(player, { kind: quest.rewardKind, name: quest.rewardName || quest.rewardKind, qty: quest.rewardQty || 1 });
+                if (leftover) {
+                    send(ws, { type: 'quests', ok: false, reason: 'Inventory full', quests: player.quests });
+                    return;
+                }
+            }
+            if (quest.type === 'gather' && quest.item) {
+                let left = quest.count;
+                for (let i = 0; i < player.slots.length && left > 0; i++) {
+                    const slot = player.slots[i];
+                    if (!slot || slot.kind !== 'quest' || slot.name !== quest.item) continue;
+                    const take = Math.min(slot.qty, left);
+                    slot.qty -= take;
+                    left -= take;
+                    if (slot.qty <= 0) player.slots[i] = null;
+                }
             }
             row.state = 'done';
-            addToSlots(player, { kind: 'coins', name: 'Coins', qty: quest.coins });
-            const leveled = grantXp(player, quest.xp);
+            row.failed = false;
+            if (quest.coins) addToSlots(player, { kind: 'coins', name: 'Coins', qty: quest.coins });
+            const leveled = grantXp(player, quest.xp || 0);
             savePlayer(player);
             send(ws, { type: 'quests', ok: true, note: 'Quest complete', leveled, quests: player.quests, inventory: inventoryOf(player), ...statsOf(player) });
             return;
@@ -2061,7 +2397,11 @@ wss.on('connection', (ws) => {
                 const index = Number.isInteger(data.slot) ? data.slot : -1;
                 const slot = player.slots[index];
                 if (!slot) {
-                    send(ws, { type: 'sellResult', ok: false, reason: 'Empty slot' });
+                    send(ws, { type: 'sellResult', ok: false, reason: 'Nothing to sell' });
+                    return;
+                }
+                if (slot.kind === 'quest') {
+                    send(ws, { type: 'sellResult', ok: false, reason: 'Quest items cannot be sold' });
                     return;
                 }
                 qty = data.all ? slot.qty : 1;
@@ -2347,7 +2687,8 @@ function defaultWorldConfig() {
         xpPerMobLevel: 20,
         adminPassword: '',
         loot: JSON.parse(JSON.stringify(LOOT_TABLES)),
-        zones: []
+        zones: [],
+        quests: []
     };
 }
 
@@ -2407,6 +2748,40 @@ function sanitizeBounds(input) {
     };
 }
 
+function sanitizeQuests(input) {
+    const list = Array.isArray(input) ? input : [];
+    const out = [];
+    const seen = new Set();
+    for (const raw of list.slice(0, 40)) {
+        if (!raw || typeof raw !== 'object') continue;
+        let id = String(raw.id || '').slice(0, 24);
+        if (!/^[a-z0-9-]{2,24}$/i.test(id)) id = 'q' + Math.random().toString(36).slice(2, 8);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const type = QUEST_TYPES.includes(raw.type) ? raw.type : 'kill';
+        out.push({
+            id,
+            name: String(raw.name || 'Quest').slice(0, 32),
+            minLevel: clampNum(raw.minLevel, 1, 1, 30),
+            giver: String(raw.giver || '').trim().slice(0, 24),
+            requires: String(raw.requires || '').trim().slice(0, 32),
+            type,
+            mob: MOB_IDS.includes(raw.mob) ? raw.mob : 'boar',
+            count: type === 'named' ? 1 : clampNum(raw.count, 3, 1, 40),
+            item: String(raw.item || '').trim().slice(0, 24),
+            named: String(raw.named || '').trim().slice(0, 24),
+            custom: !!raw.custom,
+            text: String(raw.text || '').slice(0, 180),
+            coins: clampNum(raw.coins, 10, 0, 500),
+            xp: clampNum(raw.xp, 40, 0, 2000),
+            rewardKind: LOOT_KINDS.includes(raw.rewardKind) ? raw.rewardKind : '',
+            rewardName: String(raw.rewardName || '').trim().slice(0, 24),
+            rewardQty: clampNum(raw.rewardQty, 1, 1, 10)
+        });
+    }
+    return out;
+}
+
 function sanitizeWorld(input) {
     const src = input && typeof input === 'object' ? input : {};
     return {
@@ -2417,7 +2792,8 @@ function sanitizeWorld(input) {
         adminPassword: typeof src.adminPassword === 'string' ? src.adminPassword.slice(0, 64) : '',
         loot: sanitizeLoot(src.loot),
         zones: Array.isArray(src.zones) ? src.zones : [],
-        bounds: sanitizeBounds(src.bounds)
+        bounds: sanitizeBounds(src.bounds),
+        quests: sanitizeQuests(src.quests)
     };
 }
 
@@ -2434,7 +2810,8 @@ function publicWorld() {
         grayLevels: worldRules.grayLevels,
         xpPerMobLevel: worldRules.xpPerMobLevel,
         bounds: worldShape(),
-        zones: listDesignedZones()
+        zones: listDesignedZones(),
+        quests: (worldConfig && worldConfig.quests) || []
     };
 }
 
@@ -2445,8 +2822,9 @@ function applyLoaded(config) {
     worldRules.xpPerMobLevel = config.xpPerMobLevel;
     applyWorldConfig(config);
     lootTables = config.loot;
-    worldConfig = { ...config, zones: listDesignedZones(), bounds: worldShape(), loot: lootTables };
+    worldConfig = { ...config, zones: listDesignedZones(), bounds: worldShape(), loot: lootTables, quests: config.quests || [] };
     rebuildCivilians();
+    installQuests(config.quests || []);
     npcs.clear();
     seededZones.clear();
     refreshNpcZones();
@@ -2509,7 +2887,8 @@ app.put('/api/setup/config', requireAdmin, (req, res) => {
         world: publicWorld(),
         civilians: CIVILIANS.map(publicCivilian),
         camps: campSites(),
-        npcs: Array.from(npcs.values()).filter(npc => npc.alive).map(publicNpc)
+        npcs: Array.from(npcs.values()).filter(npc => npc.alive).map(publicNpc),
+        questDefs: publicQuests()
     });
     res.json({ ok: true, config: { ...publicWorld(), loot: lootTables } });
 });
