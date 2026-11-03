@@ -8,9 +8,10 @@ Browser-based open-world game with multiplayer support, packaged for Docker. The
 - `/models/boar.glb`, `wolf.glb`, `spider.glb`, `bandit.glb`, `ogre.glb`, `wisp.glb`, `knight.glb`, `cultist.glb` — one file per hostile type.
 - `/models/terrain-grass.glb` — grass ground. Cliffs and deep water keep their own colors.
 - `/models/terrain-sand.glb` — beach and shore.
-- `/models/tree.glb` — trees that can be chopped.
-- `/models/rock.glb` — static rocks. They block movement and cannot be mined.
-- `/models/mine-rock.glb` — mining rocks. These are the nodes a pickaxe gathers.
+- `/models/tree.glb` — scenery trees. They block movement and cannot be chopped.
+- `/models/gather-tree.glb` — trees placed in world setup that an axe can chop.
+- `/models/rock.glb` — scenery rocks. They block movement and cannot be mined.
+- `/models/mine-rock.glb` — rocks placed in world setup that a pickaxe can mine.
 - `/models/camp.glb`, `inn.glb`, `cabin.glb` — camp site, inn, and huts.
 - `/models/chest.glb` — loot chests.
 All of them are served by the Node.js server (no embedding).
@@ -25,6 +26,7 @@ These models are from [Open Source 3D Assets](https://www.opensource3dassets.com
 | `models/terrain-grass.glb` | TerrainGrass01 | Avatar Garden |
 | `models/terrain-sand.glb` | TerrainSand01 | Avatar Garden |
 | `models/tree.glb` | Tree01 | Avatar Garden |
+| `models/gather-tree.glb` | Tree04 | Avatar Garden |
 | `models/rock.glb` | Rock_01 | Transit |
 | `models/mine-rock.glb` | Rock02_Art | Tomb Chaser 2 |
 

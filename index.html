@@ -628,10 +628,15 @@
                 refreshGround();
             }, undefined, (err) => console.warn('Sand terrain failed', err));
             let treeTemplate = null;
+            let gatherTreeTemplate = null;
             loader.load('/models/tree.glb', (gltf) => {
                 treeTemplate = fitProp(gltf.scene);
                 refreshGround();
             }, undefined, (err) => console.warn('Tree model failed', err));
+            loader.load('/models/gather-tree.glb', (gltf) => {
+                gatherTreeTemplate = fitProp(gltf.scene);
+                refreshGround();
+            }, undefined, (err) => console.warn('Gather tree model failed', err));
             loader.load('/models/mine-rock.glb', (gltf) => {
                 mineTemplate = fitProp(gltf.scene);
                 rockReady();
@@ -1163,17 +1168,17 @@
                 }
 
                 for (const c of allColliders) {
-                    if (!c.type) continue;
-                    if (c.type === 'tree' && !mapLayers.trees) continue;
+                    if (!c.type || c.type === 'boulder') continue;
+                    if ((c.type === 'tree' || c.type === 'plain-tree') && !mapLayers.trees) continue;
                     if (c.type === 'herb' && !mapLayers.trees) continue;
-                    if ((c.type === 'rock' || c.type === 'sulfur') && !mapLayers.rocks) continue;
+                    if ((c.type === 'rock' || c.type === 'plain-rock' || c.type === 'sulfur') && !mapLayers.rocks) continue;
                     if (!seenAt(c.x, c.z)) continue;
                     const p = place(c.x, c.z);
                     if (!p) continue;
                     ctx.beginPath();
-                    const radius = c.type === 'tree' ? 3 : c.type === 'herb' ? 2 : 2.5;
+                    const radius = c.type === 'tree' || c.type === 'plain-tree' ? 3 : c.type === 'herb' ? 2 : 2.5;
                     ctx.arc(p.mx, p.mz, radius, 0, Math.PI * 2);
-                    ctx.fillStyle = c.type === 'herb' ? '#7dff4a' : c.type === 'sulfur' ? '#f4d03f' : c.type === 'tree' ? '#228B22' : '#888888';
+                    ctx.fillStyle = c.type === 'herb' ? '#7dff4a' : c.type === 'sulfur' ? '#f4d03f' : c.type === 'tree' ? '#27ae60' : c.type === 'plain-tree' ? '#1e6b3a' : c.type === 'rock' ? '#e67e22' : '#888888';
                     ctx.fill();
                 }
 
@@ -1710,30 +1715,18 @@
                 const colliders = [];
                 for (const item of chunkResources(cx, cz)) {
                     const hits = resourceHits.has(item.id) ? resourceHits.get(item.id) : item.hits;
-                    if (item.type !== 'boulder' && hits <= 0) continue;
+                    const scenery = item.type === 'boulder' || item.type === 'plain-tree' || item.type === 'plain-rock';
+                    if (!scenery && hits <= 0) continue;
 
                     const meshes = [];
-                    if (item.type === 'tree' && treeTemplate) {
-                        const tree = placeProp(treeTemplate, item, 4.6 + (Math.abs(Math.sin(item.x * 0.17 + item.z)) * 1.3));
-                        group.add(tree);
-                        meshes.push(tree);
-                    } else if (item.type === 'tree') {
-                        const trunk = new THREE.Mesh(
-                            new THREE.CylinderGeometry(0.3, 0.45, 3, 8),
-                            new THREE.MeshLambertMaterial({ color: 0x8B4513 })
-                        );
-                        trunk.position.set(item.px, terrainHeight(item.x, item.z) + 1.5, item.pz);
-                        trunk.castShadow = true;
-                        group.add(trunk);
-
-                        const leaves = new THREE.Mesh(
-                            new THREE.ConeGeometry(1.6, 3.2, 8),
-                            new THREE.MeshLambertMaterial({ color: 0x2E8B57 })
-                        );
-                        leaves.position.set(item.px, terrainHeight(item.x, item.z) + 4.2, item.pz);
-                        leaves.castShadow = true;
-                        group.add(leaves);
-                        meshes.push(trunk, leaves);
+                    if (item.type === 'tree' || item.type === 'plain-tree') {
+                        const template = item.type === 'tree' ? (gatherTreeTemplate || treeTemplate) : treeTemplate;
+                        if (template) {
+                            const scale = item.type === 'tree' ? 4.4 : 4.6 + Math.abs(Math.sin(item.x * 0.17 + item.z)) * 1.3;
+                            const tree = placeProp(template, item, scale);
+                            group.add(tree);
+                            meshes.push(tree);
+                        }
                     } else if (item.type === 'herb') {
                         const stem = new THREE.Mesh(
                             new THREE.CylinderGeometry(0.06, 0.08, 0.55, 6),
@@ -1760,9 +1753,9 @@
                         crystal.position.set(item.px, terrainHeight(item.x, item.z) + 0.35, item.pz);
                         group.add(crystal);
                         meshes.push(crystal);
-                    } else if (item.type === 'boulder') {
+                    } else if (item.type === 'boulder' || item.type === 'plain-rock') {
                         if (!rockTemplate) continue;
-                        const rock = placeProp(rockTemplate, item, 1.15 + item.sx * 0.4);
+                        const rock = placeProp(rockTemplate, item, 1.15 + (item.sx || 1) * 0.4);
                         group.add(rock);
                         meshes.push(rock);
                     } else if (mineTemplate) {
@@ -1784,8 +1777,9 @@
                         id: item.id,
                         x: item.x,
                         z: item.z,
-                        r: (item.type === 'tree' ? 0.5 : item.type === 'herb' ? 0.2 : item.type === 'sulfur' ? 0.4 : item.type === 'boulder' ? 0.7 + item.sx * 0.25 : 0.9) + characterRadius,
-                        type: item.type === 'boulder' ? '' : item.type,
+                        r: (item.type === 'tree' || item.type === 'plain-tree' ? 0.5 : item.type === 'herb' ? 0.2 : item.type === 'sulfur' ? 0.4 : item.type === 'boulder' || item.type === 'plain-rock' ? 0.7 + (item.sx || 1) * 0.25 : 0.9) + characterRadius,
+                        type: item.type,
+                        gather: !scenery && hits > 0,
                         hits,
                         meshes,
                         parent: group
@@ -1850,7 +1844,7 @@
                 let closestDist = gatherRange;
 
                 for (const c of allColliders) {
-                    if (!c.type) continue;
+                    if (!c.gather) continue;
                     const dist = Math.hypot(px - c.x, pz - c.z);
                     if (dist < closestDist) {
                         closest = c;
@@ -3917,7 +3911,7 @@
                     const pz = characterGroup.position.z;
                     let near = false;
                     for (const c of allColliders) {
-                        if (c.type && c.type !== 'boulder' && Math.hypot(px - c.x, pz - c.z) < 2.8) near = true;
+                        if (c.gather && Math.hypot(px - c.x, pz - c.z) < 2.8) near = true;
                     }
                     if (near) tryGather();
                     else if ((character.class ? wornWeapon() : equippedWeapon) === 'sword') tryAttack('sword');

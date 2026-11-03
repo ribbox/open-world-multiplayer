@@ -87,13 +87,13 @@ export function chunkResources(cx, cz) {
         const n = 6 + Math.floor(rand() * 7);
         for (let i = 0; i < n; i++) {
             const roll = rand();
-            const type = roll > 0.7 ? 'tree' : roll > 0.035 ? 'boulder' : 'rock';
+            const type = roll > 0.7 ? 'plain-tree' : roll > 0.035 ? 'boulder' : 'plain-rock';
             const px = (rand() - 0.5) * CHUNK_SIZE * 0.85;
             const pz = (rand() - 0.5) * CHUNK_SIZE * 0.85;
             let sx = 0;
             let sy = 0;
             let sz = 0;
-            if (type === 'rock' || type === 'boulder') {
+            if (type !== 'plain-tree') {
                 sx = 0.8 + rand() * 1.2;
                 sy = 0.4 + rand() * 0.8;
                 sz = 0.8 + rand() * 1.2;
@@ -111,7 +111,7 @@ export function chunkResources(cx, cz) {
                 sx,
                 sy,
                 sz,
-                hits: type === 'tree' ? 3 : type === 'boulder' ? 0 : 4
+                hits: 0
             });
         }
         const extra = mulberry32(chunkSeed(cx + 91, cz - 13));
@@ -659,7 +659,7 @@ export function zoneNpc(zx, zz) {
 }
 
 const MOB_IDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
-const NODE_TYPES = ['tree', 'rock', 'herb', 'sulfur'];
+const NODE_TYPES = ['tree', 'rock', 'plain-tree', 'plain-rock', 'herb', 'sulfur'];
 let designedZones = [];
 let designedNodes = [];
 
@@ -768,8 +768,9 @@ function appendDesignedNodes(cx, cz, items) {
         if (boundaryInset(node.x, node.z) < 4) continue;
         if (!designedZoneAt(node.x, node.z)) continue;
         const index = items.length;
-        const rock = node.type === 'rock';
+        const bulky = node.type === 'rock' || node.type === 'plain-rock';
         const sulfur = node.type === 'sulfur';
+        const hits = node.type === 'tree' ? 3 : node.type === 'herb' ? 2 : node.type === 'sulfur' ? 3 : node.type === 'rock' ? 4 : 0;
         items.push({
             id: `${cx},${cz},${index}`,
             type: node.type,
@@ -777,10 +778,11 @@ function appendDesignedNodes(cx, cz, items) {
             z: node.z,
             px: node.x - cx * CHUNK_SIZE,
             pz: node.z - cz * CHUNK_SIZE,
-            sx: rock ? 1.1 : sulfur ? 0.45 : 0,
-            sy: rock ? 0.7 : sulfur ? 0.7 : 0,
-            sz: rock ? 1.1 : sulfur ? 0.45 : 0,
-            hits: node.type === 'tree' ? 3 : node.type === 'herb' ? 2 : node.type === 'sulfur' ? 3 : 4
+            sx: bulky ? 1.1 : sulfur ? 0.45 : 0,
+            sy: bulky ? 0.7 : sulfur ? 0.7 : 0,
+            sz: bulky ? 1.1 : sulfur ? 0.45 : 0,
+            hits,
+            placed: hits > 0
         });
     }
 }

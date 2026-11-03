@@ -53,7 +53,7 @@
                 <button type="button" id="tabLoot">Loot</button>
             </div>
             <div id="panelMap">
-                <p>Drag the map to move it, and scroll to zoom. Draw a zone or the world edge. A zone that crosses the coast is cut back to the shoreline. Place a camp, then choose its buildings. Every camp has an innkeeper. Shop, trainer, and quest giver are optional.</p>
+                <p>Drag the map to move it, and scroll to zoom. Draw a zone or the world edge. A zone that crosses the coast is cut back to the shoreline. Chop tree and Mine rock can be gathered. Tree and Rock are scenery and cannot. Place a camp, then choose its buildings. Every camp has an innkeeper. Shop, trainer, and quest giver are optional.</p>
                 <div class="row">
                     <button type="button" id="editZones" class="on">Zones</button>
                     <button type="button" id="editBounds">World edge</button>
@@ -125,7 +125,7 @@
             { layout: 'ruin', shop: '', trainer: '', quest: '', inn: 'Innkeeper' },
             { layout: 'ashes', shop: '', trainer: 'Hermit', quest: '', inn: 'Hearth' }
         ];
-        const NODES = ['tree', 'rock', 'herb', 'sulfur'];
+        const NODES = ['tree', 'rock', 'plain-tree', 'plain-rock', 'herb', 'sulfur'];
         const KINDS = ['junk', 'coins', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor'];
         const canvas = document.getElementById('map');
         const ctx = canvas.getContext('2d');
@@ -394,7 +394,7 @@
                 strokeZone(entry.points, entry.edges, index === selected ? 'rgba(241,196,15,0.35)' : 'rgba(90,170,255,0.28)', index === selected ? '#f1c40f' : '#9cf', true);
                 for (const camp of entry.camps) mark(camp.x, camp.z, CAMP_COLOR[camp.layout] || '#f1c40f', 5);
                 for (const node of entry.nodes) {
-                    const color = node.type === 'tree' ? '#2e8b57' : node.type === 'rock' ? '#888' : node.type === 'herb' ? '#7dff4a' : '#f4d03f';
+                    const color = node.type === 'tree' ? '#27ae60' : node.type === 'plain-tree' ? '#145a32' : node.type === 'rock' ? '#e67e22' : node.type === 'plain-rock' ? '#888' : node.type === 'herb' ? '#7dff4a' : '#f4d03f';
                     mark(node.x, node.z, color, 3);
                 }
                 if (entry.points.length) {
@@ -529,7 +529,7 @@
             if (drawing === 'bounds') return config.bounds;
             return zone();
         }
-        const toolNames = [['draw', 'Draw'], ['select', 'Select'], ['camp', 'Camp'], ['tree', 'Tree'], ['rock', 'Rock'], ['herb', 'Herb'], ['sulfur', 'Sulfur'], ['erase', 'Erase']];
+        const toolNames = [['draw', 'Draw'], ['select', 'Select'], ['camp', 'Camp'], ['tree', 'Chop tree'], ['rock', 'Mine rock'], ['plain-tree', 'Tree'], ['plain-rock', 'Rock'], ['herb', 'Herb'], ['sulfur', 'Sulfur'], ['erase', 'Erase']];
         const tools = document.getElementById('tools');
         for (const [id, label] of toolNames) {
             const button = document.createElement('button');

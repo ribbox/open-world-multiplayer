@@ -1544,8 +1544,8 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'gatherResult', ok: false, reason: 'Unknown node' });
                 return;
             }
-            if (node.type === 'boulder') {
-                send(ws, { type: 'gatherResult', ok: false, reason: 'That rock cannot be mined' });
+            if (node.type === 'boulder' || node.type === 'plain-tree' || node.type === 'plain-rock' || ((node.type === 'tree' || node.type === 'rock') && !node.placed)) {
+                send(ws, { type: 'gatherResult', ok: false, reason: 'That cannot be gathered' });
                 return;
             }
             const hits = hitsFor(node.id);
