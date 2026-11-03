@@ -512,6 +512,120 @@ function failProtect(questId) {
     }
 }
 
+function playerOnObjective(player, quest) {
+    if (!player || player.ghost) return false;
+    if (quest.zoneId) {
+        const here = designedZoneAt(player.x, player.z);
+        if (here && here.id === quest.zoneId) return true;
+    }
+    const giver = giverOf(quest);
+    if (giver && Math.hypot(player.x - giver.x, player.z - giver.z) < 90) return true;
+    return !quest.zoneId && Math.hypot(player.x, player.z) < 110;
+}
+
+function aliveKindNear(x, z, kind, range) {
+    let count = 0;
+    for (const npc of npcs.values()) {
+        if (!npc.alive || npc.kind !== kind) continue;
+        if (Math.hypot(npc.x - x, npc.z - z) <= range) count += 1;
+    }
+    return count;
+}
+
+function herdStillNeeded(npc) {
+    for (const player of players.values()) {
+        if (Math.hypot(player.x - npc.homeX, player.z - npc.homeZ) > 100) continue;
+        for (const quest of Object.values(QUESTS)) {
+            if (quest.mob !== npc.kind || (quest.type !== 'kill' && quest.type !== 'gather')) continue;
+            const row = player.quests && player.quests[quest.id];
+            if (!row || row.state !== 'active' || row.failed || row.count >= quest.count) continue;
+            if (playerOnObjective(player, quest)) return true;
+        }
+    }
+    return false;
+}
+
+function respawnHerd(npc) {
+    npc.alive = true;
+    npc.hp = npc.maxHp;
+    npc.aggroId = null;
+    npc.x = npc.homeX;
+    npc.z = npc.homeZ;
+    pickWander(npc);
+}
+
+function spawnHerdMob(quest, x, z) {
+    const kind = NPC_KINDS[quest.mob] || NPC_KINDS.boar;
+    for (let attempt = 0; attempt < 8; attempt++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 16 + Math.random() * 24;
+        const px = x + Math.cos(angle) * dist;
+        const pz = z + Math.sin(angle) * dist;
+        if (!onLand(px, pz)) continue;
+        if (quest.zoneId) {
+            const here = designedZoneAt(px, pz);
+            if (!here || here.id !== quest.zoneId) continue;
+        }
+        let level = quest.minLevel || 1;
+        let loot = kind.loot;
+        let bonusHp = 0;
+        const ground = designedZoneAt(px, pz);
+        if (ground && ground.mob === quest.mob) {
+            level = ground.level || level;
+            loot = ground.loot || loot;
+            bonusHp = ground.hp || 0;
+        }
+        const npc = {
+            id: 'qh-' + quest.id + '-' + Math.random().toString(36).slice(2, 7),
+            zx: Math.round(px / ZONE_SIZE),
+            zz: Math.round(pz / ZONE_SIZE),
+            herd: true,
+            x: px,
+            z: pz,
+            homeX: px,
+            homeZ: pz,
+            kind: kind.id,
+            name: kind.name,
+            tint: kind.tint,
+            loot,
+            level,
+            alive: true,
+            aggroId: null,
+            attackAt: 0
+        };
+        npc.maxHp = bonusHp > 0 ? bonusHp : npcMaxHp(level);
+        npc.hp = npc.maxHp;
+        pickWander(npc);
+        npcs.set(npc.id, npc);
+        return npc;
+    }
+    return null;
+}
+
+function topUpQuestMobs() {
+    for (const player of players.values()) {
+        for (const quest of Object.values(QUESTS)) {
+            if (quest.type !== 'kill' && quest.type !== 'gather') continue;
+            if (!quest.mob) continue;
+            const row = player.quests && player.quests[quest.id];
+            if (!row || row.state !== 'active' || row.failed || row.count >= quest.count) continue;
+            if (!playerOnObjective(player, quest)) continue;
+            let near = aliveKindNear(player.x, player.z, quest.mob, 70);
+            let added = 0;
+            while (near < 6 && added < 3) {
+                const npc = spawnHerdMob(quest, player.x, player.z);
+                if (!npc) break;
+                near += 1;
+                added += 1;
+            }
+        }
+    }
+    for (const npc of [...npcs.values()]) {
+        if (!npc.herd || npc.aggroId) continue;
+        if (!herdStillNeeded(npc)) dropQuestMob(npc);
+    }
+}
+
 let lastQuestSync = 0;
 function syncQuestActors(now) {
     if (now - lastQuestSync < 1000) return;
@@ -540,6 +654,7 @@ function syncQuestActors(now) {
             }
         }
     }
+    topUpQuestMobs();
 }
 
 function coinRoom() {
@@ -1666,6 +1781,13 @@ function tickNpcs() {
 
     for (const npc of npcs.values()) {
         if (!npc.alive) {
+            if (npc.herd) {
+                const crowded = aliveKindNear(npc.homeX, npc.homeZ, npc.kind, 70) >= 6;
+                if (!herdStillNeeded(npc) || crowded) {
+                    if (now >= (npc.respawnAt || 0)) dropQuestMob(npc);
+                } else if (now >= (npc.respawnAt || 0)) respawnHerd(npc);
+                continue;
+            }
             if (now >= npc.respawnAt) {
                 if (npc.pinned) respawnPinned(npc);
                 else placeNpc(npc);
