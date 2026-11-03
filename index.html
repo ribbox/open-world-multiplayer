@@ -331,7 +331,7 @@
         E: Gather if something is close, otherwise attack your target<br>
         Click an NPC or another player, or press Tab, to target them<br>
         P: Invite the targeted player. A party holds up to 5<br>
-        B: Bag &nbsp; C: Character sheet &nbsp; F: Loot &nbsp; T: Talk<br>
+        C: Character sheet. Reset character is on that page and returns you to level 1<br>
         Character sheet Craft tab makes gear. A shop assistant buys and sells, grouped by rarity<br>
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
@@ -3923,6 +3923,15 @@
                 const title = document.createElement('h2');
                 title.textContent = 'Character';
                 panel.appendChild(title);
+                const reset = document.createElement('button');
+                reset.type = 'button';
+                reset.className = 'text-btn';
+                reset.textContent = 'Reset character';
+                reset.addEventListener('click', () => {
+                    if (!confirm('Reset this character to level 1? Level, class, spells, talents, crafting, quests, bag, coins, and explored map will be cleared.')) return;
+                    sendCharacter('reset');
+                });
+                panel.appendChild(reset);
 
                 if (!character.class) {
                     const note = document.createElement('p');
@@ -4879,6 +4888,30 @@
                         applyStats(data);
                         if (data.character) applyCharacter(data.character);
                         showMessage(data.ok === false ? (data.reason || 'Cannot do that') : (data.note || 'Character updated'));
+                    } else if (data.type === 'reset') {
+                        if (data.inventory) applyInventory(data.inventory);
+                        applyStats(data);
+                        if (data.character) applyCharacter(data.character);
+                        quests = data.quests || {};
+                        renderQuestTracker();
+                        if (Array.isArray(data.actionbar)) {
+                            actionBar = data.actionbar;
+                            renderBar();
+                        }
+                        explored.clear();
+                        exploredZones.clear();
+                        for (const key of data.fog || []) rememberFog(key);
+                        currentTool = 'sword';
+                        updateToolUI();
+                        if (ghost) leaveGhost();
+                        if (Number.isFinite(data.x) && Number.isFinite(data.z)) {
+                            characterGroup.position.set(data.x, terrainHeight(data.x, data.z), data.z);
+                            verticalVelocity = 0;
+                            onGround = true;
+                        }
+                        if (data.spawn) boundSpawn = data.spawn;
+                        if (document.getElementById('sheet').classList.contains('open')) renderSheet();
+                        showMessage(data.note || 'Character reset');
                     } else if (data.type === 'world') {
                         applyWorldConfig(data.world || {});
                         if (data.world && data.world.grayLevels) grayLevels = data.world.grayLevels;

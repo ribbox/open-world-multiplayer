@@ -119,7 +119,9 @@
             <h2>Selected zone</h2>
             <div id="zoneFields">Select or draw a zone.</div>
             <button type="button" id="save">Save world</button>
-            <button type="button" id="exportMap">Export map</button>
+            <button type="button" id="exportMap">Export world</button>
+            <button type="button" id="importMapBtn">Import world</button>
+            <input id="importMap" type="file" accept="application/json,.json" hidden>
         </div>
     </div>
     <script type="module">
@@ -1119,17 +1121,52 @@
                 grayLevels: config.grayLevels,
                 xpPerMobLevel: config.xpPerMobLevel,
                 bounds: config.bounds,
-                zones: config.zones,
-                loot: config.loot,
+                zones: config.zones || [],
+                loot: config.loot || {},
                 quests: config.quests || []
             };
             const blob = new Blob([JSON.stringify(copy, null, 2)], { type: 'application/json' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = 'world-map.json';
+            link.download = 'world.json';
             link.click();
             URL.revokeObjectURL(link.href);
-            note('Map exported');
+            note('World exported, including zones, camps, nodes, loot, and quests');
+        });
+        document.getElementById('importMapBtn').addEventListener('click', () => document.getElementById('importMap').click());
+        document.getElementById('importMap').addEventListener('change', async (event) => {
+            const file = event.target.files && event.target.files[0];
+            event.target.value = '';
+            if (!file) return;
+            let parsed;
+            try {
+                parsed = JSON.parse(await file.text());
+            } catch {
+                note('That file is not valid JSON');
+                return;
+            }
+            if (!parsed || typeof parsed !== 'object' || (!Array.isArray(parsed.zones) && !parsed.bounds && !Array.isArray(parsed.quests) && !parsed.loot)) {
+                note('That file is not a world');
+                return;
+            }
+            if (!confirm('Replace the current world with this file?')) return;
+            try {
+                const saved = await api('/api/setup/config', { method: 'PUT', body: JSON.stringify(parsed) });
+                config = saved.config;
+                if (!Array.isArray(config.quests)) config.quests = [];
+                applyRuleFields();
+                selected = config.zones.length ? 0 : -1;
+                questZoneId = selected >= 0 ? config.zones[selected].id : '';
+                questPick = -1;
+                renderZones();
+                renderFields();
+                renderLoot();
+                if (!document.getElementById('panelQuests').hidden) renderQuests();
+                draw();
+                note('World imported');
+            } catch (err) {
+                note(err.message);
+            }
         });
         document.getElementById('savePassword').addEventListener('click', async () => {
             try {
@@ -1139,7 +1176,7 @@
                 note(err.message);
             }
         });
-        function fillRules() {
+        function applyRuleFields() {
             if (!config.bounds) config.bounds = { half: 900, edge: 'hills', swim: 14, maxSlope: 0.7, points: [], edges: [] };
             document.getElementById('hpBase').value = config.hpBase;
             document.getElementById('hpPerLevel').value = config.hpPerLevel;
@@ -1149,6 +1186,9 @@
             document.getElementById('worldEdge').value = config.bounds.edge || 'hills';
             document.getElementById('swimDistance').value = config.bounds.swim;
             document.getElementById('maxSlope').value = config.bounds.maxSlope;
+        }
+        function fillRules() {
+            applyRuleFields();
             for (const id of ['hpBase', 'hpPerLevel', 'grayLevels', 'xpPerMobLevel']) {
                 document.getElementById(id).addEventListener('change', () => { config[id] = Number(document.getElementById(id).value); });
             }

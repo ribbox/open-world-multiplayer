@@ -2641,6 +2641,62 @@ wss.on('connection', (ws) => {
             return;
         }
 
+        if (data.type === 'reset') {
+            if (player.partyId) leaveParty(player);
+            const home = mapSpawn();
+            player.level = 1;
+            player.xp = 0;
+            player.class = null;
+            player.equipment = emptyEquipment();
+            player.trained = [];
+            player.talents = {};
+            player.spellRanks = {};
+            player.recipes = [];
+            player.quests = {};
+            player.bagSlots = 0;
+            player.coins = 0;
+            player.materials = blankMaterials();
+            player.slots = [];
+            normalizeSlots(player);
+            player.actionbar = defaultActionBar();
+            player.legacyArmor = 0;
+            player.ghost = false;
+            player.corpse = null;
+            player.spawn = { x: home.x, z: home.z, name: home.name || 'Inn' };
+            player.x = home.x;
+            player.y = 0;
+            player.z = home.z;
+            player.maxHp = maxHpFor(1);
+            player.hp = player.maxHp;
+            player.explored = new Set();
+            refreshDerived(player);
+            player.mana = player.maxMana;
+            player.manaShown = -1;
+            savePlayer(player);
+            const prof = save.players[player.persistentId];
+            prof.actionbar = player.actionbar;
+            prof.explored = [];
+            revealFog(player);
+            scheduleSave();
+            send(ws, {
+                type: 'reset',
+                ok: true,
+                note: 'Character reset',
+                x: player.x,
+                y: 0,
+                z: player.z,
+                spawn: player.spawn,
+                quests: player.quests,
+                actionbar: player.actionbar,
+                fog: Array.from(player.explored),
+                inventory: inventoryOf(player),
+                character: publicCharacter(player),
+                ...statsOf(player)
+            });
+            broadcast({ type: 'update', ...publicPlayer(player.persistentId, player) }, ws);
+            return;
+        }
+
         if (data.type === 'chooseClass') {
             const error = chooseClass(player, data.class);
             send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });

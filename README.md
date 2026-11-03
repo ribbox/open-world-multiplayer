@@ -68,7 +68,9 @@ node server.js
 - Crafting is on the character sheet. Core sets are bought from a shop assistant, grouped by rarity. There is no shop button on the bar. Extra patterns drop in chests. Click a pattern in the bag to learn it.
 - F: loot a chest. Click a health or mana potion in the bag to drink it, or put it on the action bar.
 - M opens the world map. Scroll the wheel, or use + and −, to zoom. Right-click a spot to mark it. The minimap shows the point, or an arrow toward it. Left-click still teleports.
-- World setup has a Quests tab. Select a zone, then create the quest. The giver is an NPC from that zone, and kill or gather quests use that zone's mob and placed items. While one of those quests is active, more of that mob appears around it.
+- World setup can export and import the whole world: rules, coast, zones, camps, nodes, loot, and quests.
+- The Quests tab builds quests for a zone. The giver is an NPC from that zone. While a kill or gather quest is active, more of that mob appears nearby.
+- Open the character sheet and choose Reset character to clear level, class, spells, talents, crafting, quests, bag, coins, and explored map.
 - Target another player and press P to invite them. A party holds you and up to four others. The frames on the left show each name, health, and mana.
 - While you are a ghost, the minimap shows a pale arrow toward your body, and the distance under the map.
 - Hold Right Mouse + move: orbit camera
