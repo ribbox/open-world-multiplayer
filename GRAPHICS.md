@@ -63,47 +63,47 @@ Icons are cells on `icons/fantasy-icons.png`, the transparent sheet from Shikash
 
 ## Held tools
 
-These are drawn on the character while that tool is in use. They are not separate world objects.
+These are drawn on the character while that tool is in use. They are not separate world objects. The grip is the handle end.
 
-| Graphic | Object |
-| --- | --- |
-| Axe mesh | Axe |
-| Pickaxe mesh | Pickaxe |
-| Sword mesh | Sword |
-| Staff mesh | Staff |
-| Target ring | Selected target |
+| Graphic | Object | Link |
+| --- | --- | --- |
+| models/simple_axe.glb | Axe | https://skfb.ly/6UuGS |
+| models/pick_axe.glb | Pickaxe | https://skfb.ly/pBtsV |
+| models/stylized_emerald_sword.glb | Sword | https://skfb.ly/oK9Kq |
+| models/wizards_staff.glb | Staff | https://skfb.ly/6CPOA |
+| Target ring | Selected target | |
 
 ## World models
 
-| Graphic | Object |
-| --- | --- |
-| models/player.glb | Player |
-| models/npc.glb | |
-| models/boar.glb | Wild boar |
-| models/wolf.glb | Wolf |
-| models/spider.glb | Moss spider |
-| models/bandit.glb | Bandit |
-| models/ogre.glb | Hill ogre |
-| models/wisp.glb | Fen wisp |
-| models/knight.glb | Plate knight |
-| models/cultist.glb | Cultist |
-| models/shop.glb | Shop assistant, innkeeper |
-| models/trainer.glb | Trainer |
-| models/quest.glb | Quest giver |
-| models/camp.glb | Camp |
-| models/inn.glb | Inn |
-| models/cabin.glb | Cabin |
-| models/chest.glb | Loot chest |
-| models/terrain-grass.glb | Grass |
-| models/terrain-sand.glb | Sand |
-| models/tree.glb | Scenery tree |
-| models/gather-tree.glb | Gatherable tree |
-| models/rock.glb | Scenery rock |
-| models/mine-rock.glb | Mining rock |
-| Herb plant | Herb node |
-| Sulfur crystal | Sulfur node |
-| Water surface | River, lake, sea |
-| Cliff tint | World-edge hills |
-| Name plate | Named character |
-| Ghost tint | Dead player |
-| Corpse marker | Player body |
+| Graphic | Object | Link |
+| --- | --- | --- |
+| models/player.glb | Player | |
+| models/npc.glb | | |
+| models/wild_pigboar_meshy.glb | Wild boar | https://skfb.ly/p9qVQ |
+| models/wolf.glb | Wolf | |
+| models/spider.glb | Moss spider | |
+| models/bandit.glb | Bandit | |
+| models/ogre.glb | Hill ogre | |
+| models/wisp.glb | Fen wisp | |
+| models/knight.glb | Plate knight | |
+| models/cultist.glb | Cultist | |
+| models/shop.glb | Shop assistant, innkeeper | |
+| models/trainer.glb | Trainer | |
+| models/quest.glb | Quest giver | |
+| models/camp.glb | Camp | Done |
+| models/inn.glb | Inn | Done |
+| models/cabin.glb | Cabin | Done |
+| models/chest.glb | Loot chest | Done |
+| models/terrain-grass.glb | Grass | Done |
+| models/terrain-sand.glb | Sand | Done |
+| models/tree.glb | Scenery tree | Done |
+| models/gather-tree.glb | Gatherable tree | Done |
+| models/rock.glb | Scenery rock | Done |
+| models/mine-rock.glb | Mining rock | Done |
+| Herb plant | Herb node | |
+| Sulfur crystal | Sulfur node | |
+| Water surface | River, lake, sea | |
+| Cliff tint | World-edge hills | |
+| Name plate | Named character | |
+| Ghost tint | Dead player | |
+| Corpse marker | Player body | |

@@ -5,7 +5,8 @@ Browser-based open-world game with multiplayer support, packaged for Docker. The
 ## Models
 - `/models/player.glb` — more human low-poly civilian (CC0) used for the local player.
 - `/models/npc.glb` — older shared minion, no longer used in game.
-- `/models/boar.glb`, `wolf.glb`, `spider.glb`, `bandit.glb`, `ogre.glb`, `wisp.glb`, `knight.glb`, `cultist.glb` — one file per hostile type.
+- `/models/boar.glb` is unused. Wild boars use `/models/wild_pigboar_meshy.glb`.
+- `/models/wolf.glb`, `spider.glb`, `bandit.glb`, `ogre.glb`, `wisp.glb`, `knight.glb`, `cultist.glb` — one file per other hostile type.
 - `/models/terrain-grass.glb` — grass ground. Cliffs and deep water keep their own colors.
 - `/models/terrain-sand.glb` — beach and shore.
 - `/models/tree.glb` — scenery trees. They block movement and cannot be chopped.
@@ -40,6 +41,8 @@ Camp, inn, cabin, and chest are by [GuipGomes](https://sketchfab.com/GuipGomes) 
 | `models/chest.glb` | Chest | https://sketchfab.com/3d-models/chest-15a7657f143a4939a32457ebd9daffda |
 
 Spell and item icons are cells from `icons/fantasy-icons.png`, the transparent sheet in [Shikashi's Fantasy Icons Pack](https://shikashipx.itch.io/shikashis-fantasy-icons-pack) by Matt Firth (shikashipx). The license is [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Many of the icons are based on [game-icons.net](https://game-icons.net/). Credit both.
+
+The held axe, pickaxe, sword, and staff, and the wild boar, are the models linked in [GRAPHICS.md](GRAPHICS.md).
 
 ## Run with Docker
 
