@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3000;
 const GATHER_RANGE = 3.2;
 const GATHER_COOLDOWN_MS = 400;
 const COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c', '#ec4899'];
-const worldRules = { hpBase: 6, hpPerLevel: 4, grayLevels: 5, xpPerMobLevel: 20 };
+const worldRules = { hpBase: 6, hpPerLevel: 4, grayLevels: 5, xpPerMobLevel: 20, spawnPerMin: 4, spawnCap: 8 };
 let lootTables = null;
 
 const dataDir = path.join(__dirname, 'data');
@@ -90,7 +90,6 @@ function hitsFor(id) {
 
 const players = new Map();
 const npcs = new Map();
-const seededZones = new Set();
 const AGGRO_RANGE = 9;
 const ATTACK_RANGE = 2.6;
 const NPC_HIT_RANGE = 1.55;
@@ -719,18 +718,20 @@ function clampToZone(npc, x, z) {
     };
 }
 
-function placeNpc(npc) {
+function placeNpc(npc, spot) {
     const profile = zoneNpc(npc.zx, npc.zz);
     const kind = NPC_KINDS[profile.kind] || NPC_KINDS.boar;
     const span = ZONE_SIZE - 44;
-    let x = npc.zx * ZONE_SIZE;
-    let z = npc.zz * ZONE_SIZE;
-    for (let n = 0; n < 8; n++) {
-        x = npc.zx * ZONE_SIZE + (Math.random() - 0.5) * span;
-        z = npc.zz * ZONE_SIZE + (Math.random() - 0.5) * span;
-        if (Math.hypot(x, z) > 16) break;
+    let x = spot ? spot.x : npc.zx * ZONE_SIZE;
+    let z = spot ? spot.z : npc.zz * ZONE_SIZE;
+    if (!spot) {
+        for (let n = 0; n < 8; n++) {
+            x = npc.zx * ZONE_SIZE + (Math.random() - 0.5) * span;
+            z = npc.zz * ZONE_SIZE + (Math.random() - 0.5) * span;
+            if (Math.hypot(x, z) > 16) break;
+        }
+        if (Math.hypot(x, z) < 16) x += 18;
     }
-    if (Math.hypot(x, z) < 16) x += 18;
     const camp = zoneCamp(npc.zx, npc.zz);
     if (Math.hypot(x - camp.x, z - camp.z) < 16) {
         x = camp.x + 22;
@@ -773,22 +774,104 @@ function pickWander(npc) {
     npc.wanderUntil = Date.now() + 3000 + Math.random() * 4000;
 }
 
-function ensureZone(zx, zz) {
-    if (!zoneInWorld(zx, zz)) return;
+function areaOfCell(zx, zz) {
     const cx = zx * ZONE_SIZE;
     const cz = zz * ZONE_SIZE;
-    if (boundaryInset(cx, cz) < 24) return;
-    if (customMap() && !designedZoneAt(cx, cz)) return;
-    const key = zoneKey(zx, zz);
-    if (seededZones.has(key)) return;
-    seededZones.add(key);
-    for (let i = 0; i < 2; i++) {
-        const npc = { id: 'z' + zx + '_' + zz + '_' + i, zx, zz };
-        placeNpc(npc);
-        if (customMap() && !designedZoneAt(npc.x, npc.z)) continue;
-        if (!onLand(npc.x, npc.z)) continue;
-        npcs.set(npc.id, npc);
+    if (!zoneInWorld(zx, zz)) return null;
+    if (boundaryInset(cx, cz) < 24) return null;
+    if (customMap()) {
+        const zone = designedZoneAt(cx, cz);
+        if (!zone) return null;
+        return { key: 'd:' + zone.id, zone, zx, zz };
     }
+    return { key: 'g:' + zx + ',' + zz, zone: null, zx, zz };
+}
+
+function spawnRules(area) {
+    if (area.zone) {
+        return { perMin: area.zone.perMin, cap: area.zone.cap };
+    }
+    return { perMin: worldRules.spawnPerMin, cap: worldRules.spawnCap };
+}
+
+function livingInArea(area) {
+    let count = 0;
+    for (const npc of npcs.values()) {
+        if (!npc.alive || npc.questId || npc.pinned || npc.herd) continue;
+        if (area.zone) {
+            const at = designedZoneAt(npc.x, npc.z);
+            if (at && at.id === area.zone.id) count++;
+        } else if (npc.zx === area.zx && npc.zz === area.zz) count++;
+    }
+    return count;
+}
+
+function randomInZone(zone) {
+    const pts = zone.points || [];
+    if (pts.length < 3) return null;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const [x, z] of pts) {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minZ = Math.min(minZ, z);
+        maxZ = Math.max(maxZ, z);
+    }
+    for (let n = 0; n < 16; n++) {
+        const x = minX + Math.random() * (maxX - minX);
+        const z = minZ + Math.random() * (maxZ - minZ);
+        const at = designedZoneAt(x, z);
+        if (!at || at.id !== zone.id) continue;
+        if (!onLand(x, z)) continue;
+        if (Math.hypot(x, z) < 18) continue;
+        return { x, z };
+    }
+    return null;
+}
+
+let ambientSeq = 1;
+const zoneSpawns = new Map();
+let activeAreas = new Map();
+
+function spawnAmbient(area) {
+    const spot = area.zone ? randomInZone(area.zone) : null;
+    if (area.zone && !spot) return;
+    const cell = spot ? zoneAt(spot.x, spot.z) : { zx: area.zx, zz: area.zz };
+    const npc = { id: 'a' + (ambientSeq++), zx: cell.zx, zz: cell.zz, ambient: true };
+    placeNpc(npc, spot);
+    if (area.zone) {
+        const at = designedZoneAt(npc.x, npc.z);
+        if (!at || at.id !== area.zone.id) return;
+    }
+    if (!onLand(npc.x, npc.z)) return;
+    npcs.set(npc.id, npc);
+}
+
+function tickAreaSpawns(area, now) {
+    const rules = spawnRules(area);
+    let plan = zoneSpawns.get(area.key);
+    if (!plan || now >= plan.until) {
+        const times = [];
+        for (let i = 0; i < rules.perMin; i++) times.push(now + Math.random() * 60000);
+        times.sort((a, b) => a - b);
+        plan = { until: now + 60000, times };
+        zoneSpawns.set(area.key, plan);
+    }
+    while (plan.times.length && plan.times[0] <= now) {
+        const due = plan.times.shift();
+        if (now - due > 1500) continue;
+        if (livingInArea(area) >= rules.cap) continue;
+        spawnAmbient(area);
+    }
+}
+
+function downNpc(npc) {
+    npc.hp = 0;
+    npc.alive = false;
+    if (npc.herd || npc.pinned || npc.questId) npc.respawnAt = Date.now() + 8000;
+    else npc.ambientGone = true;
 }
 
 function refreshNpcZones() {
@@ -801,23 +884,29 @@ function refreshNpcZones() {
             for (let dz = -2; dz <= 2; dz++) want.add(zoneKey(here.zx + dx, here.zz + dz));
         }
     }
+    const areas = new Map();
     for (const key of want) {
         const [zx, zz] = key.split(',').map(Number);
-        ensureZone(zx, zz);
+        const area = areaOfCell(zx, zz);
+        if (area) areas.set(area.key, area);
     }
+    if (customMap()) {
+        for (const mark of marks) {
+            const zone = designedZoneAt(mark.x, mark.z);
+            if (!zone) continue;
+            const cell = zoneAt(mark.x, mark.z);
+            areas.set('d:' + zone.id, { key: 'd:' + zone.id, zone, zx: cell.zx, zz: cell.zz });
+        }
+    }
+    activeAreas = areas;
     const unload = [];
     for (const [id, npc] of npcs) {
         if (npc.pinned) continue;
         if (want.has(zoneKey(npc.zx, npc.zz))) continue;
         unload.push(id);
         npcs.delete(id);
-        seededZones.delete(zoneKey(npc.zx, npc.zz));
     }
     if (unload.length) broadcast({ type: 'npcUnload', ids: unload });
-}
-
-for (let zx = -1; zx <= 1; zx++) {
-    for (let zz = -1; zz <= 1; zz++) ensureZone(zx, zz);
 }
 
 function revealFog(player) {
@@ -1778,6 +1867,7 @@ function tickNpcs() {
     const dt = Math.min(0.1, (now - lastNpcTick) / 1000);
     lastNpcTick = now;
     refreshNpcZones();
+    for (const area of activeAreas.values()) tickAreaSpawns(area, now);
 
     for (const npc of npcs.values()) {
         if (!npc.alive) {
@@ -2269,9 +2359,7 @@ wss.on('connection', (ws) => {
                 let leveled = false;
                 let chest = null;
                 if (npc.hp <= 0) {
-                    npc.hp = 0;
-                    npc.alive = false;
-                    npc.respawnAt = Date.now() + 8000;
+                    downNpc(npc);
                     gained = xpForKill(player, npc);
                     leveled = grantXp(player, gained);
                     chest = spawnChest(npc);
@@ -2289,6 +2377,7 @@ wss.on('connection', (ws) => {
                     name: npc.name,
                     tint: npc.tint
                 });
+                if (npc.ambientGone) npcs.delete(npc.id);
                 return { dealt: dealtNow, killed: !npc.alive, gained, leveled, chest };
             };
             if (!projectile) {
@@ -2582,9 +2671,7 @@ wss.on('connection', (ws) => {
                 let leveled = false;
                 let chest = null;
                 if (npc.hp <= 0) {
-                    npc.hp = 0;
-                    npc.alive = false;
-                    npc.respawnAt = Date.now() + 8000;
+                    downNpc(npc);
                     gained = xpForKill(player, npc);
                     leveled = grantXp(player, gained);
                     chest = spawnChest(npc);
@@ -2602,6 +2689,7 @@ wss.on('connection', (ws) => {
                     name: npc.name,
                     tint: npc.tint
                 });
+                if (npc.ambientGone) npcs.delete(npc.id);
                 slot.qty -= 1;
                 if (slot.qty <= 0) player.slots[index] = null;
                 savePlayer(player);
@@ -2877,6 +2965,8 @@ function defaultWorldConfig() {
         hpPerLevel: 4,
         grayLevels: 5,
         xpPerMobLevel: 20,
+        spawnPerMin: 4,
+        spawnCap: 8,
         adminPassword: '',
         loot: JSON.parse(JSON.stringify(LOOT_TABLES)),
         zones: [],
@@ -2986,6 +3076,8 @@ function sanitizeWorld(input) {
         hpPerLevel: clampNum(src.hpPerLevel, 4, 0, 40),
         grayLevels: clampNum(src.grayLevels, 5, 1, 20),
         xpPerMobLevel: clampNum(src.xpPerMobLevel, 20, 0, 100),
+        spawnPerMin: clampNum(src.spawnPerMin, 4, 0, 30),
+        spawnCap: clampNum(src.spawnCap, 8, 0, 40),
         adminPassword: typeof src.adminPassword === 'string' ? src.adminPassword.slice(0, 64) : '',
         loot: sanitizeLoot(src.loot),
         zones: Array.isArray(src.zones) ? src.zones : [],
@@ -3006,6 +3098,8 @@ function publicWorld() {
         hpPerLevel: worldRules.hpPerLevel,
         grayLevels: worldRules.grayLevels,
         xpPerMobLevel: worldRules.xpPerMobLevel,
+        spawnPerMin: worldRules.spawnPerMin,
+        spawnCap: worldRules.spawnCap,
         bounds: worldShape(),
         zones: listDesignedZones(),
         quests: (worldConfig && worldConfig.quests) || []
@@ -3017,13 +3111,15 @@ function applyLoaded(config) {
     worldRules.hpPerLevel = config.hpPerLevel;
     worldRules.grayLevels = config.grayLevels;
     worldRules.xpPerMobLevel = config.xpPerMobLevel;
+    worldRules.spawnPerMin = config.spawnPerMin;
+    worldRules.spawnCap = config.spawnCap;
     applyWorldConfig(config);
     lootTables = config.loot;
     worldConfig = { ...config, zones: listDesignedZones(), bounds: worldShape(), loot: lootTables, quests: config.quests || [] };
     rebuildCivilians();
     installQuests(config.quests || []);
     npcs.clear();
-    seededZones.clear();
+    zoneSpawns.clear();
     refreshNpcZones();
 }
 

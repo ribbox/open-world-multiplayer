@@ -707,6 +707,8 @@ export function applyWorldConfig(config) {
             level: Math.max(1, Math.min(30, Math.round(Number(zone.level) || 1))),
             hp: Math.max(0, Math.min(500, Math.round(Number(zone.hp) || 0))),
             loot: String(zone.loot || 'hide').slice(0, 24),
+            perMin: Number.isFinite(Number(zone.perMin)) ? Math.max(0, Math.min(30, Math.round(Number(zone.perMin)))) : 4,
+            cap: Number.isFinite(Number(zone.cap)) ? Math.max(0, Math.min(40, Math.round(Number(zone.cap)))) : 8,
             camps: [],
             nodes: []
         };
@@ -756,6 +758,8 @@ export function listDesignedZones() {
         level: zone.level,
         hp: zone.hp,
         loot: zone.loot,
+        perMin: zone.perMin,
+        cap: zone.cap,
         camps: zone.camps,
         nodes: zone.nodes
     }));

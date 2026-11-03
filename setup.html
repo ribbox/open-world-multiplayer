@@ -79,6 +79,10 @@
                 <input id="grayLevels" type="number" min="1" max="20">
                 <label>XP per mob level</label>
                 <input id="xpPerMobLevel" type="number" min="0" max="100">
+                <label>Mobs spawned per minute, outside a drawn zone</label>
+                <input id="spawnPerMin" type="number" min="0" max="30">
+                <label>Most mobs in one of those areas</label>
+                <input id="spawnCap" type="number" min="0" max="40">
                 <label>World half-size</label>
                 <input id="worldHalf" type="number" min="200" max="2000">
                 <label>World edge</label>
@@ -212,6 +216,8 @@
             const hp = document.getElementById('zHp').value;
             current.hp = hp === '' ? 0 : Math.max(1, Math.min(500, Number(hp) || 0));
             current.loot = document.getElementById('zLoot').value;
+            current.perMin = Math.max(0, Math.min(30, Math.round(Number(document.getElementById('zPerMin').value) || 0)));
+            current.cap = Math.max(0, Math.min(40, Math.round(Number(document.getElementById('zCap').value) || 0)));
         }
         function renderFields() {
             const box = document.getElementById('zoneFields');
@@ -245,7 +251,14 @@
                 loot.appendChild(option);
             }
             box.append(labelWrap('Name', name), labelWrap('Mob', mob), labelWrap('Level', level), labelWrap('Hit points, blank for the formula', hp), labelWrap('Loot table', loot));
-            for (const el of [name, mob, level, hp, loot]) el.addEventListener('change', () => { readFields(); draw(); renderZones(); });
+            const perMin = field('Mobs spawned per minute', 'zPerMin', current.perMin == null ? 4 : current.perMin);
+            perMin.type = 'number';
+            const cap = field('Most mobs in this zone', 'zCap', current.cap == null ? 8 : current.cap);
+            cap.type = 'number';
+            const hint = document.createElement('p');
+            hint.textContent = 'Spawns are spread at random through each minute. They stop when the zone reaches the limit.';
+            box.append(labelWrap('Mobs spawned per minute', perMin), labelWrap('Most mobs in this zone', cap), hint);
+            for (const el of [name, mob, level, hp, loot, perMin, cap]) el.addEventListener('change', () => { readFields(); draw(); renderZones(); });
             const campsTitle = document.createElement('h2');
             campsTitle.textContent = 'Camps';
             box.appendChild(campsTitle);
@@ -537,7 +550,7 @@
         }
         function addZone(points, edges) {
             const id = 'z' + Math.random().toString(36).slice(2, 7);
-            config.zones.push({ id, name: 'New zone', points, edges, mob: 'boar', level: 1, hp: 0, loot: 'hide', camps: [], nodes: [] });
+            config.zones.push({ id, name: 'New zone', points, edges, mob: 'boar', level: 1, hp: 0, loot: 'hide', perMin: 4, cap: 8, camps: [], nodes: [] });
             selected = config.zones.length - 1;
             draft = [];
             draftEdges = [];
@@ -1120,6 +1133,8 @@
                 hpPerLevel: config.hpPerLevel,
                 grayLevels: config.grayLevels,
                 xpPerMobLevel: config.xpPerMobLevel,
+                spawnPerMin: config.spawnPerMin,
+                spawnCap: config.spawnCap,
                 bounds: config.bounds,
                 zones: config.zones || [],
                 loot: config.loot || {},
@@ -1182,6 +1197,8 @@
             document.getElementById('hpPerLevel').value = config.hpPerLevel;
             document.getElementById('grayLevels').value = config.grayLevels;
             document.getElementById('xpPerMobLevel').value = config.xpPerMobLevel;
+            document.getElementById('spawnPerMin').value = config.spawnPerMin == null ? 4 : config.spawnPerMin;
+            document.getElementById('spawnCap').value = config.spawnCap == null ? 8 : config.spawnCap;
             document.getElementById('worldHalf').value = config.bounds.half;
             document.getElementById('worldEdge').value = config.bounds.edge || 'hills';
             document.getElementById('swimDistance').value = config.bounds.swim;
@@ -1189,7 +1206,7 @@
         }
         function fillRules() {
             applyRuleFields();
-            for (const id of ['hpBase', 'hpPerLevel', 'grayLevels', 'xpPerMobLevel']) {
+            for (const id of ['hpBase', 'hpPerLevel', 'grayLevels', 'xpPerMobLevel', 'spawnPerMin', 'spawnCap']) {
                 document.getElementById(id).addEventListener('change', () => { config[id] = Number(document.getElementById(id).value); });
             }
             document.getElementById('worldHalf').addEventListener('change', () => { config.bounds.half = Number(document.getElementById('worldHalf').value); });
