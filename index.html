@@ -921,6 +921,48 @@
 
             const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, baseSlots: 16, coins: 0, materials: {} };
             const SUPPLY_KINDS = [['wood', 'Wood'], ['stone', 'Stone'], ['cloth', 'Cloth'], ['leather', 'Leather'], ['ore', 'Ore'], ['gem', 'Gem'], ['herb', 'Herb'], ['powder', 'Powder']];
+            const iconSheet = new Image();
+            let iconSheetReady = false;
+            const SHEET_COLS = 16;
+            const SHEET_ICONS = {
+                sword: 81,
+                'power-strike': 48,
+                cleave: 49,
+                staff: 104,
+                'arcane-bolt': 8,
+                'arcane-surge': 336,
+                mend: 53,
+                gather: 70,
+                health: 144,
+                mana: 145,
+                bomb: 172,
+                bag: 160,
+                character: 117,
+                wood: 272,
+                stone: 273,
+                cloth: 279,
+                leather: 280,
+                ore: 274,
+                gem: 276,
+                herb: 191,
+                powder: 321,
+                coins: 200,
+                junk: 268,
+                recipe: 218,
+                quest: 219
+            };
+            const GEAR_ICONS = {
+                head: { cloth: 112, leather: 114, plate: 113 },
+                neck: { cloth: 134, leather: 136, plate: 134 },
+                shoulders: { cloth: 120, leather: 118, plate: 116 },
+                cloak: { cloth: 126, leather: 126, plate: 126 },
+                chest: { cloth: 120, leather: 118, plate: 116 },
+                hands: { cloth: 128, leather: 128, plate: 129 },
+                waist: { cloth: 127, leather: 127, plate: 127 },
+                legs: { cloth: 122, leather: 122, plate: 122 },
+                feet: { cloth: 130, leather: 130, plate: 131 },
+                offhand: { cloth: 105, leather: 96, plate: 97 }
+            };
             function updateInventoryUI() {
                 const slots = inventory.slots || [];
                 const used = slots.filter(Boolean).length;
@@ -3045,49 +3087,6 @@
                 if (id !== 'arcane-bolt') return 1;
                 return (character.spellRanks && character.spellRanks[id]) || 1;
             }
-
-            const iconSheet = new Image();
-            let iconSheetReady = false;
-            const SHEET_COLS = 16;
-            const SHEET_ICONS = {
-                sword: 81,
-                'power-strike': 48,
-                cleave: 49,
-                staff: 104,
-                'arcane-bolt': 8,
-                'arcane-surge': 336,
-                mend: 53,
-                gather: 70,
-                health: 144,
-                mana: 145,
-                bomb: 172,
-                bag: 160,
-                character: 117,
-                wood: 272,
-                stone: 273,
-                cloth: 279,
-                leather: 280,
-                ore: 274,
-                gem: 276,
-                herb: 191,
-                powder: 321,
-                coins: 200,
-                junk: 268,
-                recipe: 218,
-                quest: 219
-            };
-            const GEAR_ICONS = {
-                head: { cloth: 112, leather: 114, plate: 113 },
-                neck: { cloth: 134, leather: 136, plate: 134 },
-                shoulders: { cloth: 120, leather: 118, plate: 116 },
-                cloak: { cloth: 126, leather: 126, plate: 126 },
-                chest: { cloth: 120, leather: 118, plate: 116 },
-                hands: { cloth: 128, leather: 128, plate: 129 },
-                waist: { cloth: 127, leather: 127, plate: 127 },
-                legs: { cloth: 122, leather: 122, plate: 122 },
-                feet: { cloth: 130, leather: 130, plate: 131 },
-                offhand: { cloth: 105, leather: 96, plate: 97 }
-            };
 
             function paintSheetIcon(g, index, x, y, size) {
                 if (!iconSheetReady || index == null) return;
