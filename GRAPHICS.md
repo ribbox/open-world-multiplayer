@@ -76,7 +76,7 @@ These are drawn on the character while that tool is in use. They are not separat
 | --- | --- | --- |
 | models/player.glb | Player | |
 | models/npc.glb | | |
-| * models/boar.glb | Wild boar | https://skfb.ly/p9qVQ |
+| * models/wild_pigboar_meshy.glb | Wild boar | https://skfb.ly/p9qVQ |
 | models/wolf.glb | Wolf | |
 | models/spider.glb | Moss spider | |
 | models/bandit.glb | Bandit | |
