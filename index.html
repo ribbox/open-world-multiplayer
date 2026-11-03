@@ -3046,26 +3046,69 @@
                 return (character.spellRanks && character.spellRanks[id]) || 1;
             }
 
+            const iconSheet = new Image();
+            let iconSheetReady = false;
+            const SHEET_COLS = 16;
+            const SHEET_ICONS = {
+                sword: 81,
+                'power-strike': 48,
+                cleave: 49,
+                staff: 104,
+                'arcane-bolt': 8,
+                'arcane-surge': 336,
+                mend: 53,
+                gather: 70,
+                health: 144,
+                mana: 145,
+                bomb: 172,
+                bag: 160,
+                character: 117,
+                wood: 272,
+                stone: 273,
+                cloth: 279,
+                leather: 280,
+                ore: 274,
+                gem: 276,
+                herb: 191,
+                powder: 321,
+                coins: 200,
+                junk: 268,
+                recipe: 218,
+                quest: 219
+            };
+            const GEAR_ICONS = {
+                head: { cloth: 112, leather: 114, plate: 113 },
+                neck: { cloth: 134, leather: 136, plate: 134 },
+                shoulders: { cloth: 120, leather: 118, plate: 116 },
+                cloak: { cloth: 126, leather: 126, plate: 126 },
+                chest: { cloth: 120, leather: 118, plate: 116 },
+                hands: { cloth: 128, leather: 128, plate: 129 },
+                waist: { cloth: 127, leather: 127, plate: 127 },
+                legs: { cloth: 122, leather: 122, plate: 122 },
+                feet: { cloth: 130, leather: 130, plate: 131 },
+                offhand: { cloth: 105, leather: 96, plate: 97 }
+            };
+
+            function paintSheetIcon(g, index, x, y, size) {
+                if (!iconSheetReady || index == null) return;
+                const col = index % SHEET_COLS;
+                const row = Math.floor(index / SHEET_COLS);
+                g.imageSmoothingEnabled = false;
+                g.drawImage(iconSheet, col * 32, row * 32, 32, 32, x, y, size, size);
+            }
+
             function makeIcon(id, bolts) {
                 const canvas = document.createElement('canvas');
                 canvas.width = 64;
                 canvas.height = 64;
                 const g = canvas.getContext('2d');
-                g.lineJoin = 'round';
-                g.lineCap = 'round';
-                if (id === 'sword') drawSword(g);
-                else if (id === 'power-strike') { drawSword(g); drawSlash(g, '#f6e58d', 1); }
-                else if (id === 'cleave') { drawSlash(g, '#ffd36b', -1); drawSlash(g, '#ffe9a8', 1); }
-                else if (id === 'staff') drawStaff(g);
-                else if (id === 'arcane-bolt') drawBolts(g, bolts || 1);
-                else if (id === 'arcane-surge') { drawBolts(g, 1); g.strokeStyle = '#d6efff'; g.lineWidth = 2; g.strokeRect(8, 8, 48, 48); }
-                else if (id === 'mend') drawMend(g);
-                else if (id === 'gather') drawAxe(g);
-                else if (id === 'health') drawVial(g, '#e74c3c');
-                else if (id === 'mana') drawVial(g, '#3498db');
-                else if (id === 'bomb') drawBomb(g);
-                else if (id === 'bag') drawBag(g);
-                else if (id === 'character') drawCharacter(g);
+                if (id === 'arcane-bolt') {
+                    const n = Math.max(1, Math.min(3, bolts || 1));
+                    const spots = n === 1 ? [[8, 8, 48]] : n === 2 ? [[2, 18, 34], [28, 8, 34]] : [[0, 28, 26], [19, 18, 26], [36, 6, 26]];
+                    for (const [x, y, size] of spots) paintSheetIcon(g, SHEET_ICONS['arcane-bolt'], x, y, size);
+                } else {
+                    paintSheetIcon(g, SHEET_ICONS[id], 0, 0, 64);
+                }
                 return canvas;
             }
 
@@ -3208,37 +3251,15 @@
                 canvas.height = 64;
                 const g = canvas.getContext('2d');
                 const kind = item.kind;
-                const slot = item.slot || '';
-                if (kind === 'weapon') {
-                    if (item.weapon === 'staff') drawStaff(g);
-                    else drawSword(g);
-                    if (item.magic) {
-                        g.fillStyle = '#7fdbff';
-                        g.beginPath();
-                        g.arc(48, 14, 5, 0, Math.PI * 2);
-                        g.fill();
-                    }
-                } else if (kind === 'wood') drawWood(g);
-                else if (kind === 'stone') drawStone(g);
-                else if (kind === 'coins') drawCoins(g);
-                else if (kind === 'junk') drawJunk(g);
-                else if (kind === 'health') drawVial(g, '#e74c3c');
-                else if (kind === 'mana') drawVial(g, '#3498db');
-                else if (kind === 'cloth') drawCloth(g);
-                else if (kind === 'leather') drawLeather(g);
-                else if (kind === 'ore') drawOre(g);
-                else if (kind === 'gem') drawGem(g);
-                else if (kind === 'herb') drawHerb(g);
-                else if (kind === 'powder') drawPowder(g);
-                else if (kind === 'bomb') drawBomb(g);
-                else if (kind === 'recipe' || kind === 'quest') drawScroll(g);
-                else drawGear(g, slot || 'chest', item.style);
-                if (item.magic && kind !== 'weapon') {
-                    g.fillStyle = '#7fdbff';
-                    g.beginPath();
-                    g.arc(48, 14, 5, 0, Math.PI * 2);
-                    g.fill();
+                const slot = item.slot || 'chest';
+                let index = SHEET_ICONS[kind];
+                if (kind === 'weapon') index = item.weapon === 'staff' ? SHEET_ICONS.staff : SHEET_ICONS.sword;
+                else if (kind === 'armor' || index == null) {
+                    const row = GEAR_ICONS[slot] || GEAR_ICONS.chest;
+                    index = row[item.style] || row.plate || row.leather || row.cloth;
                 }
+                paintSheetIcon(g, index, 0, 0, 64);
+                if (item.magic) paintSheetIcon(g, SHEET_ICONS.gem, 40, 2, 22);
                 if (faded) {
                     g.globalCompositeOperation = 'source-atop';
                     g.fillStyle = 'rgba(20, 24, 32, 0.45)';
@@ -4166,6 +4187,15 @@
             renderBar();
             paintIcon(document.getElementById('bagButton'), 'bag');
             paintIcon(document.getElementById('sheetButton'), 'character');
+            iconSheet.onload = () => {
+                iconSheetReady = true;
+                renderBar();
+                paintIcon(document.getElementById('bagButton'), 'bag');
+                paintIcon(document.getElementById('sheetButton'), 'character');
+                updateInventoryUI();
+                if (document.getElementById('sheet').classList.contains('open')) renderSheet();
+            };
+            iconSheet.src = '/icons/fantasy-icons.png';
 
             // Input
             document.addEventListener('keydown', (e) => {

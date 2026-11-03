@@ -39,6 +39,8 @@ Camp, inn, cabin, and chest are by [GuipGomes](https://sketchfab.com/GuipGomes) 
 | `models/cabin.glb` | Cabin | https://sketchfab.com/3d-models/cabin-ec40bbe71e9442899f3f22b6fea0e010 |
 | `models/chest.glb` | Chest | https://sketchfab.com/3d-models/chest-15a7657f143a4939a32457ebd9daffda |
 
+Spell and item icons are cells from `icons/fantasy-icons.png`, the transparent sheet in [Shikashi's Fantasy Icons Pack](https://shikashipx.itch.io/shikashis-fantasy-icons-pack) by Matt Firth (shikashipx). The license is [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Many of the icons are based on [game-icons.net](https://game-icons.net/). Credit both.
+
 ## Run with Docker
 
 ```bash

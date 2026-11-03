@@ -22,85 +22,88 @@ A `*` at the start of a graphic name means that graphic should be used by the ga
 
 ## Spells and actions
 
+Icons are cells on `icons/fantasy-icons.png`, the transparent sheet from Shikashi's Fantasy Icons Pack. Arcane Missile repeats that lightning cell once per rank.
+
 | Graphic | Object |
 | --- | --- |
-| Sword icon | Sword |
-| Power Strike icon | Power Strike |
-| Cleave icon | Cleave |
-| Staff icon | Staff |
-| Arcane Missile icon | Arcane Missile |
-| Arcane Surge icon | Arcane Surge |
-| Mend icon | Mend |
-| Gather icon | Gather |
-| Bag icon | Bag |
-| Character icon | Character sheet |
+| icons/fantasy-icons.png cell 81 | Sword |
+| icons/fantasy-icons.png cell 48 | Power Strike |
+| icons/fantasy-icons.png cell 49 | Cleave |
+| icons/fantasy-icons.png cell 104 | Staff |
+| icons/fantasy-icons.png cell 8 | Arcane Missile |
+| icons/fantasy-icons.png cell 336 | Arcane Surge |
+| icons/fantasy-icons.png cell 53 | Mend |
+| icons/fantasy-icons.png cell 70 | Gather |
+| icons/fantasy-icons.png cell 160 | Bag |
+| icons/fantasy-icons.png cell 117 | Character sheet |
 | Quest mark | Quest giver |
 
 ## Items
 
 | Graphic | Object |
 | --- | --- |
-| Health vial | Health potion |
-| Mana vial | Mana potion |
-| Bomb icon | Rough Bomb, Bitter Flask, Heavy Bomb |
-| Wood icon | Wood |
-| Stone icon | Stone |
-| Cloth icon | Cloth |
-| Leather icon | Leather |
-| Ore icon | Ore |
-| Gem icon | Gem |
-| Herb icon | Herb |
-| Powder icon | Powder |
-| Coin icon | Coins |
-| Junk icon | Junk |
-| Scroll icon | Recipe, quest item |
-| Cloth gear icon | Cloth armor |
-| Leather gear icon | Leather armor |
-| Plate gear icon | Plate armor |
+| icons/fantasy-icons.png cell 144 | Health potion |
+| icons/fantasy-icons.png cell 145 | Mana potion |
+| icons/fantasy-icons.png cell 172 | Rough Bomb, Bitter Flask, Heavy Bomb |
+| icons/fantasy-icons.png cell 272 | Wood |
+| icons/fantasy-icons.png cell 273 | Stone |
+| icons/fantasy-icons.png cell 279 | Cloth |
+| icons/fantasy-icons.png cell 280 | Leather |
+| icons/fantasy-icons.png cell 274 | Ore |
+| icons/fantasy-icons.png cell 276 | Gem |
+| icons/fantasy-icons.png cell 191 | Herb |
+| icons/fantasy-icons.png cell 321 | Powder |
+| icons/fantasy-icons.png cell 200 | Coins |
+| icons/fantasy-icons.png cell 268 | Junk |
+| icons/fantasy-icons.png cell 218 | Recipe |
+| icons/fantasy-icons.png cell 219 | Quest item |
+| icons/fantasy-icons.png cell 120 | Cloth armor |
+| icons/fantasy-icons.png cell 118 | Leather armor |
+| icons/fantasy-icons.png cell 116 | Plate armor |
 
 ## Held tools
 
 These are drawn on the character while that tool is in use. They are not separate world objects.
 
-| Graphic | Object | Link |
-| --- | --- | --- |
-| * models/simple_axe.glb | Axe | https://skfb.ly/6UuGS |
-| * models/pick_axe.glb | Pickaxe | https://skfb.ly/pBtsV |
-| * models/stylized_emerald_sword.glb | Sword | https://skfb.ly/oK9Kq |
-| * models/wizards_staff.glb | Staff | https://skfb.ly/6CPOA |
-| Target ring | Selected target | |
+| Graphic | Object |
+| --- | --- |
+| Axe mesh | Axe |
+| Pickaxe mesh | Pickaxe |
+| Sword mesh | Sword |
+| Staff mesh | Staff |
+| Target ring | Selected target |
 
 ## World models
 
-| Graphic | Object | Link |
-| --- | --- | --- |
-| models/player.glb | Player | |
-| models/npc.glb | | |
-| * models/wild_pigboar_meshy.glb | Wild boar | https://skfb.ly/p9qVQ |
-| models/wolf.glb | Wolf | |
-| models/spider.glb | Moss spider | |
-| models/bandit.glb | Bandit | |
-| models/ogre.glb | Hill ogre | |
-| models/wisp.glb | Fen wisp | |
-| models/knight.glb | Plate knight | |
-| models/cultist.glb | Cultist | |
-| models/shop.glb | Shop assistant, innkeeper | |
-| models/trainer.glb | Trainer | |
-| models/quest.glb | Quest giver | |
-| models/camp.glb | Camp | Done|
-| models/inn.glb | Inn | Done |
-| models/cabin.glb | Cabin | Done |
-| models/chest.glb | Loot chest | Done |
-| models/terrain-grass.glb | Grass | Done |
-| models/terrain-sand.glb | Sand | Done |
-| models/tree.glb | Scenery tree | Done |
-| models/gather-tree.glb | Gatherable tree | Done |
-| models/rock.glb | Scenery rock | Done |
-| models/mine-rock.glb | Mining rock | Done|
-| Herb plant | Herb node | |
-| Sulfur crystal | Sulfur node | |
-| Water surface | River, lake, sea | |
-| Cliff tint | World-edge hills | |
-| Name plate | Named character | |
-| Ghost tint | Dead player | |
-| Corpse marker | Player body | |
+| Graphic | Object |
+| --- | --- |
+| models/player.glb | Player |
+| models/npc.glb | |
+| models/boar.glb | Wild boar |
+| models/wolf.glb | Wolf |
+| models/spider.glb | Moss spider |
+| models/bandit.glb | Bandit |
+| models/ogre.glb | Hill ogre |
+| models/wisp.glb | Fen wisp |
+| models/knight.glb | Plate knight |
+| models/cultist.glb | Cultist |
+| models/shop.glb | Shop assistant, innkeeper |
+| models/trainer.glb | Trainer |
+| models/quest.glb | Quest giver |
+| models/camp.glb | Camp |
+| models/inn.glb | Inn |
+| models/cabin.glb | Cabin |
+| models/chest.glb | Loot chest |
+| models/terrain-grass.glb | Grass |
+| models/terrain-sand.glb | Sand |
+| models/tree.glb | Scenery tree |
+| models/gather-tree.glb | Gatherable tree |
+| models/rock.glb | Scenery rock |
+| models/mine-rock.glb | Mining rock |
+| Herb plant | Herb node |
+| Sulfur crystal | Sulfur node |
+| Water surface | River, lake, sea |
+| Cliff tint | World-edge hills |
+| Name plate | Named character |
+| Ghost tint | Dead player |
+| Corpse marker | Player body |
