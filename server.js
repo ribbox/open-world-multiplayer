@@ -558,6 +558,82 @@ function statsOf(player) {
     };
 }
 
+const parties = new Map();
+const partyInvites = new Map();
+let partySeq = 1;
+const PARTY_MAX = 5;
+const PARTY_RANGE = 30;
+
+function partyOf(player) {
+    if (!player || !player.partyId) return null;
+    return parties.get(player.partyId) || null;
+}
+
+function publicParty(party) {
+    return {
+        id: party.id,
+        leader: party.leader,
+        members: party.members.map(id => {
+            const member = players.get(id);
+            return {
+                id,
+                name: member ? member.name : 'Offline',
+                level: member ? member.level : 1,
+                hp: member ? member.hp : 0,
+                maxHp: member ? member.maxHp : 1,
+                mana: member ? Math.floor(member.mana) : 0,
+                maxMana: member ? member.maxMana : 1,
+                ghost: member ? !!member.ghost : false
+            };
+        })
+    };
+}
+
+function sendParty(party) {
+    const msg = { type: 'party', party: party ? publicParty(party) : null };
+    const ids = party ? party.members : [];
+    for (const id of ids) {
+        const member = players.get(id);
+        if (member) send(member.ws, msg);
+    }
+}
+
+function clearParty(party) {
+    parties.delete(party.id);
+    for (const id of party.members) {
+        const member = players.get(id);
+        if (!member) continue;
+        member.partyId = null;
+        send(member.ws, { type: 'party', party: null });
+    }
+}
+
+function leaveParty(player) {
+    const party = partyOf(player);
+    if (!party) return;
+    party.members = party.members.filter(id => id !== player.persistentId);
+    player.partyId = null;
+    send(player.ws, { type: 'party', party: null });
+    if (party.members.length < 2) clearParty(party);
+    else {
+        if (party.leader === player.persistentId) party.leader = party.members[0];
+        sendParty(party);
+    }
+}
+
+function syncPartyVitals() {
+    for (const party of parties.values()) {
+        const sig = party.members.map(id => {
+            const member = players.get(id);
+            if (!member) return 'x';
+            return [member.hp, Math.floor(member.mana), member.maxHp, member.maxMana, member.ghost ? 1 : 0, member.name].join(':');
+        }).join('|');
+        if (sig === party.sig) continue;
+        party.sig = sig;
+        sendParty(party);
+    }
+}
+
 const ABILITIES = {
     sword: { weapon: 'sword', mana: 2, range: 2.6, damage: (level) => 4 + level },
     'power-strike': { weapon: 'sword', mana: 6, range: 2.6, damage: (level) => 8 + level * 2 },
@@ -1387,6 +1463,7 @@ function tickNpcs() {
         }
         if (wss.clients.size) broadcast({ type: 'npcs', npcs: living });
     }
+    syncPartyVitals();
 }
 
 setInterval(tickNpcs, 50);
@@ -1481,7 +1558,8 @@ wss.on('connection', (ws) => {
                 corpse: null,
                 spawn,
                 explored: new Set(Array.isArray(prof.explored) ? prof.explored.filter(key => typeof key === 'string') : []),
-                persistentId
+                persistentId,
+                partyId: null
             };
             players.set(persistentId, player);
             refreshDerived(player);
@@ -2145,6 +2223,103 @@ wss.on('connection', (ws) => {
         if (data.type === 'unequip') {
             const error = unequipItem(player, data.slot);
             send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'partyInvite') {
+            const target = players.get(data.targetId);
+            if (!target || target === player) {
+                send(ws, { type: 'party', ok: false, reason: 'Select another player' });
+                return;
+            }
+            if (player.ghost || target.ghost) {
+                send(ws, { type: 'party', ok: false, reason: 'A ghost cannot join a party' });
+                return;
+            }
+            if (Math.hypot(player.x - target.x, player.z - target.z) > PARTY_RANGE) {
+                send(ws, { type: 'party', ok: false, reason: 'Too far away' });
+                return;
+            }
+            if (target.partyId) {
+                send(ws, { type: 'party', ok: false, reason: 'They are already in a party' });
+                return;
+            }
+            const party = partyOf(player);
+            if (party && party.leader !== player.persistentId) {
+                send(ws, { type: 'party', ok: false, reason: 'Only the leader can invite' });
+                return;
+            }
+            if (party && party.members.length >= PARTY_MAX) {
+                send(ws, { type: 'party', ok: false, reason: 'The party is full' });
+                return;
+            }
+            partyInvites.set(target.persistentId, { fromId: player.persistentId, at: Date.now() });
+            send(target.ws, { type: 'partyInvite', fromId: player.persistentId, fromName: player.name });
+            send(ws, { type: 'party', ok: true, note: 'Invited ' + target.name });
+            return;
+        }
+
+        if (data.type === 'partyAnswer') {
+            const invite = partyInvites.get(player.persistentId);
+            partyInvites.delete(player.persistentId);
+            if (!data.accept) {
+                send(ws, { type: 'party', ok: true, note: 'Invite declined' });
+                return;
+            }
+            if (!invite || Date.now() - invite.at > 30000) {
+                send(ws, { type: 'party', ok: false, reason: 'That invite expired' });
+                return;
+            }
+            const leader = players.get(invite.fromId);
+            if (!leader) {
+                send(ws, { type: 'party', ok: false, reason: 'They have gone' });
+                return;
+            }
+            if (player.partyId) {
+                send(ws, { type: 'party', ok: false, reason: 'You are already in a party' });
+                return;
+            }
+            if (player.ghost || leader.ghost) {
+                send(ws, { type: 'party', ok: false, reason: 'A ghost cannot join a party' });
+                return;
+            }
+            let group = partyOf(leader);
+            if (group && group.leader !== leader.persistentId) {
+                send(ws, { type: 'party', ok: false, reason: 'They cannot invite' });
+                return;
+            }
+            if (group && group.members.length >= PARTY_MAX) {
+                send(ws, { type: 'party', ok: false, reason: 'The party is full' });
+                return;
+            }
+            if (!group) {
+                group = { id: 'p' + partySeq, leader: leader.persistentId, members: [leader.persistentId], sig: '' };
+                partySeq += 1;
+                parties.set(group.id, group);
+                leader.partyId = group.id;
+            }
+            group.members.push(player.persistentId);
+            player.partyId = group.id;
+            group.sig = '';
+            sendParty(group);
+            return;
+        }
+
+        if (data.type === 'partyLeave') {
+            leaveParty(player);
+            return;
+        }
+
+        if (data.type === 'partyKick') {
+            const group = partyOf(player);
+            if (!group || group.leader !== player.persistentId) {
+                send(ws, { type: 'party', ok: false, reason: 'Only the leader can remove a member' });
+                return;
+            }
+            const member = players.get(data.targetId);
+            if (!member || !group.members.includes(data.targetId) || data.targetId === player.persistentId) return;
+            leaveParty(member);
+            return;
         }
     });
 
@@ -2152,6 +2327,7 @@ wss.on('connection', (ws) => {
         if (ws._replaced || !sessionId) return;
         const current = players.get(sessionId);
         if (current && current.ws === ws) {
+            leaveParty(current);
             players.delete(sessionId);
             broadcast({ type: 'leave', id: sessionId });
         }

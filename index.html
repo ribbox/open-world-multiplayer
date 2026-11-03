@@ -133,6 +133,35 @@
             margin-top: 8px; padding: 6px 10px; cursor: pointer;
             background: #1d4e89; color: white; border: 1px solid #9ecbff; border-radius: 4px;
         }
+        #party {
+            position: absolute; left: 12px; top: 42%; z-index: 12;
+            width: 210px; display: flex; flex-direction: column; gap: 6px;
+            pointer-events: auto;
+        }
+        #party[hidden] { display: none; }
+        .party-member {
+            display: block; width: 100%; text-align: left; color: white;
+            background: rgba(0,0,0,0.72); border: 1px solid rgba(255,255,255,0.28);
+            border-radius: 6px; padding: 5px 6px; cursor: pointer;
+        }
+        .party-member.self { border-color: rgba(90,170,255,0.85); }
+        .party-member.ghost { opacity: 0.72; }
+        .party-top { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+        .party-bar { height: 7px; background: #1a1a1a; border-radius: 3px; overflow: hidden; margin-top: 3px; }
+        .party-bar i { display: block; height: 100%; }
+        .party-bar.hp i { background: #c0392b; }
+        .party-bar.mp i { background: #2980b9; }
+        .party-mini {
+            font-size: 11px; color: #ddd; background: transparent; border: 0; cursor: pointer; padding: 0 2px;
+        }
+        #partyPrompt {
+            position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
+            z-index: 18; color: white; background: rgba(10,16,28,0.92);
+            border: 1px solid rgba(140,190,255,0.7); border-radius: 8px;
+            padding: 10px 12px; text-align: center; min-width: 240px;
+        }
+        #partyPrompt[hidden] { display: none; }
+        #partyPrompt button { margin: 8px 4px 0; cursor: pointer; }
         #message {
             position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%);
             color: #90EE90; background: rgba(0,0,0,0.7); padding: 8px 16px;
@@ -288,6 +317,7 @@
         Right-click a slot to assign a trained action<br>
         E: Gather if something is close, otherwise attack your target<br>
         Click an NPC or another player, or press Tab, to target them<br>
+        P: Invite the targeted player. A party holds up to 5<br>
         B: Bag &nbsp; C: Character sheet &nbsp; F: Loot &nbsp; T: Talk<br>
         Character sheet Craft tab makes gear. A shop assistant buys and sells, grouped by rarity<br>
         Farther zones hold stronger creatures with their own loot<br>
@@ -366,7 +396,12 @@
         <label><input type="checkbox" data-layer="bodies" checked> <i style="background:#d6ecff;border-radius:50%"></i> Bodies</label>
         <label><input type="checkbox" data-layer="players" checked> <i style="background:#5dade2;border-radius:50%"></i> Players</label>
     </div>
-    <div id="hurtFlash"></div>
+    <div id="party" hidden></div>
+    <div id="partyPrompt" hidden>
+        <div id="partyPromptText">Party invite</div>
+        <button type="button" id="partyAccept">Join</button>
+        <button type="button" id="partyDecline">No</button>
+    </div>
     <div id="ghostBanner" hidden>
         <div id="ghostText">You are a ghost. Return to your body.</div>
         <button type="button" id="reclaimButton" hidden>Return to your body</button>
@@ -1537,7 +1572,14 @@
                     drawWorldMap();
                 }
             }
-            document.getElementById('minimap').addEventListener('click', () => toggleWorldMap(true));
+            document.getElementById('partyAccept').addEventListener('click', () => {
+                document.getElementById('partyPrompt').hidden = true;
+                if (gameSocket && gameSocket.readyState === WebSocket.OPEN) gameSocket.send(JSON.stringify({ type: 'partyAnswer', accept: true }));
+            });
+            document.getElementById('partyDecline').addEventListener('click', () => {
+                document.getElementById('partyPrompt').hidden = true;
+                if (gameSocket && gameSocket.readyState === WebSocket.OPEN) gameSocket.send(JSON.stringify({ type: 'partyAnswer', accept: false }));
+            });
             document.getElementById('markerClear').addEventListener('click', () => {
                 waypoint = null;
                 drawWorldMap();
@@ -1983,6 +2025,73 @@
                 selectedNpcId = id || null;
                 refreshTargetFrame();
                 refreshNameplates();
+            }
+
+            function renderParty(party) {
+                const box = document.getElementById('party');
+                if (!party || !Array.isArray(party.members) || party.members.length < 2) {
+                    box.hidden = true;
+                    box.replaceChildren();
+                    return;
+                }
+                box.hidden = false;
+                box.replaceChildren();
+                const leader = party.leader === persistentId;
+                for (const member of party.members) {
+                    const row = document.createElement('div');
+                    row.className = 'party-member' + (member.id === persistentId ? ' self' : '') + (member.ghost ? ' ghost' : '');
+                    const top = document.createElement('div');
+                    top.className = 'party-top';
+                    const name = document.createElement('span');
+                    name.textContent = member.name + (member.id === party.leader ? ' *' : '') + (member.ghost ? ' (ghost)' : '');
+                    top.appendChild(name);
+                    if (member.id === persistentId) {
+                        const leave = document.createElement('button');
+                        leave.type = 'button';
+                        leave.className = 'party-mini';
+                        leave.textContent = 'Leave';
+                        leave.addEventListener('click', (event) => {
+                            event.stopPropagation();
+                            if (gameSocket && gameSocket.readyState === WebSocket.OPEN) gameSocket.send(JSON.stringify({ type: 'partyLeave' }));
+                        });
+                        top.appendChild(leave);
+                    } else if (leader) {
+                        const kick = document.createElement('button');
+                        kick.type = 'button';
+                        kick.className = 'party-mini';
+                        kick.textContent = '×';
+                        kick.addEventListener('click', (event) => {
+                            event.stopPropagation();
+                            if (gameSocket && gameSocket.readyState === WebSocket.OPEN) gameSocket.send(JSON.stringify({ type: 'partyKick', targetId: member.id }));
+                        });
+                        top.appendChild(kick);
+                    }
+                    const hp = document.createElement('div');
+                    hp.className = 'party-bar hp';
+                    const hpFill = document.createElement('i');
+                    hpFill.style.width = Math.max(0, Math.min(100, (member.hp / (member.maxHp || 1)) * 100)) + '%';
+                    hp.appendChild(hpFill);
+                    const mp = document.createElement('div');
+                    mp.className = 'party-bar mp';
+                    const mpFill = document.createElement('i');
+                    mpFill.style.width = Math.max(0, Math.min(100, (member.mana / (member.maxMana || 1)) * 100)) + '%';
+                    mp.appendChild(mpFill);
+                    row.append(top, hp, mp);
+                    row.addEventListener('click', () => {
+                        if (member.id !== persistentId) selectNpc(member.id);
+                    });
+                    box.appendChild(row);
+                }
+            }
+
+            function inviteTarget() {
+                const aimed = currentTarget();
+                if (!aimed || aimed.kind !== 'player') {
+                    showMessage('Target a player to invite');
+                    return;
+                }
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
+                gameSocket.send(JSON.stringify({ type: 'partyInvite', targetId: aimed.id }));
             }
 
             function cycleTarget(step) {
@@ -3919,6 +4028,7 @@
                 if (k === 'c') toggleSheet();
                 if (k === 'f') tryLoot();
                 if (k === 't') tryTalk();
+                if (k === 'p') inviteTarget();
                 if (k === 'r') tryReclaim();
                 if (k === 'm') toggleWorldMap();
             });
@@ -4492,6 +4602,14 @@
                         } else {
                             removeWorldNpc(data.id);
                         }
+                    } else if (data.type === 'partyInvite') {
+                        document.getElementById('partyPromptText').textContent = (data.fromName || 'A player') + ' invites you to a party';
+                        document.getElementById('partyPrompt').hidden = false;
+                    } else if (data.type === 'party') {
+                        if (data.reason) showMessage(data.reason);
+                        else if (data.note) showMessage(data.note);
+                        if (Object.prototype.hasOwnProperty.call(data, 'party')) renderParty(data.party);
+                        if (data.ok !== false) document.getElementById('partyPrompt').hidden = true;
                     } else if (data.type === 'hurt') {
                         applyStats(data);
                         showHurt();
