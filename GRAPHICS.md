@@ -65,7 +65,7 @@ These are drawn on the character while that tool is in use. They are not separat
 | Graphic | Object | Link |
 | --- | --- | --- |
 | Axe mesh | Axe | |
-| Pickaxe mesh | Pickaxe | |
+| * models/pick_axe.glb | Pickaxe | https://skfb.ly/pBtsV |
 | * models/stylized_emerald_sword.glb | Sword | https://skfb.ly/oK9Kq |
 | * models/wizards_staff.glb | Staff | https://skfb.ly/6CPOA |
 | Target ring | Selected target | |
