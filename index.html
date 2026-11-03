@@ -338,6 +338,7 @@
         Train spells only while standing at a trainer. Gather herbs by hand and sulfur with a pickaxe<br>
         M: World map. Scroll or +/− to zoom. Right-click a spot to mark it. The minimap points the way<br>
         Active quests stay on the right, with progress<br>
+        A gold ? is a quest you can take. Blue means one is underway, green means turn it in. The minimap shows the same ?<br>
         As a ghost, the minimap arrow points back to your body<br>
         Click the minimap for the world map. Numbers are mob levels. Gray gives no XP<br>
         World setup is a separate page at /setup<br>
@@ -1245,6 +1246,13 @@
                     ctx.beginPath();
                     ctx.arc(p.mx, p.mz, 4, 0, Math.PI * 2);
                     ctx.fill();
+                    if (entry.questMark) {
+                        ctx.fillStyle = entry.questMark === 'ready' ? '#2ecc71' : entry.questMark === 'active' ? '#5dade2' : '#f1c40f';
+                        ctx.font = 'bold 14px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        ctx.fillText('?', p.mx, p.mz - 5);
+                    }
                 }
 
                 if (mapLayers.chests) for (const chest of worldChests.values()) {
@@ -2362,6 +2370,84 @@
                 return sprite;
             }
 
+            function makeQuestMark(color) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 128;
+                canvas.height = 128;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.beginPath();
+                ctx.arc(64, 64, 54, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = color;
+                ctx.font = 'bold 96px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('?', 64, 70);
+                const tex = sharpTexture(canvas);
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+                sprite.scale.set(0.62, 0.62, 1);
+                sprite.userData.markColor = color;
+                sprite.userData.texture = tex;
+                return sprite;
+            }
+
+            function prereqDone(name) {
+                if (!name) return true;
+                const needle = String(name).toLowerCase();
+                return Object.entries(quests).some(([id, item]) => item.state === 'done' && questDefs[id] && String(questDefs[id].name || '').toLowerCase() === needle);
+            }
+
+            function questOfferState(entry) {
+                const ids = entry.quests && entry.quests.length ? entry.quests : (entry.quest ? [entry.quest] : []);
+                let available = false;
+                let active = false;
+                let ready = false;
+                for (const questId of ids) {
+                    const def = questDefs[questId];
+                    if (!def) continue;
+                    const row = quests[questId];
+                    if (row && row.state === 'done') continue;
+                    if (row && row.state === 'active' && !row.failed) {
+                        if (row.count >= (def.count || 1)) ready = true;
+                        else active = true;
+                        continue;
+                    }
+                    if (!prereqDone(def.requires)) continue;
+                    if ((stats.level || 1) < (def.minLevel || 1)) continue;
+                    available = true;
+                }
+                if (ready) return 'ready';
+                if (active) return 'active';
+                if (available) return 'available';
+                return '';
+            }
+
+            function refreshQuestMarks() {
+                for (const entry of worldCivs.values()) {
+                    const state = questOfferState(entry);
+                    entry.questMark = state;
+                    const color = state === 'ready' ? '#2ecc71' : state === 'active' ? '#5dade2' : state === 'available' ? '#f1c40f' : '';
+                    let mark = entry.group.userData.questMark;
+                    if (!color) {
+                        if (mark) mark.visible = false;
+                        continue;
+                    }
+                    if (!mark || mark.userData.markColor !== color) {
+                        if (mark) {
+                            entry.group.remove(mark);
+                            if (mark.material.map) mark.material.map.dispose();
+                            mark.material.dispose();
+                        }
+                        mark = makeQuestMark(color);
+                        entry.group.add(mark);
+                        entry.group.userData.questMark = mark;
+                    }
+                    mark.visible = true;
+                    mark.position.y = (entry.group.userData.labelY || 2.2) + 0.72;
+                }
+            }
+
             function cloneNpcModel(kind) {
                 const key = kind === 'inn' && !npcModels.has('inn') ? 'shop' : kind;
                 const template = npcModels.get(key) || npcModels.get('boar');
@@ -2562,6 +2648,7 @@
                     scene.remove(entry.group);
                     worldCivs.delete(id);
                 }
+                refreshQuestMarks();
             }
 
             function removeWorldNpc(id) {
@@ -3561,6 +3648,7 @@
                     block.append(title, line);
                     panel.appendChild(block);
                 }
+                refreshQuestMarks();
             }
 
             function closeTalk() {
@@ -3620,13 +3708,29 @@
                     });
                     panel.appendChild(button);
                 }
-                if (entry.quests && entry.quests.length) {
-                    for (const questId of entry.quests) {
+                if ((entry.quests && entry.quests.length) || entry.quest) {
+                    const offered = entry.quests && entry.quests.length ? entry.quests : [entry.quest];
+                    const listed = offered.filter(questId => {
+                        const def = questDefs[questId];
+                        if (!def) return false;
+                        const row = quests[questId];
+                        if (row && row.state === 'done') return false;
+                        if (row && row.state === 'active' && !row.failed) return true;
+                        if (!prereqDone(def.requires)) return false;
+                        if ((stats.level || 1) < (def.minLevel || 1)) return false;
+                        return true;
+                    });
+                    if (!listed.length) {
+                        const none = document.createElement('p');
+                        none.textContent = 'No quests for you right now.';
+                        panel.appendChild(none);
+                    }
+                    for (const questId of listed) {
                         const def = questDefs[questId] || { name: 'Quest', text: '', count: 1, coins: 0, xp: 0 };
                         const row = quests[questId];
                         const block = document.createElement('div');
                         const line = document.createElement('p');
-                        const progress = row ? '  ' + Math.min(row.count, def.count) + '/' + def.count : '';
+                        const progress = row && row.state === 'active' ? '  ' + Math.min(row.count, def.count) + '/' + def.count : '';
                         line.textContent = def.name + ' — ' + (def.text || '') + progress;
                         block.appendChild(line);
                         const reward = document.createElement('p');
@@ -3639,19 +3743,9 @@
                         const button = document.createElement('button');
                         button.type = 'button';
                         button.className = 'text-btn';
-                        const doneNamed = Object.entries(quests).some(([id, item]) => item.state === 'done' && questDefs[id] && questDefs[id].name === def.requires);
-                        if (def.requires && !doneNamed && (!row || row.state !== 'done')) {
-                            button.textContent = 'Requires ' + def.requires;
-                            button.disabled = true;
-                        } else if ((stats.level || 1) < (def.minLevel || 1) && (!row || row.state !== 'active')) {
-                            button.textContent = 'Requires level ' + def.minLevel;
-                            button.disabled = true;
-                        } else if (!row || row.failed) {
+                        if (!row || row.failed) {
                             button.textContent = row && row.failed ? 'Try again' : 'Accept';
                             button.addEventListener('click', () => sendCharacter('acceptQuest', { id: entry.id, quest: questId }));
-                        } else if (row.state === 'done') {
-                            button.textContent = 'Complete';
-                            button.disabled = true;
                         } else if (row.count >= def.count) {
                             button.textContent = 'Turn in';
                             button.className = 'text-btn gold-btn';
@@ -3663,30 +3757,6 @@
                         block.appendChild(button);
                         panel.appendChild(block);
                     }
-                } else if (entry.role === 'quest' && entry.quest) {
-                    const def = questDefs[entry.quest] || { name: 'Quest', text: '', count: 1, coins: 0 };
-                    const row = quests[entry.quest];
-                    const line = document.createElement('p');
-                    line.textContent = def.name + ' — ' + def.text + (row ? '  ' + Math.min(row.count, def.count) + '/' + def.count : '');
-                    panel.appendChild(line);
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'text-btn';
-                    if (!row) {
-                        button.textContent = 'Accept';
-                        button.addEventListener('click', () => sendCharacter('acceptQuest', { id: entry.id }));
-                    } else if (row.state === 'done') {
-                        button.textContent = 'Complete';
-                        button.disabled = true;
-                    } else if (row.count >= def.count) {
-                        button.textContent = 'Turn in';
-                        button.className = 'text-btn gold-btn';
-                        button.addEventListener('click', () => sendCharacter('turnIn', { id: entry.id }));
-                    } else {
-                        button.textContent = row.count + '/' + def.count;
-                        button.disabled = true;
-                    }
-                    panel.appendChild(button);
                 }
             }
 
@@ -4313,6 +4383,8 @@
                     entry.group.position.y = terrainHeight(entry.group.position.x, entry.group.position.z);
                     const body = entry.group.userData.body;
                     if (body) body.position.y = Math.sin(performance.now() * 0.003 + (entry.bob || 0)) * (entry.group.userData.bobAmp || 0);
+                    const mark = entry.group.userData.questMark;
+                    if (mark && mark.visible) mark.position.y = (entry.group.userData.labelY || 2.2) + 0.72 + Math.sin(performance.now() * 0.004 + entry.bob) * 0.05;
                 }
                 const talkHint = document.getElementById('talkHint');
                 const closeCiv = nearestCivilian(3.6);
