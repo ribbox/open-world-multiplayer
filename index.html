@@ -357,7 +357,7 @@
             <div id="bagSlots"></div>
             <div id="supplyLabel">Supplies</div>
             <div id="supplySlots"></div>
-            <div id="bagHint">Click a health or mana potion to drink it. You can also put one on the action bar. Right-click destroys one bag item or supply. Shift+right-click destroys the stack. Supplies and coins do not use bag slots.</div>
+            <div id="bagHint">Click a health or mana potion to drink it. Click a bomb to throw it at your target. You can also put potions and explosives on the action bar. Right-click destroys one bag item or supply. Shift+right-click destroys the stack. Supplies and coins do not use bag slots.</div>
         </div>
         <span id="playerColor" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span>
         <input id="playerName" maxlength="16" placeholder="Name">
@@ -866,7 +866,8 @@
                 mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Restore health. 4 mana.' },
                 gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.' },
                 health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion from your bag.' },
-                mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion from your bag.' }
+                mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion from your bag.' },
+                bomb: { name: 'Explosives', short: 'Bomb', kind: 'explosive', item: 'bomb', hint: 'Throw a bomb from your bag at the targeted hostile.' }
             };
             const BAR_PAGES = 3;
             const BAR_SLOTS = 8;
@@ -2233,6 +2234,10 @@
                     usePotion(action.item);
                     return;
                 }
+                if (action.kind === 'explosive') {
+                    useBomb();
+                    return;
+                }
                 if (action.kind === 'gather') {
                     tryGather();
                     return;
@@ -2963,6 +2968,21 @@
                 gameSocket.send(JSON.stringify({ type: 'use', item }));
             }
 
+            function useBomb() {
+                const index = (inventory.slots || []).findIndex(slot => slot && slot.kind === 'bomb');
+                if (index < 0) {
+                    showMessage('No explosives');
+                    return;
+                }
+                const aimed = currentTarget();
+                if (!aimed || aimed.kind !== 'npc') {
+                    showMessage('Select a hostile target');
+                    return;
+                }
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
+                gameSocket.send(JSON.stringify({ type: 'use', slot: index, targetId: aimed.id }));
+            }
+
             function unloadDistantChunks(playerX, playerZ) {
                 const currentCX = Math.floor(playerX / chunkSize);
                 const currentCZ = Math.floor(playerZ / chunkSize);
@@ -3012,7 +3032,8 @@
                 ['Warrior', ['sword', 'power-strike', 'cleave']],
                 ['Mage', ['staff', 'arcane-bolt', 'mend', 'arcane-surge']],
                 ['Field', ['gather']],
-                ['Potions', ['health', 'mana']]
+                ['Potions', ['health', 'mana']],
+                ['Explosives', ['bomb']]
             ];
 
             function saveActionBar() {
@@ -3042,6 +3063,7 @@
                 else if (id === 'gather') drawAxe(g);
                 else if (id === 'health') drawVial(g, '#e74c3c');
                 else if (id === 'mana') drawVial(g, '#3498db');
+                else if (id === 'bomb') drawBomb(g);
                 else if (id === 'bag') drawBag(g);
                 else if (id === 'character') drawCharacter(g);
                 return canvas;
@@ -3514,7 +3536,7 @@
                     heading.textContent = title;
                     picker.appendChild(heading);
                     for (const id of ids) {
-                        if (ACTIONS[id].kind !== 'potion' && !spellKnown(id)) continue;
+                        if (ACTIONS[id].kind !== 'potion' && ACTIONS[id].kind !== 'explosive' && !spellKnown(id)) continue;
                         const choice = document.createElement('button');
                         choice.type = 'button';
                         choice.className = 'icon-btn';

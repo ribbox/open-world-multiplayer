@@ -66,7 +66,7 @@ node server.js
 - The sheet equips a weapon and off hand around a body: head, neck, shoulders, cloak, chest, hands, waist, legs, and feet. Class spells are trained there. Each level after the first gives a talent point for that class's tree.
 - Bag slots show an icon for the item. A count appears only when a stack is more than one. Right-click a slot to destroy one item. Shift+right-click destroys the whole stack, which frees room for new loot.
 - Crafting is on the character sheet. Core sets are bought from a shop assistant, grouped by rarity. There is no shop button on the bar. Extra patterns drop in chests. Click a pattern in the bag to learn it.
-- F: loot a chest. Click a health or mana potion in the bag to drink it, or put it on the action bar.
+- F: loot a chest. Click a health or mana potion in the bag to drink it, or put it on the action bar. Explosives can be assigned the same way and are thrown at the targeted hostile.
 - M opens the world map. Scroll the wheel, or use + and −, to zoom. Right-click a spot to mark it. The minimap shows the point, or an arrow toward it. Left-click still teleports.
 - World setup can export and import the whole world: rules, coast, zones, camps, nodes, loot, and quests.
 - The Quests tab builds quests for a zone. The giver is an NPC from that zone. While a kill or gather quest is active, more of that mob appears nearby.
