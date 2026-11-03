@@ -4497,6 +4497,7 @@
                         showHurt();
                         floatText(characterGroup.position.x, 1.8, characterGroup.position.z, '-' + data.damage, '#ff5a5a');
                         showMessage('-' + data.damage + ' HP');
+                        if (data.attackerId) selectNpc(data.attackerId);
                     } else if (data.type === 'spawn') {
                         if (!data.ok) showMessage(data.reason || 'Cannot set spawn');
                         else {

@@ -372,6 +372,7 @@ function placeNpc(npc) {
     }
     npc.hp = npc.maxHp;
     npc.alive = true;
+    npc.aggroId = null;
     npc.homeX = npc.x;
     npc.homeZ = npc.z;
     npc.attackAt = 0;
@@ -448,8 +449,34 @@ function revealFog(player) {
     return add;
 }
 
+function restoreFoughtMobs(player) {
+    for (const npc of npcs.values()) {
+        if (!npc.alive || npc.hp >= npc.maxHp) continue;
+        const mine = npc.aggroId === player.persistentId;
+        const near = Math.hypot(npc.x - player.x, npc.z - player.z) < 28;
+        if (!mine && !near) continue;
+        const other = nearestPlayer(npc, 12);
+        if (other && other !== player) continue;
+        npc.hp = npc.maxHp;
+        npc.aggroId = null;
+        broadcast({
+            type: 'npcHit',
+            id: npc.id,
+            hp: npc.hp,
+            maxHp: npc.maxHp,
+            alive: true,
+            x: npc.x,
+            z: npc.z,
+            level: npc.level,
+            name: npc.name,
+            tint: npc.tint
+        });
+    }
+}
+
 function becomeGhost(player, now) {
     if (player.ghost) return;
+    restoreFoughtMobs(player);
     player.ghost = true;
     player.corpse = { x: player.x, z: player.z };
     const home = player.spawn || mapSpawn();
@@ -487,6 +514,14 @@ function talentRank(player, id) {
 
 function maxManaFor(player) {
     return 10 + ((player.level || 1) - 1) * 4 + talentRank(player, 'meditation') * 2;
+}
+
+function damageScale(playerLevel, mobLevel) {
+    const gap = (mobLevel || 1) - (playerLevel || 1);
+    if (gap <= 0) return 1;
+    const mild = Math.pow(0.85, Math.min(gap, 3));
+    const steep = gap > 3 ? Math.pow(0.62, gap - 3) : 1;
+    return Math.max(0.05, mild * steep);
 }
 
 function xpForKill(player, npc) {
@@ -1292,6 +1327,7 @@ function tickNpcs() {
         let tz = npc.wanderZ;
         let speed = 1.7;
         if (target) {
+            npc.aggroId = target.persistentId;
             tx = target.x;
             tz = target.z;
             speed = 3.8;
@@ -1309,7 +1345,7 @@ function tickNpcs() {
                 npc.attackAt = now + 1300;
                 const damage = Math.max(1, 1 + npc.level - target.armor);
                 target.hp = Math.max(0, target.hp - damage);
-                send(target.ws, { type: 'hurt', damage, attacker: npc.level, ...statsOf(target) });
+                send(target.ws, { type: 'hurt', damage, attackerId: npc.id, attacker: npc.level, ...statsOf(target) });
                 if (target.hp <= 0) becomeGhost(target, now);
             }
             continue;
@@ -1721,7 +1757,9 @@ wss.on('connection', (ws) => {
             };
             const land = () => {
                 if (!npc.alive) return { dealt: 0, killed: false, gained: 0, leveled: false, chest: null };
-                npc.hp -= per;
+                const dealtNow = Math.max(1, Math.round(per * damageScale(player.level, npc.level)));
+                npc.hp -= dealtNow;
+                npc.aggroId = player.persistentId;
                 let gained = 0;
                 let leveled = false;
                 let chest = null;
@@ -1746,7 +1784,7 @@ wss.on('connection', (ws) => {
                     name: npc.name,
                     tint: npc.tint
                 });
-                return { dealt: per, killed: !npc.alive, gained, leveled, chest };
+                return { dealt: dealtNow, killed: !npc.alive, gained, leveled, chest };
             };
             if (!projectile) {
                 const hit = land();
