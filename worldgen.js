@@ -864,6 +864,7 @@ export function applyWorldConfig(config) {
         });
     }
     rebuildRoads();
+    loadDungeons(config);
 }
 
 export function customMap() {
@@ -893,6 +894,116 @@ export function listDesignedZones() {
         camps: zone.camps,
         nodes: zone.nodes
     }));
+}
+
+const DUNGEON_SHIFT = 90000;
+const DUNGEON_HALF = 2.15;
+let designedDungeons = [];
+
+function loadDungeons(config) {
+    designedDungeons = [];
+    const list = Array.isArray(config && config.dungeons) ? config.dungeons : [];
+    for (const raw of list.slice(0, 12)) {
+        const points = (Array.isArray(raw.points) ? raw.points : []).slice(0, 18).map(point => [Number(point[0]), Number(point[1])]).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+        if (points.length < 2) continue;
+        const px = Number(raw.portal && raw.portal.x);
+        const pz = Number(raw.portal && raw.portal.z);
+        if (!Number.isFinite(px) || !Number.isFinite(pz)) continue;
+        const edges = [];
+        for (let i = 0; i < points.length - 1; i++) edges.push(raw.edges && raw.edges[i] === 'organic' ? 'organic' : 'line');
+        const props = [];
+        for (const prop of (Array.isArray(raw.props) ? raw.props : []).slice(0, 80)) {
+            const x = Number(prop.x);
+            const z = Number(prop.z);
+            if (!Number.isFinite(x) || !Number.isFinite(z)) continue;
+            const type = prop.type === 'root' || prop.type === 'pillar' ? prop.type : 'rock';
+            props.push({ type, x, z });
+        }
+        const id = String(raw.id || ('dungeon-' + designedDungeons.length)).slice(0, 24);
+        designedDungeons.push({
+            id,
+            name: String(raw.name || 'Cavern').slice(0, 32),
+            mob: MOB_IDS.includes(raw.mob) ? raw.mob : 'spider',
+            level: Math.max(1, Math.min(30, Math.round(Number(raw.level) || 1))),
+            elite: !!raw.elite,
+            endName: String(raw.endName || 'Warden').slice(0, 24),
+            portal: { x: px, z: pz },
+            points,
+            edges,
+            props,
+            samples: curvePoints(points, edges, false),
+            index: designedDungeons.length
+        });
+    }
+}
+
+export function listDungeons() {
+    return designedDungeons.map(dungeon => ({
+        id: dungeon.id,
+        name: dungeon.name,
+        mob: dungeon.mob,
+        level: dungeon.level,
+        elite: dungeon.elite,
+        endName: dungeon.endName,
+        portal: { x: dungeon.portal.x, z: dungeon.portal.z },
+        points: dungeon.points,
+        edges: dungeon.edges,
+        props: dungeon.props,
+        index: dungeon.index
+    }));
+}
+
+export function dungeonById(id) {
+    return designedDungeons.find(dungeon => dungeon.id === id) || null;
+}
+
+export function dungeonWorld(dungeon, x, z) {
+    return { x: DUNGEON_SHIFT + dungeon.index * 700 + x, z };
+}
+
+export function dungeonLocal(dungeon, x, z) {
+    return { x: x - (DUNGEON_SHIFT + dungeon.index * 700), z };
+}
+
+function projectSamples(samples, x, z) {
+    let best = null;
+    for (let i = 1; i < samples.length; i++) {
+        const a = samples[i - 1];
+        const b = samples[i];
+        const abx = b[0] - a[0];
+        const abz = b[1] - a[1];
+        const len2 = abx * abx + abz * abz || 1e-6;
+        let t = ((x - a[0]) * abx + (z - a[1]) * abz) / len2;
+        if (t < 0) t = 0;
+        else if (t > 1) t = 1;
+        const px = a[0] + abx * t;
+        const pz = a[1] + abz * t;
+        const dist = Math.hypot(x - px, z - pz);
+        if (!best || dist < best.dist) best = { dist, x: px, z: pz };
+    }
+    return best;
+}
+
+export function dungeonClamp(dungeon, x, z) {
+    const local = dungeonLocal(dungeon, x, z);
+    const samples = dungeon.samples && dungeon.samples.length ? dungeon.samples : dungeon.points;
+    const best = projectSamples(samples, local.x, local.z);
+    if (!best) return dungeonWorld(dungeon, samples[0][0], samples[0][1]);
+    if (best.dist <= DUNGEON_HALF) return { x, z };
+    const nx = (local.x - best.x) / (best.dist || 1);
+    const nz = (local.z - best.z) / (best.dist || 1);
+    return dungeonWorld(dungeon, best.x + nx * (DUNGEON_HALF - 0.08), best.z + nz * (DUNGEON_HALF - 0.08));
+}
+
+export function dungeonBlocked(dungeon, x0, z0, x1, z1) {
+    const end = dungeonLocal(dungeon, x1, z1);
+    for (const prop of dungeon.props || []) {
+        const dx = end.x - prop.x;
+        const dz = end.z - prop.z;
+        if (dx * dx + dz * dz < 0.85 * 0.85) return true;
+    }
+    const kept = dungeonClamp(dungeon, x1, z1);
+    return Math.hypot(kept.x - x1, kept.z - z1) > 0.35;
 }
 
 function appendDesignedNodes(cx, cz, items) {

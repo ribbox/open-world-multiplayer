@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked } from './worldgen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -181,6 +181,24 @@ function rebuildCivilians() {
             pushCampRole(CIVILIANS, camp, zone, index, 'quest', 'Quest giver', '#2ecc71', 'I keep the road through ' + zone.name + '.');
         });
     }
+    for (const dungeon of listDungeons()) {
+        const live = dungeonById(dungeon.id) || dungeon;
+        const samples = live.samples && live.samples.length ? live.samples : live.points;
+        const spotLocal = retreatAlong(samples, 3.4);
+        const spot = dungeonWorld(live, spotLocal[0], spotLocal[1]);
+        CIVILIANS.push({
+            id: 'dend-' + dungeon.id,
+            name: dungeon.endName || 'Warden',
+            role: 'quest',
+            title: 'Inside ' + dungeon.name,
+            tint: '#bb88ff',
+            x: spot.x,
+            z: spot.z,
+            text: 'The only way out is the portal. I take what you finished in here.',
+            quest: '',
+            dungeonId: dungeon.id
+        });
+    }
 }
 
 function campSites() {
@@ -211,7 +229,7 @@ rebuildCivilians();
 
 function publicCivilian(civ) {
     const quests = Array.isArray(civ.quests) ? civ.quests : (civ.quest ? [civ.quest] : []);
-    return { id: civ.id, name: civ.name, role: civ.role, title: civ.title, tint: civ.tint, x: civ.x, z: civ.z, text: civ.text, quest: quests[0] || '', quests };
+    return { id: civ.id, name: civ.name, role: civ.role, title: civ.title, tint: civ.tint, x: civ.x, z: civ.z, text: civ.text, quest: quests[0] || '', quests, dungeonId: civ.dungeonId || '' };
 }
 
 const QUEST_TYPES = ['kill', 'gather', 'named', 'protect'];
@@ -222,13 +240,18 @@ function questBlurb(quest) {
     const mob = NPC_KINDS[quest.mob];
     const label = mob ? mob.name : 'creature';
     const many = quest.count === 1 ? label : label + 's';
+    let text;
     if (quest.type === 'gather') {
         const who = quest.named || many;
-        return 'Gather ' + quest.count + ' ' + (quest.item || 'items') + '. ' + who + ' sometimes leave them in a chest.';
+        text = 'Gather ' + quest.count + ' ' + (quest.item || 'items') + '. ' + who + ' sometimes leave them in a chest.';
+    } else if (quest.type === 'named') text = 'Kill ' + (quest.elite ? 'the elite ' : '') + (quest.named || label) + '.';
+    else if (quest.type === 'protect') text = 'Protect ' + (quest.named || 'the villager') + '. Defeat ' + quest.count + ' attackers.';
+    else text = 'Kill ' + quest.count + ' ' + many + '.';
+    if (quest.dungeonId) {
+        const cave = dungeonById(quest.dungeonId);
+        if (cave) text += ' Do this in ' + cave.name + ', then turn it in at the end.';
     }
-    if (quest.type === 'named') return 'Kill ' + (quest.elite ? 'the elite ' : '') + (quest.named || label) + '.';
-    if (quest.type === 'protect') return 'Protect ' + (quest.named || 'the villager') + '. Defeat ' + quest.count + ' attackers.';
-    return 'Kill ' + quest.count + ' ' + many + '.';
+    return text;
 }
 
 const QUESTS = {
@@ -256,6 +279,10 @@ const QUESTS = {
 };
 
 function questZoneName(quest) {
+    if (quest && quest.dungeonId) {
+        const cave = dungeonById(quest.dungeonId);
+        if (cave) return cave.name;
+    }
     if (!quest || !quest.zoneId) return '';
     const zone = listDesignedZones().find(entry => entry.id === quest.zoneId);
     return zone ? zone.name : '';
@@ -277,6 +304,7 @@ function publicQuests() {
             named: quest.named || '',
             zoneId: quest.zoneId || '',
             zoneName: questZoneName(quest),
+            dungeonId: quest.dungeonId || '',
             giver: quest.giver || '',
             rewardKind: quest.rewardKind || '',
             rewardName: quest.rewardName || '',
@@ -334,6 +362,7 @@ function noteKill(player, npc) {
     for (const [id, quest] of Object.entries(QUESTS)) {
         const row = player.quests && player.quests[id];
         if (!row || row.state !== 'active' || row.failed || row.count >= quest.count) continue;
+        if (quest.dungeonId && npc.dungeonId !== quest.dungeonId) continue;
         const namedHit = quest.named && npc.name === quest.named;
         const kindHit = quest.mob && npc.kind === quest.mob;
         if (quest.type === 'kill' && kindHit) {
@@ -382,6 +411,7 @@ function offersQuest(civ, questId) {
     if (!civ || !quest) return false;
     if (Array.isArray(civ.quests) && civ.quests.includes(questId)) return true;
     if (civ.quest === questId) return true;
+    if (civ.dungeonId && quest.dungeonId === civ.dungeonId) return true;
     if (!quest.giver || civ.name.toLowerCase() !== quest.giver.toLowerCase()) return false;
     if (quest.zoneId && !String(civ.id).includes('-' + quest.zoneId + '-')) return false;
     return true;
@@ -503,6 +533,15 @@ function spotNear(x, z, index) {
 }
 
 function respawnPinned(npc) {
+    if (npc.dungeonId) {
+        npc.alive = true;
+        npc.hp = npc.maxHp;
+        npc.x = npc.homeX;
+        npc.z = npc.homeZ;
+        npc.aggroId = null;
+        pickWander(npc);
+        return;
+    }
     const quest = QUESTS[npc.questId];
     if (!quest || !someoneNeeds(npc.questId) || (quest.type === 'protect' && (quest.guardHp || 0) <= 0)) {
         dropQuestMob(npc);
@@ -727,7 +766,8 @@ function publicNpc(n) {
         name: n.name,
         kind: n.kind,
         tint: n.tint,
-        elite: !!n.elite
+        elite: !!n.elite,
+        dungeonId: n.dungeonId || ''
     };
 }
 
@@ -792,6 +832,14 @@ function placeNpc(npc, spot) {
 }
 
 function pickWander(npc) {
+    if (npc.dungeonId) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 0.35 + Math.random() * 0.9;
+        npc.wanderX = npc.homeX + Math.cos(angle) * dist;
+        npc.wanderZ = npc.homeZ + Math.sin(angle) * dist;
+        npc.wanderUntil = Date.now() + 2500 + Math.random() * 3000;
+        return;
+    }
     const angle = Math.random() * Math.PI * 2;
     const dist = 4 + Math.random() * 14;
     const next = clampToZone(npc, npc.homeX + Math.cos(angle) * dist, npc.homeZ + Math.sin(angle) * dist);
@@ -979,7 +1027,13 @@ function becomeGhost(player, now) {
     if (player.ghost) return;
     restoreFoughtMobs(player);
     player.ghost = true;
-    player.corpse = { x: player.x, z: player.z };
+    let corpse = { x: player.x, z: player.z };
+    if (player.dungeonId) {
+        const cave = dungeonById(player.dungeonId);
+        player.dungeonId = '';
+        if (cave) corpse = { x: cave.portal.x + 3, z: cave.portal.z };
+    }
+    player.corpse = corpse;
     const home = player.spawn || mapSpawn();
     player.hp = 0;
     player.x = home.x;
@@ -990,6 +1044,7 @@ function becomeGhost(player, now) {
     if (revealed.length) send(player.ws, { type: 'fog', add: revealed });
     send(player.ws, { type: 'died', x: player.x, y: 0, z: player.z, corpse: player.corpse, ...statsOf(player) });
     broadcast({ type: 'ghost', ...publicPlayer(player.persistentId, player) });
+    savePlayer(player);
 }
 
 function nearestPlayer(npc, range) {
@@ -1739,6 +1794,9 @@ function savePlayer(player) {
     prof.xp = player.xp;
     prof.coins = player.coins || 0;
     prof.materials = player.materials || blankMaterials();
+    prof.dungeonId = player.dungeonId || '';
+    prof.dungeonX = player.dungeonId ? player.x : 0;
+    prof.dungeonZ = player.dungeonId ? player.z : 0;
     prof.junk = 0;
     prof.healthPotions = [];
     prof.manaPotions = [];
@@ -2029,6 +2087,14 @@ function tickNpcs() {
         const step = Math.min(speed * dt, dist);
         npc.x += (dx / dist) * step;
         npc.z += (dz / dist) * step;
+        if (npc.dungeonId) {
+            const cave = dungeonById(npc.dungeonId);
+            if (cave) {
+                const held = dungeonClamp(cave, npc.x, npc.z);
+                npc.x = held.x;
+                npc.z = held.z;
+            }
+        }
         npc.rotY = Math.atan2(dx, dz);
     }
 
@@ -2116,12 +2182,14 @@ wss.on('connection', (ws) => {
 
             const spawn = readSpawn(prof);
             prof.spawn = spawn;
+            const cave = dungeonById(prof.dungeonId);
             const player = {
                 ws,
                 persistentId,
-                x: spawn.x,
-                y: 0,
-                z: spawn.z,
+                dungeonId: cave ? cave.id : '',
+                x: cave ? Number(prof.dungeonX) || spawn.x : spawn.x,
+                y: cave ? 0.2 : 0,
+                z: cave ? Number(prof.dungeonZ) || spawn.z : spawn.z,
                 rotY: 0,
                 tool: 'axe',
                 name: prof.name,
@@ -2182,6 +2250,8 @@ wss.on('connection', (ws) => {
                 character: publicCharacter(player),
                 resources: save.resources,
                 fog: Array.from(player.explored),
+                dungeons: listDungeons(),
+                dungeon: player.dungeonId ? { id: player.dungeonId, x: player.x, y: 0.2, z: player.z } : null,
                 players: Array.from(players.entries())
                     .filter(([pid]) => pid !== persistentId)
                     .map(([pid, p]) => publicPlayer(pid, p))
@@ -2199,6 +2269,28 @@ wss.on('connection', (ws) => {
             if (typeof data.x === 'number') player.x = data.x;
             if (typeof data.y === 'number') player.y = data.y;
             if (typeof data.z === 'number') player.z = data.z;
+            if (player.dungeonId) {
+                const cave = dungeonById(player.dungeonId);
+                if (!cave) player.dungeonId = '';
+                else {
+                    const held = dungeonClamp(cave, player.x, player.z);
+                    if (dungeonBlocked(cave, prevX, prevZ, held.x, held.z)) {
+                        player.x = prevX;
+                        player.z = prevZ;
+                    } else {
+                        player.x = held.x;
+                        player.z = held.z;
+                    }
+                    player.y = 0.2;
+                    if (typeof data.rotY === 'number') player.rotY = data.rotY;
+                    if (data.tool === 'axe' || data.tool === 'pickaxe' || data.tool === 'sword' || data.tool === 'staff') player.tool = data.tool;
+                    if (Math.hypot(player.x - data.x, player.z - data.z) > 0.45) {
+                        send(ws, { type: 'teleport', x: player.x, y: 0.2, z: player.z, add: [], quiet: true });
+                    }
+                    broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
+                    return;
+                }
+            }
             const edge = clampWorld(player.x, player.z, 2.2);
             const tooFar = swimTooFar(edge.x, edge.z);
             const leavingShore = tooFar && !swimTooFar(prevX, prevZ);
@@ -2219,6 +2311,11 @@ wss.on('connection', (ws) => {
         }
 
         if (data.type === 'teleport') {
+            if (player.dungeonId) {
+                send(ws, { type: 'teleport', x: player.x, y: 0.2, z: player.z, add: [], quiet: true });
+                send(ws, { type: 'note', text: 'The only way out is the portal' });
+                return;
+            }
             const edge = clampWorld(Number(data.x), Number(data.z), 2.2);
             player.x = edge.x;
             player.z = edge.z;
@@ -2226,6 +2323,51 @@ wss.on('connection', (ws) => {
             const revealed = revealFog(player);
             broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
             send(ws, { type: 'teleport', x: player.x, y: player.y, z: player.z, add: revealed });
+            return;
+        }
+
+        if (data.type === 'enterDungeon') {
+            const cave = dungeonById(data.id);
+            if (!cave || player.dungeonId) {
+                send(ws, { type: 'dungeon', ok: false, reason: player.dungeonId ? 'Already inside' : 'No such dungeon' });
+                return;
+            }
+            if (Math.hypot(player.x - cave.portal.x, player.z - cave.portal.z) > 4.5) {
+                send(ws, { type: 'dungeon', ok: false, reason: 'Too far from the portal' });
+                return;
+            }
+            const samples = cave.samples && cave.samples.length ? cave.samples : cave.points;
+            const spot = dungeonWorld(cave, samples[0][0], samples[0][1]);
+            player.dungeonId = cave.id;
+            player.x = spot.x;
+            player.z = spot.z;
+            player.y = 0.2;
+            savePlayer(player);
+            send(ws, { type: 'dungeon', ok: true, action: 'enter', id: cave.id, x: spot.x, y: 0.2, z: spot.z });
+            broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
+            return;
+        }
+
+        if (data.type === 'exitDungeon') {
+            const cave = dungeonById(player.dungeonId);
+            if (!cave) {
+                player.dungeonId = '';
+                send(ws, { type: 'dungeon', ok: false, reason: 'You are not inside' });
+                return;
+            }
+            const samples = cave.samples && cave.samples.length ? cave.samples : cave.points;
+            const mouth = dungeonWorld(cave, samples[0][0], samples[0][1]);
+            if (Math.hypot(player.x - mouth.x, player.z - mouth.z) > 4.5) {
+                send(ws, { type: 'dungeon', ok: false, reason: 'The portal is at the entrance' });
+                return;
+            }
+            player.dungeonId = '';
+            player.x = cave.portal.x + 3;
+            player.z = cave.portal.z;
+            player.y = terrainHeight(player.x, player.z);
+            savePlayer(player);
+            send(ws, { type: 'dungeon', ok: true, action: 'exit', x: player.x, y: player.y, z: player.z });
+            broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
             return;
         }
 
@@ -3135,6 +3277,7 @@ function sanitizeQuests(input) {
             giverRole: ['inn', 'shop', 'trainer', 'quest'].includes(raw.giverRole) ? raw.giverRole : '',
             giverCamp: clampNum(raw.giverCamp, 0, 0, 5),
             zoneId: String(raw.zoneId || '').slice(0, 24),
+            dungeonId: String(raw.dungeonId || '').slice(0, 24),
             protectRole: ['inn', 'shop', 'trainer', 'quest'].includes(raw.protectRole) ? raw.protectRole : '',
             protectCamp: clampNum(raw.protectCamp, 0, 0, 5),
             requires: String(raw.requires || '').trim().slice(0, 32),
@@ -3175,6 +3318,146 @@ function sanitizeRoads(input) {
     return out;
 }
 
+function sanitizeDungeons(input) {
+    const list = Array.isArray(input) ? input : [];
+    const out = [];
+    const seen = new Set();
+    for (const raw of list.slice(0, 12)) {
+        if (!raw || typeof raw !== 'object') continue;
+        let id = String(raw.id || '').slice(0, 24);
+        if (!/^[a-z0-9-]{2,24}$/i.test(id)) id = 'dg' + Math.random().toString(36).slice(2, 8);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const points = (Array.isArray(raw.points) ? raw.points : []).slice(0, 18).map(point => [Math.round(Number(point[0])), Math.round(Number(point[1]))]).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+        if (points.length < 2) continue;
+        const px = Number(raw.portal && raw.portal.x);
+        const pz = Number(raw.portal && raw.portal.z);
+        if (!Number.isFinite(px) || !Number.isFinite(pz)) continue;
+        const edges = [];
+        for (let i = 0; i < points.length - 1; i++) edges.push(raw.edges && raw.edges[i] === 'organic' ? 'organic' : 'line');
+        const props = [];
+        for (const prop of (Array.isArray(raw.props) ? raw.props : []).slice(0, 80)) {
+            const x = Number(prop.x);
+            const z = Number(prop.z);
+            if (!Number.isFinite(x) || !Number.isFinite(z)) continue;
+            const type = prop.type === 'root' || prop.type === 'pillar' ? prop.type : 'rock';
+            props.push({ type, x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10 });
+        }
+        out.push({
+            id,
+            name: String(raw.name || 'Cavern').slice(0, 32),
+            mob: MOB_IDS.includes(raw.mob) ? raw.mob : 'spider',
+            level: clampNum(raw.level, 1, 1, 30),
+            elite: !!raw.elite,
+            endName: String(raw.endName || 'Warden').slice(0, 24),
+            portal: { x: Math.round(px), z: Math.round(pz) },
+            points,
+            edges,
+            props
+        });
+    }
+    return out;
+}
+
+function retreatAlong(samples, back) {
+    let remain = back;
+    for (let i = samples.length - 1; i > 0; i--) {
+        const ax = samples[i][0];
+        const az = samples[i][1];
+        const bx = samples[i - 1][0];
+        const bz = samples[i - 1][1];
+        const len = Math.hypot(ax - bx, az - bz) || 0;
+        if (len >= remain) {
+            const t = remain / (len || 1);
+            return [ax + (bx - ax) * t, az + (bz - az) * t];
+        }
+        remain -= len;
+    }
+    return samples[0];
+}
+
+function spawnDungeonMobs() {
+    for (const brief of listDungeons()) {
+        const dungeon = dungeonById(brief.id) || brief;
+        const samples = dungeon.samples && dungeon.samples.length ? dungeon.samples : dungeon.points;
+        let travel = 0;
+        let since = 0;
+        let spawned = 0;
+        for (let i = 1; i < samples.length; i++) {
+            const step = Math.hypot(samples[i][0] - samples[i - 1][0], samples[i][1] - samples[i - 1][1]);
+            travel += step;
+            since += step;
+            if (travel < 10 || since < 9) continue;
+            const remain = routeRemain(samples, i);
+            if (remain < 8) break;
+            since = 0;
+            spawned += 1;
+            const along = samples[i];
+            const world = dungeonWorld(dungeon, along[0], along[1]);
+            const kind = NPC_KINDS[dungeon.mob] || NPC_KINDS.spider;
+            const npc = {
+                id: 'dm-' + dungeon.id + '-' + spawned,
+                dungeonId: dungeon.id,
+                pinned: true,
+                x: world.x,
+                z: world.z,
+                homeX: world.x,
+                homeZ: world.z,
+                zx: 0,
+                zz: 0,
+                kind: kind.id,
+                name: kind.name,
+                tint: kind.tint,
+                loot: kind.loot,
+                level: dungeon.level,
+                alive: true,
+                aggroId: null,
+                attackAt: 0
+            };
+            applyElite(npc, dungeon.elite, 0);
+            pickWander(npc);
+            npcs.set(npc.id, npc);
+        }
+        const end = samples[samples.length - 1];
+        const endWorld = dungeonWorld(dungeon, end[0], end[1]);
+        for (const quest of Object.values(QUESTS)) {
+            if (quest.type !== 'named' || quest.dungeonId !== dungeon.id) continue;
+            const kind = NPC_KINDS[quest.mob] || NPC_KINDS[dungeon.mob] || NPC_KINDS.spider;
+            const boss = {
+                id: 'db-' + quest.id,
+                dungeonId: dungeon.id,
+                questId: quest.id,
+                pinned: true,
+                x: endWorld.x,
+                z: endWorld.z,
+                homeX: endWorld.x,
+                homeZ: endWorld.z,
+                zx: 0,
+                zz: 0,
+                kind: kind.id,
+                name: quest.named || kind.name,
+                tint: kind.tint,
+                loot: kind.loot,
+                level: Math.max(dungeon.level, quest.minLevel || 1),
+                alive: true,
+                aggroId: null,
+                attackAt: 0
+            };
+            applyElite(boss, !!quest.elite, 0);
+            pickWander(boss);
+            npcs.set(boss.id, boss);
+        }
+    }
+}
+
+function routeRemain(samples, index) {
+    let left = 0;
+    for (let i = index + 1; i < samples.length; i++) {
+        left += Math.hypot(samples[i][0] - samples[i - 1][0], samples[i][1] - samples[i - 1][1]);
+    }
+    return left;
+}
+
 function sanitizeWorld(input) {
     const src = input && typeof input === 'object' ? input : {};
     return {
@@ -3189,6 +3472,7 @@ function sanitizeWorld(input) {
         zones: Array.isArray(src.zones) ? src.zones : [],
         roads: sanitizeRoads(src.roads),
         bounds: sanitizeBounds(src.bounds),
+        dungeons: sanitizeDungeons(src.dungeons),
         quests: sanitizeQuests(src.quests)
     };
 }
@@ -3210,6 +3494,7 @@ function publicWorld() {
         bounds: worldShape(),
         zones: listDesignedZones(),
         roads: listRoads(),
+        dungeons: listDungeons(),
         quests: (worldConfig && worldConfig.quests) || []
     };
 }
@@ -3223,12 +3508,13 @@ function applyLoaded(config) {
     worldRules.spawnCap = config.spawnCap;
     applyWorldConfig(config);
     lootTables = config.loot;
-    worldConfig = { ...config, zones: listDesignedZones(), bounds: worldShape(), loot: lootTables, quests: config.quests || [] };
+    worldConfig = { ...config, zones: listDesignedZones(), bounds: worldShape(), loot: lootTables, quests: config.quests || [], dungeons: listDungeons() };
     rebuildCivilians();
     installQuests(config.quests || []);
     npcs.clear();
     zoneSpawns.clear();
     refreshNpcZones();
+    spawnDungeonMobs();
 }
 
 function loadWorldFile() {

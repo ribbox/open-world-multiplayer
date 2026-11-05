@@ -364,7 +364,7 @@
         Click the minimap for the world map. Numbers are mob levels. Gray gives no XP<br>
         World setup is a separate page at /setup<br>
         Notices stay in the list at the top right<br>
-        H/M: first potion. Click a potion to use it<br>
+        F: loot a chest, or step through a purple portal. Inside a dungeon, F at the entrance is the only way out<br>
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
         Minimap: zone name and 0–100 coordinates. Map chooses what is shown<br>
@@ -456,7 +456,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, listRoads, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset, campYaw, campSpot, roadAt } from './worldgen.js';
+        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, listRoads, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset, campYaw, campSpot, roadAt, listDungeons, dungeonById, dungeonWorld, dungeonLocal, dungeonClamp, dungeonBlocked } from './worldgen.js';
 
         let bootWorld = null;
         try {
@@ -539,6 +539,9 @@
             const characterGroup = new THREE.Group();
             characterGroup.position.y = terrainHeight(0, 0);
             scene.add(characterGroup);
+            const caveLamp = new THREE.PointLight(0xffc080, 0, 16, 1.6);
+            caveLamp.position.set(0, 1.5, 0.2);
+            characterGroup.add(caveLamp);
 
             let mixer = null;
             let idleAction = null;
@@ -1143,7 +1146,7 @@
             }
 
             function drawMinimap() {
-                revealHere(characterGroup.position.x, characterGroup.position.z);
+                if (!activeCave) revealHere(characterGroup.position.x, characterGroup.position.z);
                 const ctx = minimapCtx;
                 ctx.clearRect(0, 0, mapSize, mapSize);
                 ctx.beginPath();
@@ -1179,10 +1182,16 @@
                 }
 
                 const here = zoneAt(px, pz);
-                zoneNameEl.textContent = here.name;
-                const markerDist = waypoint ? Math.round(Math.hypot(waypoint.x - px, waypoint.z - pz)) : null;
-                const bodyDist = ghost && myCorpse ? Math.round(Math.hypot(myCorpse.x - px, myCorpse.z - pz)) : null;
-                zoneCoordsEl.textContent = here.x.toFixed(1) + ',  ' + here.z.toFixed(1) + (bodyDist != null ? '   ·   ' + bodyDist + ' to body' : '') + (markerDist != null ? '   ·   ' + markerDist + ' to marker' : '');
+                if (activeCave) {
+                    const local = dungeonLocal(activeCave, px, pz);
+                    zoneNameEl.textContent = activeCave.name;
+                    zoneCoordsEl.textContent = local.x.toFixed(1) + ',  ' + local.z.toFixed(1);
+                } else {
+                    zoneNameEl.textContent = here.name;
+                    const markerDist = waypoint ? Math.round(Math.hypot(waypoint.x - px, waypoint.z - pz)) : null;
+                    const bodyDist = ghost && myCorpse ? Math.round(Math.hypot(myCorpse.x - px, myCorpse.z - pz)) : null;
+                    zoneCoordsEl.textContent = here.x.toFixed(1) + ',  ' + here.z.toFixed(1) + (bodyDist != null ? '   ·   ' + bodyDist + ' to body' : '') + (markerDist != null ? '   ·   ' + markerDist + ' to marker' : '');
+                }
 
                 ctx.save();
                 ctx.beginPath();
@@ -1191,7 +1200,7 @@
 
                 const span = 90;
                 const designed = listDesignedZones();
-                if (mapLayers.grid && !designed.length) for (let ox = -1; ox <= 1; ox++) {
+                if (!activeCave && mapLayers.grid && !designed.length) for (let ox = -1; ox <= 1; ox++) {
                     for (let oz = -1; oz <= 1; oz++) {
                         const originX = (here.zx + ox) * ZONE_SIZE - ZONE_SIZE / 2;
                         const originZ = (here.zz + oz) * ZONE_SIZE - ZONE_SIZE / 2;
@@ -1217,7 +1226,7 @@
                     }
                 }
 
-                if (designed.length) {
+                if (!activeCave && designed.length) {
                     ctx.lineWidth = 2;
                     for (const zone of designed) {
                         const path = curvePoints(zone.points, zone.edges, true);
@@ -1243,6 +1252,7 @@
                     }
                 }
 
+                if (!activeCave) {
                 ctx.strokeStyle = '#8d6a3a';
                 ctx.lineWidth = 3;
                 ctx.lineJoin = 'round';
@@ -1258,13 +1268,36 @@
                     }
                     ctx.stroke();
                 }
+                }
+
+                if (activeCave) {
+                    const samples = activeCave.samples && activeCave.samples.length ? activeCave.samples : curvePoints(activeCave.points, activeCave.edges, false);
+                    ctx.strokeStyle = '#c7b4e2';
+                    ctx.lineWidth = 8;
+                    ctx.lineJoin = 'round';
+                    ctx.beginPath();
+                    samples.forEach((point, index) => {
+                        const world = dungeonWorld(activeCave, point[0], point[1]);
+                        const spot = project(world.x, world.z);
+                        if (index === 0) ctx.moveTo(spot.mx, spot.mz);
+                        else ctx.lineTo(spot.mx, spot.mz);
+                    });
+                    ctx.stroke();
+                    ctx.fillStyle = '#8d7a72';
+                    for (const prop of activeCave.props || []) {
+                        const world = dungeonWorld(activeCave, prop.x, prop.z);
+                        const spot = place(world.x, world.z);
+                        if (!spot) continue;
+                        ctx.fillRect(spot.mx - 2, spot.mz - 2, 4, 4);
+                    }
+                }
 
                 for (const c of allColliders) {
                     if (!c.type || c.type === 'boulder') continue;
                     if ((c.type === 'tree' || c.type === 'plain-tree') && !mapLayers.trees) continue;
                     if (c.type === 'herb' && !mapLayers.trees) continue;
                     if ((c.type === 'rock' || c.type === 'plain-rock' || c.type === 'sulfur') && !mapLayers.rocks) continue;
-                    if (!seenAt(c.x, c.z)) continue;
+                    if (activeCave || !seenAt(c.x, c.z)) continue;
                     const p = place(c.x, c.z);
                     if (!p) continue;
                     ctx.beginPath();
@@ -1276,14 +1309,14 @@
 
                 if (mapLayers.npcs) for (const entry of worldNpcs.values()) {
                     const p = place(entry.group.position.x, entry.group.position.z);
-                    if (!p || !seenAt(entry.group.position.x, entry.group.position.z)) continue;
+                    if (!p || (!activeCave && !seenAt(entry.group.position.x, entry.group.position.z))) continue;
                     ctx.fillStyle = entry.elite ? '#f1c40f' : '#e74c3c';
                     const s = entry.elite ? 4 : 3;
                     ctx.fillRect(p.mx - s, p.mz - s, s * 2, s * 2);
                 }
                 if (mapLayers.npcs) for (const entry of worldCivs.values()) {
                     const p = place(entry.group.position.x, entry.group.position.z);
-                    if (!p || !seenAt(entry.group.position.x, entry.group.position.z)) continue;
+                    if (!p || (!activeCave && !seenAt(entry.group.position.x, entry.group.position.z))) continue;
                     ctx.fillStyle = '#2ecc71';
                     ctx.beginPath();
                     ctx.arc(p.mx, p.mz, 4, 0, Math.PI * 2);
@@ -1298,7 +1331,7 @@
                 }
 
                 if (mapLayers.chests) for (const chest of worldChests.values()) {
-                    if (!seenAt(chest.x, chest.z)) continue;
+                    if (!activeCave && !seenAt(chest.x, chest.z)) continue;
                     const p = place(chest.x, chest.z);
                     if (!p) continue;
                     ctx.fillStyle = '#f1c40f';
@@ -1307,7 +1340,7 @@
 
                 if (mapLayers.bodies) for (const marker of corpseMarkers.values()) {
                     const p = place(marker.position.x, marker.position.z);
-                    if (!p || !seenAt(marker.position.x, marker.position.z)) continue;
+                    if (!p || (!activeCave && !seenAt(marker.position.x, marker.position.z))) continue;
                     ctx.fillStyle = '#d6ecff';
                     ctx.beginPath();
                     ctx.arc(p.mx, p.mz, 4, 0, Math.PI * 2);
@@ -1316,7 +1349,7 @@
 
                 if (mapLayers.players) for (const entry of remotePlayers.values()) {
                     const p = place(entry.mesh.position.x, entry.mesh.position.z);
-                    if (!p || !seenAt(entry.mesh.position.x, entry.mesh.position.z)) continue;
+                    if (!p || (!activeCave && !seenAt(entry.mesh.position.x, entry.mesh.position.z))) continue;
                     ctx.beginPath();
                     ctx.arc(p.mx, p.mz, entry.data && entry.data.ghost ? 3.5 : 4.5, 0, Math.PI * 2);
                     ctx.fillStyle = entry.data && entry.data.ghost ? '#d6ecff' : (entry.data && entry.data.color) || '#5dade2';
@@ -1325,6 +1358,7 @@
                     ctx.strokeStyle = '#ffffff';
                     ctx.stroke();
                 }
+                if (!activeCave) {
                 const { min } = worldBounds();
                 const view = 96;
                 const ix0 = Math.floor((px - view - min) / FOG_CELL);
@@ -1346,6 +1380,7 @@
                         ctx.closePath();
                         ctx.fill();
                     }
+                }
                 }
                 ctx.restore();
 
@@ -1694,6 +1729,10 @@
                 if (e.target.id === 'worldmap') toggleWorldMap(false);
             });
             worldCanvas.addEventListener('click', (e) => {
+                if (activeCave) {
+                    showMessage('The only way out is the portal');
+                    return;
+                }
                 const spot = worldFromMapEvent(e);
                 if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
                     showMessage('Not connected');
@@ -2000,6 +2039,223 @@
                     scene.add(mesh);
                     roadRibbons.push(mesh);
                 }
+            }
+
+            let activeCave = null;
+            let dungeonRoot = null;
+            let portalRoot = null;
+            const dungeonRayMeshes = [];
+            const dungeonColliders = [];
+
+            function setCaveLook(on) {
+                if (on) {
+                    scene.fog = new THREE.Fog(0x141018, 5, 26);
+                    scene.background = new THREE.Color(0x141018);
+                    renderer.setClearColor(0x141018, 1);
+                    ambientLight.intensity = 0.28;
+                    directionalLight.intensity = 0.15;
+                    caveLamp.intensity = 1.7;
+                } else {
+                    scene.fog = new THREE.Fog(0x87CEEB, 40, 180);
+                    scene.background = new THREE.Color(0x87CEEB);
+                    renderer.setClearColor(0x87CEEB, 1);
+                    ambientLight.intensity = 0.7;
+                    directionalLight.intensity = 0.9;
+                    caveLamp.intensity = 0;
+                }
+            }
+
+            function setOverworldVisible(on) {
+                for (const data of loadedChunks.values()) data.group.visible = on;
+                for (const mesh of roadRibbons) mesh.visible = on;
+                if (campRoot) campRoot.visible = on;
+                if (portalRoot) portalRoot.visible = on;
+            }
+
+            function clearDungeonMesh() {
+                for (const collider of dungeonColliders) {
+                    const idx = allColliders.indexOf(collider);
+                    if (idx !== -1) allColliders.splice(idx, 1);
+                }
+                dungeonColliders.length = 0;
+                dungeonRayMeshes.length = 0;
+                if (dungeonRoot) {
+                    scene.remove(dungeonRoot);
+                    dungeonRoot.traverse(obj => {
+                        if (obj.geometry) obj.geometry.dispose();
+                        if (obj.material && obj.material.dispose) obj.material.dispose();
+                    });
+                    dungeonRoot = null;
+                }
+            }
+
+            function ribbonGeo(pts, half, y, side) {
+                const positions = [];
+                const normals = [];
+                const indices = [];
+                for (let i = 0; i < pts.length; i++) {
+                    const prev = pts[Math.max(0, i - 1)];
+                    const next = pts[Math.min(pts.length - 1, i + 1)];
+                    let dx = next[0] - prev[0];
+                    let dz = next[1] - prev[1];
+                    const span = Math.hypot(dx, dz) || 1;
+                    dx /= span;
+                    dz /= span;
+                    const leftX = pts[i][0] - dz * half;
+                    const leftZ = pts[i][1] + dx * half;
+                    const rightX = pts[i][0] + dz * half;
+                    const rightZ = pts[i][1] - dx * half;
+                    if (side === 0) {
+                        positions.push(leftX, y, leftZ, rightX, y, rightZ);
+                        normals.push(0, 1, 0, 0, 1, 0);
+                    } else if (side < 0) {
+                        positions.push(leftX, 0, leftZ, leftX, y, leftZ);
+                        normals.push(-dz, 0, dx, -dz, 0, dx);
+                    } else {
+                        positions.push(rightX, 0, rightZ, rightX, y, rightZ);
+                        normals.push(dz, 0, -dx, dz, 0, -dx);
+                    }
+                    if (i > 0) {
+                        const a = (i - 1) * 2;
+                        indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+                    }
+                }
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+                geo.setIndex(indices);
+                return geo;
+            }
+
+            function makePortal(x, y, z, yaw) {
+                const group = new THREE.Group();
+                const stone = new THREE.MeshLambertMaterial({ color: 0x3a3344 });
+                const pier = new THREE.BoxGeometry(0.38, 2.8, 0.38);
+                const left = new THREE.Mesh(pier, stone);
+                left.position.set(-1.15, 1.4, 0);
+                const right = new THREE.Mesh(pier, stone);
+                right.position.set(1.15, 1.4, 0);
+                const lintel = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.38, 0.42), stone);
+                lintel.position.y = 2.9;
+                const veil = new THREE.Mesh(
+                    new THREE.PlaneGeometry(1.85, 2.45),
+                    new THREE.MeshBasicMaterial({ color: 0x9b59b6, transparent: true, opacity: 0.75, side: THREE.DoubleSide })
+                );
+                veil.position.y = 1.4;
+                group.add(left, right, lintel, veil);
+                group.position.set(x, y, z);
+                group.rotation.y = yaw;
+                return group;
+            }
+
+            function buildDungeonMesh(cave) {
+                clearDungeonMesh();
+                const samples = cave.samples && cave.samples.length ? cave.samples : curvePoints(cave.points, cave.edges, false);
+                const pts = samples.map(point => {
+                    const world = dungeonWorld(cave, point[0], point[1]);
+                    return [world.x, world.z];
+                });
+                dungeonRoot = new THREE.Group();
+                const floor = new THREE.Mesh(ribbonGeo(pts, 2.15, 0, 0), new THREE.MeshLambertMaterial({ color: 0x3d342c, side: THREE.DoubleSide }));
+                const ceiling = new THREE.Mesh(ribbonGeo(pts, 2.15, 3.15, 0), new THREE.MeshLambertMaterial({ color: 0x17141c, side: THREE.DoubleSide }));
+                const left = new THREE.Mesh(ribbonGeo(pts, 2.15, 3.15, -1), new THREE.MeshLambertMaterial({ color: 0x2a2432, side: THREE.DoubleSide }));
+                const right = new THREE.Mesh(ribbonGeo(pts, 2.15, 3.15, 1), new THREE.MeshLambertMaterial({ color: 0x241f2c, side: THREE.DoubleSide }));
+                floor.receiveShadow = true;
+                dungeonRoot.add(floor, ceiling, left, right);
+                dungeonRayMeshes.push(left, right, floor, ceiling);
+                let lights = 0;
+                for (let i = 0; i < pts.length; i += 6) {
+                    if (lights >= 8) break;
+                    lights += 1;
+                    const lamp = new THREE.PointLight(0xffaa66, 0.55, 11, 1.6);
+                    lamp.position.set(pts[i][0], 2.15, pts[i][1]);
+                    dungeonRoot.add(lamp);
+                }
+                for (const prop of cave.props || []) {
+                    const world = dungeonWorld(cave, prop.x, prop.z);
+                    let mesh;
+                    if (prop.type === 'pillar') {
+                        mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 3.05, 7), new THREE.MeshLambertMaterial({ color: 0x6e655c }));
+                        mesh.position.set(world.x, 1.52, world.z);
+                    } else if (prop.type === 'root') {
+                        mesh = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.42, 0.5), new THREE.MeshLambertMaterial({ color: 0x4a3020 }));
+                        mesh.position.set(world.x, 0.24, world.z);
+                        mesh.rotation.y = (prop.x * 1.7 + prop.z) % Math.PI;
+                    } else {
+                        mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(0.72), new THREE.MeshLambertMaterial({ color: 0x5c534a }));
+                        mesh.position.set(world.x, 0.55, world.z);
+                    }
+                    mesh.castShadow = true;
+                    dungeonRoot.add(mesh);
+                    dungeonRayMeshes.push(mesh);
+                    const collider = { x: world.x, z: world.z, r: 0.85, dungeon: true };
+                    dungeonColliders.push(collider);
+                    allColliders.push(collider);
+                }
+                const mouth = pts[0];
+                const next = pts[Math.min(1, pts.length - 1)];
+                const yaw = Math.atan2(next[0] - mouth[0], next[1] - mouth[1]);
+                dungeonRoot.add(makePortal(mouth[0], 0, mouth[1], yaw));
+                scene.add(dungeonRoot);
+            }
+
+            function rebuildOverworldPortals() {
+                if (portalRoot) {
+                    scene.remove(portalRoot);
+                    portalRoot.traverse(obj => {
+                        if (obj.geometry) obj.geometry.dispose();
+                        if (obj.material && obj.material.dispose) obj.material.dispose();
+                    });
+                    portalRoot = null;
+                }
+                portalRoot = new THREE.Group();
+                for (const cave of listDungeons()) {
+                    if (!cave.portal) continue;
+                    const y = terrainHeight(cave.portal.x, cave.portal.z);
+                    portalRoot.add(makePortal(cave.portal.x, y, cave.portal.z, 0));
+                }
+                portalRoot.visible = !activeCave;
+                scene.add(portalRoot);
+            }
+
+            function enterDungeonView(id) {
+                const cave = dungeonById(id);
+                if (!cave) return;
+                activeCave = cave;
+                buildDungeonMesh(cave);
+                setOverworldVisible(false);
+                setCaveLook(true);
+            }
+
+            function leaveDungeonView() {
+                activeCave = null;
+                clearDungeonMesh();
+                setOverworldVisible(true);
+                setCaveLook(false);
+                updateChunks();
+            }
+
+            function nearestGate(range) {
+                const px = characterGroup.position.x;
+                const pz = characterGroup.position.z;
+                if (activeCave) {
+                    const samples = activeCave.samples && activeCave.samples.length ? activeCave.samples : activeCave.points;
+                    const mouth = dungeonWorld(activeCave, samples[0][0], samples[0][1]);
+                    const dist = Math.hypot(px - mouth.x, pz - mouth.z);
+                    if (dist <= range) return { exit: true, name: activeCave.name, dist };
+                    return null;
+                }
+                let best = null;
+                let bestD = range;
+                for (const cave of listDungeons()) {
+                    if (!cave.portal) continue;
+                    const dist = Math.hypot(px - cave.portal.x, pz - cave.portal.z);
+                    if (dist < bestD) {
+                        bestD = dist;
+                        best = cave;
+                    }
+                }
+                return best ? { exit: false, id: best.id, name: best.name, dist: bestD } : null;
             }
 
             function reloadChunks() {
@@ -2636,6 +2892,7 @@
                     entry.quest = civ.quest || entry.quests[0] || '';
                     entry.name = civ.name;
                     entry.text = civ.text || entry.text;
+                    entry.dungeonId = civ.dungeonId || '';
                     return;
                 }
                 const body = cloneNpcModel(civ.role);
@@ -2648,7 +2905,7 @@
                 group.userData.body = body;
                 group.userData.labelY = bounds.max.y + 0.22;
                 group.userData.bobAmp = 0.03;
-                group.position.set(civ.x, terrainHeight(civ.x, civ.z), civ.z);
+                group.position.set(civ.x, civ.dungeonId ? 0.2 : terrainHeight(civ.x, civ.z), civ.z);
                 group.userData.civilId = civ.id;
                 const label = makeCivSprite(civ.name, civ.title, civ.tint);
                 label.position.y = group.userData.labelY;
@@ -2656,7 +2913,7 @@
                 group.add(label);
                 group.userData.label = label;
                 scene.add(group);
-                worldCivs.set(civ.id, { group, id: civ.id, name: civ.name, title: civ.title, role: civ.role, text: civ.text, quest: civ.quest || '', quests: civ.quests || (civ.quest ? [civ.quest] : []), tint: civ.tint, bob: Math.random() * Math.PI * 2 });
+                worldCivs.set(civ.id, { group, id: civ.id, name: civ.name, title: civ.title, role: civ.role, text: civ.text, quest: civ.quest || '', quests: civ.quests || (civ.quest ? [civ.quest] : []), tint: civ.tint, dungeonId: civ.dungeonId || '', bob: Math.random() * Math.PI * 2 });
             }
 
             function spawnCivilians(list) {
@@ -2914,7 +3171,7 @@
                     if (!entry.dying) continue;
                     entry.deathT += delta;
                     entry.group.rotation.x = Math.min(1.35, entry.deathT * 2.4);
-                    const base = terrainHeight(entry.group.position.x, entry.group.position.z);
+                    const base = entry.dungeonId ? 0.2 : terrainHeight(entry.group.position.x, entry.group.position.z);
                     entry.group.position.y = base - Math.min(0.7, entry.deathT * 0.8);
                     fadeNpc(entry.group, Math.max(0, 1 - entry.deathT / 0.8));
                     if (entry.deathT >= 0.8) done.push(id);
@@ -2999,12 +3256,13 @@
                     group.userData.body = body;
                     group.userData.labelY = bounds.max.y + 0.22;
                     group.userData.bobAmp = state.kind === 'wisp' ? 0.16 : 0.035;
-                    group.position.set(state.x, 0, state.z);
+                    group.position.set(state.x, state.dungeonId ? 0.2 : 0, state.z);
                     scene.add(group);
-                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, name: state.name || 'Hostile', level: -1, hp: -1, maxHp: state.maxHp || 1, elite: !!state.elite, bob: Math.random() * Math.PI * 2 };
+                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, name: state.name || 'Hostile', level: -1, hp: -1, maxHp: state.maxHp || 1, elite: !!state.elite, dungeonId: state.dungeonId || '', bob: Math.random() * Math.PI * 2 };
                     group.userData.npcId = state.id;
                     worldNpcs.set(state.id, entry);
                 }
+                entry.dungeonId = state.dungeonId || entry.dungeonId || '';
                 entry.tx = state.x;
                 entry.tz = state.z;
                 entry.rotY = state.rotY || 0;
@@ -3086,7 +3344,7 @@
                 label.scale.set(1.6, 0.4, 1);
                 label.position.y = 1.15;
                 group.add(label);
-                group.position.set(chest.x, terrainHeight(chest.x, chest.z), chest.z);
+                group.position.set(chest.x, chest.x > 80000 ? 0.2 : terrainHeight(chest.x, chest.z), chest.z);
                 scene.add(group);
                 worldChests.set(chest.id, { ...chest, group });
             }
@@ -3114,10 +3372,11 @@
             }
 
             function tryLoot() {
-                let closest = null;
-                let closestDist = 2.6;
                 const px = characterGroup.position.x;
                 const pz = characterGroup.position.z;
+                const gate = nearestGate(3.4);
+                let closest = null;
+                let closestDist = 2.6;
                 for (const chest of worldChests.values()) {
                     const dist = Math.hypot(chest.x - px, chest.z - pz);
                     if (dist < closestDist) {
@@ -3125,8 +3384,16 @@
                         closestDist = dist;
                     }
                 }
+                if (gate && (!closest || closestDist > (gate.dist || 3))) {
+                    if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
+                        showMessage('Not connected');
+                        return;
+                    }
+                    gameSocket.send(JSON.stringify(gate.exit ? { type: 'exitDungeon' } : { type: 'enterDungeon', id: gate.id }));
+                    return;
+                }
                 if (!closest) {
-                    showMessage('No chest nearby');
+                    showMessage(activeCave ? 'The portal is at the entrance' : 'No chest nearby');
                     return;
                 }
                 if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
@@ -3200,6 +3467,7 @@
 
             updateChunks();
             addRoadRibbons();
+            rebuildOverworldPortals();
 
             const picker = document.getElementById('actionPicker');
             const PICKER_GROUPS = [
@@ -4649,7 +4917,7 @@
                 let moveSpeed = baseSpeed * (keys.shift ? sprintMultiplier : 1);
                 const feetX = characterGroup.position.x;
                 const feetZ = characterGroup.position.z;
-                if (waterAt(feetX, feetZ)) moveSpeed *= 0.45;
+                if (!activeCave && waterAt(feetX, feetZ)) moveSpeed *= 0.45;
                 const move = new THREE.Vector3();
 
                 if (keys.w || arrows.up) move.add(forward);
@@ -4659,6 +4927,16 @@
                     move.normalize().multiplyScalar(moveSpeed * delta);
                     const nextX = feetX + move.x;
                     const nextZ = feetZ + move.z;
+                    if (activeCave) {
+                        const tryStep = (x, z) => {
+                            const held = dungeonClamp(activeCave, x, z);
+                            if (dungeonBlocked(activeCave, feetX, feetZ, held.x, held.z)) return false;
+                            characterGroup.position.x = held.x;
+                            characterGroup.position.z = held.z;
+                            return true;
+                        };
+                        if (!tryStep(nextX, nextZ)) tryStep(nextX, feetZ) || tryStep(feetX, nextZ);
+                    } else {
                     const blocked = blocksClimb(feetX, feetZ, nextX, nextZ);
                     const spot = clampWorld(nextX, nextZ, 1.2);
                     let swimBlocked = false;
@@ -4678,9 +4956,20 @@
                         characterGroup.position.x = spot.x;
                         characterGroup.position.z = spot.z;
                     }
+                    }
                 }
 
                 resolveCollisions(characterGroup.position);
+                if (activeCave) {
+                    const held = dungeonClamp(activeCave, characterGroup.position.x, characterGroup.position.z);
+                    if (!dungeonBlocked(activeCave, feetX, feetZ, held.x, held.z)) {
+                        characterGroup.position.x = held.x;
+                        characterGroup.position.z = held.z;
+                    } else {
+                        characterGroup.position.x = feetX;
+                        characterGroup.position.z = feetZ;
+                    }
+                } else {
                 const edge = clampWorld(characterGroup.position.x, characterGroup.position.z, 2.2);
                 if (blocksClimb(feetX, feetZ, edge.x, edge.z)) {
                     characterGroup.position.x = feetX;
@@ -4689,9 +4978,10 @@
                     characterGroup.position.x = edge.x;
                     characterGroup.position.z = edge.z;
                 }
+                }
 
-                const bed = terrainHeight(characterGroup.position.x, characterGroup.position.z);
-                const groundY = bed < WATER_LEVEL - 0.05 ? WATER_LEVEL - 0.15 : bed;
+                const bed = activeCave ? 0.2 : terrainHeight(characterGroup.position.x, characterGroup.position.z);
+                const groundY = activeCave ? 0.2 : (bed < WATER_LEVEL - 0.05 ? WATER_LEVEL - 0.15 : bed);
                 if (keys.space && onGround) {
                     verticalVelocity = jumpSpeed;
                     onGround = false;
@@ -4709,6 +4999,10 @@
                 } else {
                     characterGroup.position.y = groundY;
                 }
+                if (activeCave && characterGroup.position.y > 1.7) {
+                    characterGroup.position.y = 1.7;
+                    if (verticalVelocity > 0) verticalVelocity = 0;
+                }
 
                 updateSwing(delta);
                 updateShots(delta);
@@ -4720,12 +5014,12 @@
                     entry.group.position.x += (entry.tx - entry.group.position.x) * Math.min(1, delta * 10);
                     entry.group.position.z += (entry.tz - entry.group.position.z) * Math.min(1, delta * 10);
                     entry.group.rotation.y = entry.rotY;
-                    if (!entry.dying) entry.group.position.y = terrainHeight(entry.group.position.x, entry.group.position.z);
+                    if (!entry.dying) entry.group.position.y = entry.dungeonId ? 0.2 : terrainHeight(entry.group.position.x, entry.group.position.z);
                     const body = entry.group.userData.body;
                     if (body) body.position.y = Math.sin(performance.now() * 0.004 + (entry.bob || 0)) * (entry.group.userData.bobAmp || 0);
                 }
                 for (const entry of worldCivs.values()) {
-                    entry.group.position.y = terrainHeight(entry.group.position.x, entry.group.position.z);
+                    entry.group.position.y = entry.dungeonId ? 0.2 : terrainHeight(entry.group.position.x, entry.group.position.z);
                     const body = entry.group.userData.body;
                     if (body) body.position.y = Math.sin(performance.now() * 0.003 + (entry.bob || 0)) * (entry.group.userData.bobAmp || 0);
                     const mark = entry.group.userData.questMark;
@@ -4733,16 +5027,21 @@
                 }
                 const talkHint = document.getElementById('talkHint');
                 const closeCiv = nearestCivilian(3.6);
-                if (closeCiv) {
+                const gate = nearestGate(3.6);
+                if (closeCiv && (!gate || !gate.dist || gate.dist > 2.2)) {
                     talkHint.textContent = 'T  ' + closeCiv.name + ', ' + closeCiv.title;
+                    talkHint.classList.add('on');
+                } else if (gate) {
+                    talkHint.textContent = 'F  ' + (gate.exit ? 'Leave ' : 'Enter ') + gate.name;
                     talkHint.classList.add('on');
                 } else {
                     talkHint.classList.remove('on');
                 }
                 for (const entry of remotePlayers.values()) {
-                    const gy = terrainHeight(entry.mesh.position.x, entry.mesh.position.z);
+                    const inCaveBody = entry.mesh.position.x > 80000;
+                    const gy = inCaveBody ? 0.2 : terrainHeight(entry.mesh.position.x, entry.mesh.position.z);
                     const reported = entry.data && typeof entry.data.y === 'number' ? entry.data.y : gy;
-                    entry.mesh.position.y = reported > gy + 0.35 ? reported : gy;
+                    entry.mesh.position.y = inCaveBody ? 0.2 : (reported > gy + 0.35 ? reported : gy);
                 }
                 if (selectedNpcId) refreshTargetFrame();
                 refreshCivilians(false);
@@ -4773,18 +5072,20 @@
                 for (let i = 0; i < terrainMeshes.length; i++) terrainMeshes[i].updateWorldMatrix(true, false);
                 cameraRay.set(camTarget, rayDir);
                 cameraRay.far = rayLen;
-                const blocked = cameraRay.intersectObjects(terrainMeshes, false);
+                const hits = activeCave ? cameraRay.intersectObjects(dungeonRayMeshes, false) : cameraRay.intersectObjects(terrainMeshes, false);
                 let pull = rayLen;
-                if (blocked.length && blocked[0].distance < rayLen - 0.15) {
-                    pull = Math.max(0.8, blocked[0].distance - 0.45);
+                if (hits.length && hits[0].distance < rayLen - 0.15) {
+                    pull = Math.max(0.8, hits[0].distance - 0.45);
                 }
                 camera.position.copy(camTarget).addScaledVector(rayDir, pull);
+                if (!activeCave) {
                 const bedY = terrainHeight(camera.position.x, camera.position.z);
                 const floorY = (bedY < WATER_LEVEL ? WATER_LEVEL + 1.35 : bedY + 1.05);
                 if (camera.position.y < floorY) camera.position.y = floorY;
+                } else if (camera.position.y < 0.55) camera.position.y = 0.55;
                 camera.lookAt(camTarget);
 
-                updateChunks();
+                if (!activeCave) updateChunks();
                 renderer.render(scene, camera);
             }
             animate();
@@ -5028,10 +5329,23 @@
                         if (data.npcs) syncNpcs(data.npcs);
                         if (data.civilians) spawnCivilians(data.civilians);
                         if (data.camps) spawnCamps(data.camps);
-                        if (data.spawn && Number.isFinite(data.spawn.x) && Number.isFinite(data.spawn.z)) {
+                        if (Array.isArray(data.dungeons)) {
+                            const base = bootWorld && typeof bootWorld === 'object' ? bootWorld : {};
+                            applyWorldConfig({ ...base, dungeons: data.dungeons });
+                            bootWorld = { ...base, dungeons: data.dungeons };
+                            rebuildOverworldPortals();
+                        }
+                        if (data.dungeon && data.dungeon.id) {
+                            enterDungeonView(data.dungeon.id);
+                            characterGroup.position.set(data.dungeon.x, 0.2, data.dungeon.z);
+                            verticalVelocity = 0;
+                            onGround = true;
+                        } else if (data.spawn && Number.isFinite(data.spawn.x) && Number.isFinite(data.spawn.z)) {
                             boundSpawn = data.spawn;
                             characterGroup.position.set(data.spawn.x, terrainHeight(data.spawn.x, data.spawn.z), data.spawn.z);
+                            leaveDungeonView();
                         }
+                        if (data.spawn) boundSpawn = data.spawn;
                         if (data.questDefs) questDefs = data.questDefs;
                         if (data.quests) {
                             quests = data.quests;
@@ -5129,6 +5443,7 @@
                         const x = Number.isFinite(data.x) ? data.x : 0;
                         const z = Number.isFinite(data.z) ? data.z : 0;
                         characterGroup.position.set(x, terrainHeight(x, z), z);
+                        leaveDungeonView();
                         verticalVelocity = 0;
                         onGround = true;
                         applyStats(data);
@@ -5251,10 +5566,17 @@
                         showMessage(data.note || 'Character reset');
                     } else if (data.type === 'world') {
                         applyWorldConfig(data.world || {});
+                        bootWorld = data.world || bootWorld;
                         if (data.world && data.world.grayLevels) grayLevels = data.world.grayLevels;
                         if (data.questDefs) questDefs = data.questDefs;
                         renderQuestTracker();
                         reloadChunks();
+                        rebuildOverworldPortals();
+                        if (activeCave) {
+                            const still = dungeonById(activeCave.id);
+                            if (!still) leaveDungeonView();
+                            else enterDungeonView(still.id);
+                        }
                         if (data.civilians) spawnCivilians(data.civilians);
                         if (data.camps) spawnCamps(data.camps);
                         if (data.npcs) syncNpcs(data.npcs);
@@ -5263,12 +5585,33 @@
                     } else if (data.type === 'fog') {
                         for (const key of data.add || []) rememberFog(key);
                     } else if (data.type === 'teleport') {
+                        if (data.quiet && activeCave) {
+                            characterGroup.position.set(data.x, 0.2, data.z);
+                        } else if (!data.quiet) {
                         characterGroup.position.set(data.x, data.y, data.z);
                         verticalVelocity = 0;
                         onGround = true;
                         for (const key of data.add || []) rememberFog(key);
                         revealHere(data.x, data.z);
                         showMessage('Teleported');
+                        }
+                    } else if (data.type === 'note') {
+                        showMessage(data.text || '');
+                    } else if (data.type === 'dungeon') {
+                        if (!data.ok) showMessage(data.reason || 'The portal does not answer');
+                        else if (data.action === 'enter') {
+                            enterDungeonView(data.id);
+                            characterGroup.position.set(data.x, 0.2, data.z);
+                            verticalVelocity = 0;
+                            onGround = true;
+                            showMessage('You step through the portal');
+                        } else if (data.action === 'exit') {
+                            characterGroup.position.set(data.x, data.y, data.z);
+                            leaveDungeonView();
+                            verticalVelocity = 0;
+                            onGround = true;
+                            showMessage('You leave the cavern');
+                        }
                     } else if (data.type === 'stats') {
                         applyStats(data);
                     }

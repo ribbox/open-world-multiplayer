@@ -54,6 +54,7 @@
                 <button type="button" id="tabRules">Rules</button>
                 <button type="button" id="tabLoot">Loot</button>
                 <button type="button" id="tabQuests">Quests</button>
+                <button type="button" id="tabDungeons">Dungeons</button>
             </div>
             <div id="panelMap">
                 <p>Drag the map to move it, and scroll to zoom. Draw a zone or the world edge. A zone that crosses the coast is cut back to the shoreline. Chop tree and Mine rock can be gathered. Tree and Rock are scenery and cannot. Place a camp, then choose its buildings. Every camp has an innkeeper. Shop, trainer, and quest giver are optional. The Road tool connects two camps. Click the first camp, add bends if you need them, click the next camp, then Finish outline. Straight or organic applies to each new stretch. Erase removes the single tree, rock, herb, or camp you click. Undo takes back the last change.</p>
@@ -120,6 +121,12 @@
                 <div id="questList"></div>
                 <div id="questForm"></div>
             </div>
+            <div id="panelDungeons" hidden>
+                <p>A dungeon is a short cave. Place its portal on the world map. Draw the route on the route map: the first point is the entrance inside, the last point is the end. Rocks, roots, and pillars sit on the edge and block the path. Quests marked with this dungeon are finished inside and handed in to the end NPC.</p>
+                <button type="button" id="addDungeon">New dungeon</button>
+                <div id="dungeonList"></div>
+                <div id="dungeonForm"></div>
+            </div>
         </aside>
         <div id="stage"><canvas id="map" width="900" height="900"></canvas></div>
         <div id="side">
@@ -160,6 +167,11 @@
         let draft = [];
         let draftEdges = [];
         let drag = null;
+        let mapMode = 'world';
+        let dungeonPick = -1;
+        let portalArm = false;
+        let routeTool = 'draw';
+        let savedWorldView = null;
         const view = { x: 0, z: 0, scale: 0.42 };
 
         function note(text) { document.getElementById('note').textContent = text || ''; }
@@ -416,6 +428,7 @@
             });
         }
         function draw() {
+            if (mapMode === 'route') { drawRoute(); return; }
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             const bounds = worldBounds();
             ctx.strokeStyle = '#5a4030';
@@ -441,6 +454,10 @@
             }
             for (const road of config.roads || []) strokeRoad(road.points, road.edges, '#8d6a3a', 4);
             if (roadDraft.length) strokeRoad(roadDraft, roadEdges, '#e6c07a', 3);
+            for (const dungeon of config.dungeons || []) {
+                if (!dungeon.portal) continue;
+                mark(dungeon.portal.x, dungeon.portal.z, '#bb88ff', 6);
+            }
             config.zones.forEach((entry, index) => {
                 strokeZone(entry.points, entry.edges, index === selected ? 'rgba(241,196,15,0.35)' : entry.elite ? 'rgba(230,126,34,0.34)' : 'rgba(90,170,255,0.28)', index === selected ? '#f1c40f' : entry.elite ? '#e67e22' : '#9cf', true);
                 for (const camp of entry.camps) mark(camp.x, camp.z, CAMP_COLOR[camp.layout] || '#f1c40f', 5);
@@ -457,6 +474,52 @@
                 }
             });
             if (draft.length) strokeZone(draft, draftEdges, 'rgba(255,255,255,0.15)', '#fff', false);
+        }
+        function currentDungeon() {
+            return dungeonPick >= 0 && config && config.dungeons ? config.dungeons[dungeonPick] : null;
+        }
+        function drawRoute() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.lineWidth = 1;
+            for (let i = -80; i <= 80; i += 10) {
+                const a = toScreen(i, -80);
+                const b = toScreen(i, 80);
+                ctx.beginPath();
+                ctx.moveTo(a.px, a.py);
+                ctx.lineTo(b.px, b.py);
+                ctx.stroke();
+                const c = toScreen(-80, i);
+                const d = toScreen(80, i);
+                ctx.beginPath();
+                ctx.moveTo(c.px, c.py);
+                ctx.lineTo(d.px, d.py);
+                ctx.stroke();
+            }
+            const dungeon = currentDungeon();
+            if (!dungeon) {
+                ctx.fillStyle = '#fff';
+                ctx.fillText('Create a dungeon first', canvas.width / 2, 40);
+                return;
+            }
+            strokeRoad(dungeon.points, dungeon.edges, '#c7b4e2', 6);
+            if (dungeon.points.length) {
+                const mouth = toScreen(dungeon.points[0][0], dungeon.points[0][1]);
+                const end = dungeon.points[dungeon.points.length - 1];
+                const tail = toScreen(end[0], end[1]);
+                ctx.fillStyle = '#bb88ff';
+                ctx.fillText('Entrance', mouth.px, mouth.py - 10);
+                ctx.fillStyle = '#f1c40f';
+                ctx.fillText('End', tail.px, tail.py - 10);
+            }
+            for (const prop of dungeon.props || []) {
+                const color = prop.type === 'root' ? '#6b4423' : prop.type === 'pillar' ? '#95a5a6' : '#888';
+                mark(prop.x, prop.z, color, 4);
+            }
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'left';
+            ctx.fillText(dungeon.name + ' route', 12, 18);
+            ctx.textAlign = 'center';
         }
         function centroid(points) {
             const sum = points.reduce((acc, point) => [acc[0] + point[0], acc[1] + point[1]], [0, 0]);
@@ -630,6 +693,27 @@
             }
             return best;
         }
+        function nearestOpenEdge(points, edges, x, z) {
+            if (!points || points.length < 2) return -1;
+            let best = -1;
+            let dist = 6;
+            for (let i = 0; i < points.length - 1; i++) {
+                const part = segmentCurve(points[i], points[i + 1], edges && edges[i]);
+                for (let s = 1; s < part.length; s++) {
+                    const ax = part[s - 1][0];
+                    const az = part[s - 1][1];
+                    const bx = part[s][0];
+                    const bz = part[s][1];
+                    const dx = bx - ax;
+                    const dz = bz - az;
+                    const len = dx * dx + dz * dz || 1;
+                    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / len));
+                    const d = Math.hypot(x - (ax + dx * t), z - (az + dz * t));
+                    if (d < dist) { dist = d; best = i; }
+                }
+            }
+            return best;
+        }
         function mark(x, z, color, r) {
             const p = toScreen(x, z);
             ctx.beginPath();
@@ -664,6 +748,8 @@
                 zones: config.zones,
                 roads: config.roads || [],
                 bounds: config.bounds,
+                dungeons: config.dungeons || [],
+                dungeonPick,
                 selected,
                 questZoneId,
                 draft,
@@ -679,6 +765,8 @@
             config.zones = prev.zones;
             config.roads = prev.roads;
             config.bounds = prev.bounds;
+            config.dungeons = prev.dungeons || config.dungeons || [];
+            dungeonPick = prev.dungeonPick == null ? dungeonPick : prev.dungeonPick;
             selected = prev.selected;
             questZoneId = prev.questZoneId || '';
             draft = prev.draft;
@@ -689,6 +777,7 @@
             renderRoads();
             renderFields();
             if (!document.getElementById('panelQuests').hidden) renderQuests();
+            if (!document.getElementById('panelDungeons').hidden) renderDungeons();
             draw();
             note('Undone');
         }
@@ -821,6 +910,19 @@
             }
             if (event.button !== 0) return;
             const spot = worldFromEvent(event);
+            if (mapMode === 'route') {
+                const dungeon = currentDungeon();
+                if (dungeon && routeTool === 'select') {
+                    const index = nearest(dungeon.points, spot.x, spot.z, 8 / view.scale);
+                    if (index >= 0) {
+                        remember();
+                        drag = { mode: 'route', index, saved: true, points: dungeon.points.map(point => point.slice()) };
+                        return;
+                    }
+                }
+                arm = { x: event.clientX, y: event.clientY, vx: view.x, vz: view.z };
+                return;
+            }
             const current = activeOutline();
             if (tool === 'select' && current && current.points) {
                 const index = nearest(current.points, spot.x, spot.z, 18 / view.scale);
@@ -856,6 +958,10 @@
                     renderFields();
                 }
             }
+            if (drag && drag.mode === 'route' && drag.saved) {
+                const dungeon = currentDungeon();
+                if (dungeon && JSON.stringify(dungeon.points) === JSON.stringify(drag.points)) undoStack.pop();
+            }
             if (drag && drag.mode === 'point' && drag.saved && drag.outline) {
                 const same = JSON.stringify(drag.outline.points) === JSON.stringify(drag.points)
                     && JSON.stringify(drag.outline.edges || []) === JSON.stringify(drag.edges || []);
@@ -881,6 +987,14 @@
                 draw();
                 return;
             }
+            if (drag.mode === 'route') {
+                const dungeon = currentDungeon();
+                if (!dungeon) return;
+                const spot = worldFromEvent(event);
+                dungeon.points[drag.index] = [Math.round(spot.x), Math.round(spot.z)];
+                draw();
+                return;
+            }
             const current = drag.outline;
             if (drag.mode === 'point' && current && current.points) {
                 const spot = worldFromEvent(event);
@@ -890,7 +1004,7 @@
         });
         canvas.addEventListener('wheel', (event) => {
             event.preventDefault();
-            view.scale = Math.max(0.12, Math.min(1.6, view.scale * (event.deltaY > 0 ? 0.9 : 1.1)));
+            view.scale = Math.max(mapMode === 'route' ? 0.5 : 0.12, Math.min(mapMode === 'route' ? 16 : 1.6, view.scale * (event.deltaY > 0 ? 0.9 : 1.1)));
             draw();
         }, { passive: false });
         canvas.addEventListener('click', (event) => {
@@ -898,6 +1012,18 @@
             if (event.button !== 0) return;
             const spot = worldFromEvent(event);
             const point = [Math.round(spot.x), Math.round(spot.z)];
+            if (mapMode === 'route') { handleRouteClick(spot); return; }
+            if (portalArm) {
+                const dungeon = currentDungeon();
+                if (!dungeon) { note('Select a dungeon'); return; }
+                remember();
+                dungeon.portal = { x: point[0], z: point[1] };
+                portalArm = false;
+                note('Portal placed. Save the world.');
+                renderDungeons();
+                draw();
+                return;
+            }
             if (tool === 'draw') {
                 remember();
                 if (draft.length) draftEdges.push(edgeMode);
@@ -985,16 +1111,273 @@
         document.getElementById('tabRules').addEventListener('click', () => showTab('Rules'));
         document.getElementById('tabLoot').addEventListener('click', () => { showTab('Loot'); renderLoot(); });
         document.getElementById('tabQuests').addEventListener('click', () => { showTab('Quests'); renderQuests(); });
+        document.getElementById('tabDungeons').addEventListener('click', () => { showTab('Dungeons'); renderDungeons(); });
         function showTab(name) {
             document.getElementById('panelMap').hidden = name !== 'Map';
             document.getElementById('panelRules').hidden = name !== 'Rules';
             document.getElementById('panelLoot').hidden = name !== 'Loot';
             document.getElementById('panelQuests').hidden = name !== 'Quests';
+            document.getElementById('panelDungeons').hidden = name !== 'Dungeons';
             document.getElementById('tabMap').classList.toggle('on', name === 'Map');
             document.getElementById('tabRules').classList.toggle('on', name === 'Rules');
             document.getElementById('tabLoot').classList.toggle('on', name === 'Loot');
             document.getElementById('tabQuests').classList.toggle('on', name === 'Quests');
+            document.getElementById('tabDungeons').classList.toggle('on', name === 'Dungeons');
+            if (name !== 'Dungeons' && mapMode === 'route') showWorldMode();
         }
+        function showWorldMode() {
+            if (mapMode === 'route' && savedWorldView) {
+                view.x = savedWorldView.x;
+                view.z = savedWorldView.z;
+                view.scale = savedWorldView.scale;
+            }
+            mapMode = 'world';
+            portalArm = false;
+            draw();
+        }
+        function showRouteMode() {
+            if (mapMode !== 'route') savedWorldView = { x: view.x, z: view.z, scale: view.scale };
+            mapMode = 'route';
+            portalArm = false;
+            const dungeon = currentDungeon();
+            if (dungeon && dungeon.points && dungeon.points.length) {
+                const center = centroid(dungeon.points);
+                view.x = center[0];
+                view.z = center[1];
+                view.scale = 8;
+            } else {
+                view.x = 0;
+                view.z = 24;
+                view.scale = 8;
+            }
+            draw();
+        }
+        function projectRoute(dungeon, x, z) {
+            const path = curvePoints(dungeon.points, dungeon.edges || [], false);
+            let best = null;
+            for (let i = 1; i < path.length; i++) {
+                const a = path[i - 1];
+                const b = path[i];
+                const abx = b[0] - a[0];
+                const abz = b[1] - a[1];
+                const len2 = abx * abx + abz * abz || 1e-6;
+                let t = ((x - a[0]) * abx + (z - a[1]) * abz) / len2;
+                if (t < 0) t = 0;
+                else if (t > 1) t = 1;
+                const px = a[0] + abx * t;
+                const pz = a[1] + abz * t;
+                const dist = Math.hypot(x - px, z - pz);
+                const len = Math.hypot(abx, abz) || 1;
+                const nx = -abz / len;
+                const nz = abx / len;
+                const side = (x - px) * nx + (z - pz) * nz;
+                if (!best || dist < best.dist) best = { dist, x: px, z: pz, nx, nz, side };
+            }
+            return best;
+        }
+        function handleRouteClick(spot) {
+            const dungeon = currentDungeon();
+            if (!dungeon) { note('Create a dungeon first'); return; }
+            if (!Array.isArray(dungeon.points)) dungeon.points = [];
+            if (!Array.isArray(dungeon.edges)) dungeon.edges = [];
+            if (!Array.isArray(dungeon.props)) dungeon.props = [];
+            if (routeTool === 'draw') {
+                if (dungeon.points.length >= 18) { note('A route stops at 18 points'); return; }
+                remember();
+                if (dungeon.points.length) dungeon.edges.push(edgeMode);
+                dungeon.points.push([Math.round(spot.x), Math.round(spot.z)]);
+                draw();
+                note('Bend added. The last point is the end.');
+                return;
+            }
+            if (routeTool === 'erase') {
+                let best = -1;
+                let dist = 4;
+                dungeon.props.forEach((prop, index) => {
+                    const gap = Math.hypot(prop.x - spot.x, prop.z - spot.z);
+                    if (gap < dist) { dist = gap; best = index; }
+                });
+                if (best >= 0) {
+                    remember();
+                    dungeon.props.splice(best, 1);
+                    draw();
+                    note('Object removed');
+                    return;
+                }
+                const vertex = nearest(dungeon.points, spot.x, spot.z, 4);
+                if (vertex >= 0 && dungeon.points.length > 2) {
+                    remember();
+                    dungeon.points.splice(vertex, 1);
+                    if (vertex === 0) dungeon.edges.shift();
+                    else dungeon.edges.splice(Math.max(0, vertex - 1), 1);
+                    draw();
+                    note('Bend removed');
+                    return;
+                }
+                note('Nothing there');
+                return;
+            }
+            if (routeTool === 'select') {
+                if (!dungeon.edges || dungeon.edges.length !== Math.max(0, dungeon.points.length - 1)) {
+                    dungeon.edges = dungeon.points.slice(1).map(() => 'line');
+                }
+                const edge = nearestOpenEdge(dungeon.points, dungeon.edges, spot.x, spot.z);
+                if (edge >= 0) {
+                    remember();
+                    dungeon.edges[edge] = dungeon.edges[edge] === 'organic' ? 'line' : 'organic';
+                    note(dungeon.edges[edge] === 'organic' ? 'Organic stretch' : 'Straight stretch');
+                    draw();
+                }
+                return;
+            }
+            const hit = projectRoute(dungeon, spot.x, spot.z);
+            if (!hit || hit.dist > 8) { note('Click beside the route'); return; }
+            const side = hit.side >= 0 ? 1 : -1;
+            remember();
+            dungeon.props.push({
+                type: routeTool,
+                x: Math.round((hit.x + hit.nx * side * 2.05) * 10) / 10,
+                z: Math.round((hit.z + hit.nz * side * 2.05) * 10) / 10
+            });
+            if (dungeon.props.length > 80) dungeon.props.length = 80;
+            draw();
+            note('Placed on the edge');
+        }
+        function renderDungeons() {
+            if (!Array.isArray(config.dungeons)) config.dungeons = [];
+            const list = document.getElementById('dungeonList');
+            list.replaceChildren();
+            if (dungeonPick >= config.dungeons.length) dungeonPick = config.dungeons.length - 1;
+            config.dungeons.forEach((dungeon, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'zone' + (index === dungeonPick ? ' on' : '');
+                button.textContent = (dungeon.name || 'Cavern') + (dungeon.portal ? '' : ' · no portal');
+                button.addEventListener('click', () => { dungeonPick = index; renderDungeons(); draw(); });
+                list.appendChild(button);
+            });
+            const form = document.getElementById('dungeonForm');
+            form.replaceChildren();
+            const dungeon = currentDungeon();
+            if (!dungeon) {
+                const hint = document.createElement('p');
+                hint.textContent = 'No dungeons yet.';
+                form.appendChild(hint);
+                return;
+            }
+            if (!Array.isArray(dungeon.points)) dungeon.points = [[0, 0], [0, 18], [8, 30], [-4, 46]];
+            if (!Array.isArray(dungeon.edges)) dungeon.edges = ['organic', 'organic', 'line'];
+            if (!Array.isArray(dungeon.props)) dungeon.props = [];
+            const field = (caption, value, apply) => {
+                const label = document.createElement('label');
+                label.textContent = caption;
+                const input = document.createElement('input');
+                input.value = value == null ? '' : value;
+                input.addEventListener('change', () => { remember(); apply(input.value); renderDungeons(); });
+                form.append(label, input);
+            };
+            field('Name', dungeon.name, value => { dungeon.name = value; });
+            field('End NPC', dungeon.endName || 'Warden', value => { dungeon.endName = value; });
+            const mobLabel = document.createElement('label');
+            mobLabel.textContent = 'Creatures';
+            const mob = document.createElement('select');
+            for (const id of MOBS) {
+                const option = document.createElement('option');
+                option.value = id;
+                option.textContent = MOB_LABEL[id] || id;
+                mob.appendChild(option);
+            }
+            mob.value = MOBS.includes(dungeon.mob) ? dungeon.mob : 'spider';
+            mob.addEventListener('change', () => { remember(); dungeon.mob = mob.value; });
+            form.append(mobLabel, mob);
+            const levelLabel = document.createElement('label');
+            levelLabel.textContent = 'Level';
+            const level = document.createElement('input');
+            level.type = 'number';
+            level.min = '1';
+            level.max = '30';
+            level.value = dungeon.level || 1;
+            level.addEventListener('change', () => { remember(); dungeon.level = Number(level.value) || 1; });
+            form.append(levelLabel, level);
+            const eliteLabel = document.createElement('label');
+            const elite = document.createElement('input');
+            elite.type = 'checkbox';
+            elite.checked = !!dungeon.elite;
+            elite.addEventListener('change', () => { remember(); dungeon.elite = elite.checked; });
+            eliteLabel.append(elite, document.createTextNode(' Elite creatures'));
+            form.appendChild(eliteLabel);
+            const where = document.createElement('p');
+            where.textContent = dungeon.portal ? 'Portal at ' + dungeon.portal.x + ', ' + dungeon.portal.z : 'Portal is not placed.';
+            form.appendChild(where);
+            const row = document.createElement('div');
+            row.className = 'row';
+            const portal = document.createElement('button');
+            portal.type = 'button';
+            portal.textContent = portalArm ? 'Click the map' : 'Place portal';
+            portal.className = portalArm ? 'on' : '';
+            portal.addEventListener('click', () => { showWorldMode(); portalArm = true; note('Click the world map to place the portal'); renderDungeons(); });
+            const route = document.createElement('button');
+            route.type = 'button';
+            route.textContent = mapMode === 'route' ? 'Route map' : 'Edit route';
+            route.className = mapMode === 'route' ? 'on' : '';
+            route.addEventListener('click', () => { if (mapMode === 'route') showWorldMode(); else showRouteMode(); renderDungeons(); });
+            row.append(portal, route);
+            form.appendChild(row);
+            const tools = document.createElement('div');
+            tools.className = 'row';
+            for (const [id, label] of [['draw', 'Draw'], ['select', 'Select'], ['rock', 'Rock'], ['root', 'Root'], ['pillar', 'Pillar'], ['erase', 'Erase']]) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = label;
+                button.className = routeTool === id ? 'on' : '';
+                button.addEventListener('click', () => { routeTool = id; if (mapMode !== 'route') showRouteMode(); renderDungeons(); });
+                tools.appendChild(button);
+            }
+            form.appendChild(tools);
+            const clear = document.createElement('button');
+            clear.type = 'button';
+            clear.textContent = 'Reset route';
+            clear.addEventListener('click', () => {
+                remember();
+                dungeon.points = [[0, 0], [0, 14], [10, 24], [6, 38], [-8, 50]];
+                dungeon.edges = ['organic', 'organic', 'line', 'organic'];
+                dungeon.props = [];
+                showRouteMode();
+                renderDungeons();
+            });
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.textContent = 'Delete dungeon';
+            remove.addEventListener('click', () => {
+                remember();
+                config.dungeons.splice(dungeonPick, 1);
+                dungeonPick = Math.max(-1, dungeonPick - 1);
+                showWorldMode();
+                renderDungeons();
+            });
+            form.append(clear, remove);
+        }
+        document.getElementById('addDungeon').addEventListener('click', () => {
+            if (!Array.isArray(config.dungeons)) config.dungeons = [];
+            if (config.dungeons.length >= 12) { note('Twelve dungeons is the limit'); return; }
+            remember();
+            config.dungeons.push({
+                id: 'dg' + Math.random().toString(36).slice(2, 8),
+                name: 'Wailing Cavern',
+                mob: 'spider',
+                level: 12,
+                elite: false,
+                endName: 'Warden',
+                portal: { x: 40, z: 40 },
+                points: [[0, 0], [0, 14], [10, 24], [6, 38], [-8, 50]],
+                edges: ['organic', 'organic', 'line', 'organic'],
+                props: []
+            });
+            dungeonPick = config.dungeons.length - 1;
+            renderDungeons();
+            draw();
+            note('Dungeon added. Move its portal, then save.');
+        });
         const MOB_LABEL = { boar: 'Wild Boar', wolf: 'Wolf', spider: 'Moss Spider', bandit: 'Bandit', ogre: 'Hill Ogre', wisp: 'Fen Wisp', knight: 'Plate Knight', cultist: 'Cultist' };
         let questPick = 0;
         let questZoneId = '';
@@ -1092,7 +1475,8 @@
                 return;
             }
             if (!quest.zoneId) quest.zoneId = zone.id;
-            quest.mob = zone.mob || quest.mob || 'boar';
+            const caveForQuest = (config.dungeons || []).find(entry => entry.id === quest.dungeonId);
+            quest.mob = caveForQuest ? caveForQuest.mob : (zone.mob || quest.mob || 'boar');
             const addField = (caption, value, apply, kind) => {
                 const label = document.createElement('label');
                 label.textContent = caption;
@@ -1170,6 +1554,33 @@
             type.value = quest.type || 'kill';
             type.addEventListener('change', () => { quest.type = type.value; renderQuests(); });
             form.append(typeLabel, type);
+            const dunLabel = document.createElement('label');
+            dunLabel.textContent = 'Dungeon';
+            const dun = document.createElement('select');
+            const noneDun = document.createElement('option');
+            noneDun.value = '';
+            noneDun.textContent = 'Not a dungeon quest';
+            dun.appendChild(noneDun);
+            for (const dungeon of config.dungeons || []) {
+                const option = document.createElement('option');
+                option.value = dungeon.id;
+                option.textContent = dungeon.name || 'Cavern';
+                dun.appendChild(option);
+            }
+            dun.value = (config.dungeons || []).some(dungeon => dungeon.id === quest.dungeonId) ? quest.dungeonId : '';
+            dun.addEventListener('change', () => {
+                quest.dungeonId = dun.value;
+                const cave = (config.dungeons || []).find(entry => entry.id === dun.value);
+                if (cave) quest.mob = cave.mob;
+                renderQuests();
+            });
+            form.append(dunLabel, dun);
+            if (dun.value) {
+                const inside = document.createElement('p');
+                const cave = (config.dungeons || []).find(entry => entry.id === dun.value);
+                inside.textContent = 'Kills count only inside ' + (cave ? cave.name : 'the dungeon') + '. Turn it in at ' + ((cave && cave.endName) || 'the end NPC') + '.';
+                form.appendChild(inside);
+            }
             if (quest.type !== 'named') addField(quest.type === 'protect' ? 'Attackers to defeat' : 'How many', quest.count, value => { quest.count = value; }, 'number');
             if (quest.type === 'gather' || quest.type === 'named') {
                 const items = zoneItems(zone);
@@ -1300,6 +1711,8 @@
                 count: 3,
                 item: zoneItems(zone)[0] || '',
                 named: '',
+                elite: false,
+                dungeonId: '',
                 protectRole: '',
                 protectCamp: 0,
                 custom: false,
@@ -1357,6 +1770,7 @@
                 bounds: config.bounds,
                 zones: config.zones || [],
                 roads: config.roads || [],
+                dungeons: config.dungeons || [],
                 loot: config.loot || {},
                 quests: config.quests || []
             };
@@ -1366,7 +1780,7 @@
             link.download = 'world.json';
             link.click();
             URL.revokeObjectURL(link.href);
-            note('World exported, including zones, camps, roads, nodes, loot, and quests');
+            note('World exported, including zones, camps, roads, dungeons, nodes, loot, and quests');
         });
         document.getElementById('importMapBtn').addEventListener('click', () => document.getElementById('importMap').click());
         document.getElementById('importMap').addEventListener('change', async (event) => {
@@ -1380,7 +1794,7 @@
                 note('That file is not valid JSON');
                 return;
             }
-            if (!parsed || typeof parsed !== 'object' || (!Array.isArray(parsed.zones) && !parsed.bounds && !Array.isArray(parsed.quests) && !parsed.loot)) {
+            if (!parsed || typeof parsed !== 'object' || (!Array.isArray(parsed.zones) && !parsed.bounds && !Array.isArray(parsed.quests) && !parsed.loot && !Array.isArray(parsed.dungeons))) {
                 note('That file is not a world');
                 return;
             }
@@ -1390,6 +1804,7 @@
                 config = saved.config;
                 if (!Array.isArray(config.quests)) config.quests = [];
                 if (!Array.isArray(config.roads)) config.roads = [];
+                if (!Array.isArray(config.dungeons)) config.dungeons = [];
                 applyRuleFields();
                 selected = config.zones.length ? 0 : -1;
                 questZoneId = selected >= 0 ? config.zones[selected].id : '';
@@ -1399,6 +1814,7 @@
                 renderFields();
                 renderLoot();
                 if (!document.getElementById('panelQuests').hidden) renderQuests();
+                if (!document.getElementById('panelDungeons').hidden) renderDungeons();
                 draw();
                 note('World imported');
             } catch (err) {
@@ -1443,6 +1859,7 @@
                 showApp();
                 fillRules();
                 if (!Array.isArray(config.roads)) config.roads = [];
+                if (!Array.isArray(config.dungeons)) config.dungeons = [];
                 renderZones();
                 renderRoads();
                 renderFields();
