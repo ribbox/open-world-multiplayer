@@ -189,6 +189,27 @@
         .quest-track.failed { border-left-color: #e74c3c; }
         .quest-track h3 { margin: 0 0 2px; font-size: 13px; font-weight: bold; }
         .quest-track p { margin: 0; color: #eee; font-size: 12px; line-height: 1.3; }
+        #questButton { width: 36px; font-size: 15px; font-weight: bold; }
+        #questButton.open { outline: 2px solid #f1c40f; }
+        #questlog {
+            display: none; position: absolute; left: 50%; top: 48px; transform: translateX(-50%);
+            width: min(460px, calc(100vw - 24px)); max-height: calc(100vh - 170px); overflow: auto;
+            background: rgba(16, 18, 24, 0.94); color: white; border: 1px solid rgba(241,196,15,0.7);
+            border-radius: 8px; padding: 14px 16px; z-index: 24; pointer-events: auto;
+        }
+        #questlog.open { display: block; }
+        #questlog h2 { margin: 0 0 4px; font-size: 18px; }
+        #questlog h3 { margin: 12px 0 4px; font-size: 13px; color: #f1c40f; letter-spacing: 0.04em; }
+        #questlog .muted { color: #bbb; }
+        #questlog .qrow {
+            display: flex; gap: 8px; align-items: flex-start; justify-content: space-between;
+            border-top: 1px solid rgba(255,255,255,0.08); padding: 6px 0;
+        }
+        #questlog .qrow p { margin: 0; font-size: 13px; line-height: 1.35; }
+        #questlog .qrow .muted { color: #bbb; }
+        #questlog .qrow.ready p strong { color: #2ecc71; }
+        #questlog .qrow.failed p strong { color: #e74c3c; }
+        #questlog .qrow.done { opacity: 0.65; }
         #actionbar {
             position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
             z-index: 12; color: white; font-size: 13px; user-select: none;
@@ -378,10 +399,12 @@
             <button type="button" class="bar-nav" id="pageNext">›</button>
             <button type="button" id="bagButton" title="Bag" aria-label="Bag"></button>
             <button type="button" id="sheetButton" title="Character" aria-label="Character"></button>
+            <button type="button" id="questButton" class="bar-nav" title="Quest log (L)" aria-label="Quest log">L</button>
         </div>
         <div id="pageLabel">Page 1 / 3</div>
     </div>
     <div id="sheet"></div>
+    <div id="questlog"></div>
     <div id="shop"></div>
     <div id="talkHint"></div>
     <div id="talk"></div>
@@ -722,6 +745,9 @@
             let pendingCivilians = null;
             let quests = {};
             let questDefs = {};
+            let trackedQuests = [];
+            try { trackedQuests = JSON.parse(localStorage.getItem('ow-quest-track') || '[]'); } catch { trackedQuests = []; }
+            if (!Array.isArray(trackedQuests)) trackedQuests = [];
             let talkingId = null;
             let selectedNpcId = null;
             const shots = [];
@@ -3733,25 +3759,71 @@
 
             function applyQuests(next) {
                 let note = '';
+                const prev = quests;
                 if (next) {
                     for (const [id, row] of Object.entries(next)) {
-                        const prev = quests[id];
+                        const before = quests[id];
                         const def = questDefs[id];
-                        if (def && row.state === 'active' && row.count >= def.count && (!prev || prev.count < def.count)) note = def.name + ' ready to turn in';
+                        if (def && row.state === 'active' && row.count >= def.count && (!before || before.count < def.count)) note = def.name + ' ready to turn in';
                     }
                     quests = next;
                 }
+                const activeIds = Object.entries(quests).filter(([, row]) => row && row.state === 'active').map(([id]) => id);
+                trackedQuests = trackedQuests.filter(id => activeIds.includes(id));
+                for (const id of activeIds) {
+                    const before = prev[id];
+                    const row = quests[id];
+                    if (row.state === 'active' && (!before || before.state !== 'active') && !trackedQuests.includes(id) && trackedQuests.length < 5) trackedQuests.push(id);
+                }
+                if (!trackedQuests.length && !trackTouched) trackedQuests = activeIds.slice(0, 5);
+                saveTracked();
                 if (talkingId && worldCivs.get(talkingId)) renderTalk(worldCivs.get(talkingId));
                 renderQuestTracker();
+                if (document.getElementById('questlog').classList.contains('open')) renderQuestLog();
                 return note;
+            }
+
+            let trackTouched = trackedQuests.length > 0;
+
+            function saveTracked() {
+                const activeIds = Object.entries(quests).filter(([, row]) => row && row.state === 'active').map(([id]) => id);
+                trackedQuests = trackedQuests.filter((id, index) => activeIds.includes(id) && trackedQuests.indexOf(id) === index).slice(0, 5);
+                localStorage.setItem('ow-quest-track', JSON.stringify(trackedQuests));
+            }
+
+            function questZoneLabel(def) {
+                if (!def) return 'Anywhere';
+                if (def.zoneName) return def.zoneName;
+                if (def.zoneId) {
+                    const zone = listDesignedZones().find(entry => entry.id === def.zoneId);
+                    if (zone && zone.name) return zone.name;
+                }
+                return 'Anywhere';
+            }
+
+            function setTracked(id, on) {
+                trackTouched = true;
+                if (on) {
+                    if (trackedQuests.includes(id)) return;
+                    if (trackedQuests.length >= 5) {
+                        showMessage('Only 5 quests can be tracked');
+                        renderQuestLog();
+                        return;
+                    }
+                    trackedQuests.push(id);
+                } else trackedQuests = trackedQuests.filter(qid => qid !== id);
+                saveTracked();
+                renderQuestTracker();
+                renderQuestLog();
             }
 
             function renderQuestTracker() {
                 const panel = document.getElementById('questTracker');
                 panel.textContent = '';
-                const active = Object.entries(quests).filter(([, row]) => row && row.state === 'active');
+                const active = trackedQuests.filter(id => quests[id] && quests[id].state === 'active').slice(0, 5);
                 panel.hidden = active.length === 0;
-                for (const [id, row] of active) {
+                for (const id of active) {
+                    const row = quests[id];
                     const def = questDefs[id] || { name: 'Quest', text: '', count: 1 };
                     const need = def.count || 1;
                     const done = !row.failed && row.count >= need;
@@ -3767,6 +3839,107 @@
                     panel.appendChild(block);
                 }
                 refreshQuestMarks();
+            }
+
+            function toggleQuestLog(force) {
+                const panel = document.getElementById('questlog');
+                const open = typeof force === 'boolean' ? force : !panel.classList.contains('open');
+                panel.classList.toggle('open', open);
+                document.getElementById('questButton').classList.toggle('open', open);
+                if (open) renderQuestLog();
+            }
+
+            function renderQuestLog() {
+                const panel = document.getElementById('questlog');
+                panel.textContent = '';
+                const close = document.createElement('button');
+                close.type = 'button';
+                close.className = 'text-btn';
+                close.style.float = 'right';
+                close.textContent = 'Close';
+                close.addEventListener('click', () => toggleQuestLog(false));
+                panel.appendChild(close);
+                const title = document.createElement('h2');
+                title.textContent = 'Quest log';
+                panel.appendChild(title);
+                const hint = document.createElement('p');
+                hint.className = 'muted';
+                hint.textContent = 'Tracking ' + trackedQuests.length + ' / 5. Pick which quests stay on screen.';
+                panel.appendChild(hint);
+                const active = Object.entries(quests).filter(([, row]) => row && row.state === 'active');
+                const done = Object.entries(quests).filter(([, row]) => row && row.state === 'done');
+                if (!active.length && !done.length) {
+                    const empty = document.createElement('p');
+                    empty.textContent = 'No quests yet.';
+                    panel.appendChild(empty);
+                    return;
+                }
+                const groups = new Map();
+                for (const [id, row] of active) {
+                    const def = questDefs[id] || { name: 'Quest' };
+                    const zone = questZoneLabel(def);
+                    if (!groups.has(zone)) groups.set(zone, []);
+                    groups.get(zone).push([id, row, def]);
+                }
+                const here = zoneAt(characterGroup.position.x, characterGroup.position.z);
+                const names = Array.from(groups.keys()).sort((a, b) => {
+                    if (a === here.name) return -1;
+                    if (b === here.name) return 1;
+                    if (a === 'Anywhere') return 1;
+                    if (b === 'Anywhere') return -1;
+                    return a.localeCompare(b);
+                });
+                for (const name of names) {
+                    const heading = document.createElement('h3');
+                    heading.textContent = name;
+                    panel.appendChild(heading);
+                    for (const [id, row, def] of groups.get(name)) {
+                        const need = def.count || 1;
+                        const ready = !row.failed && row.count >= need;
+                        const progress = row.failed ? 'Failed' : Math.min(row.count, need) + '/' + need + (ready ? ' · turn in' : '');
+                        const block = document.createElement('div');
+                        block.className = 'qrow' + (row.failed ? ' failed' : ready ? ' ready' : '');
+                        const text = document.createElement('p');
+                        const name = document.createElement('strong');
+                        name.textContent = def.name || 'Quest';
+                        const detail = document.createElement('span');
+                        detail.className = 'muted';
+                        detail.textContent = def.text || '';
+                        text.append(name, document.createElement('br'), detail, document.createElement('br'), document.createTextNode(progress));
+                        const track = document.createElement('button');
+                        track.type = 'button';
+                        track.className = trackedQuests.includes(id) ? 'text-btn gold-btn' : 'text-btn';
+                        track.textContent = trackedQuests.includes(id) ? 'Tracking' : 'Track';
+                        track.addEventListener('click', () => setTracked(id, !trackedQuests.includes(id)));
+                        block.append(text, track);
+                        panel.appendChild(block);
+                    }
+                }
+                if (done.length) {
+                    const heading = document.createElement('h3');
+                    heading.textContent = 'Completed';
+                    panel.appendChild(heading);
+                    const byZone = new Map();
+                    for (const [id, row] of done) {
+                        const def = questDefs[id] || { name: 'Quest' };
+                        const zone = questZoneLabel(def);
+                        if (!byZone.has(zone)) byZone.set(zone, []);
+                        byZone.get(zone).push(def.name || 'Quest');
+                    }
+                    for (const [zone, namesDone] of byZone) {
+                        const line = document.createElement('div');
+                        line.className = 'qrow done';
+                        const text = document.createElement('p');
+                        const zoneName = document.createElement('strong');
+                        zoneName.textContent = zone;
+                        const names = document.createElement('span');
+                        names.className = 'muted';
+                        names.textContent = namesDone.join(', ');
+                        text.append(zoneName, document.createElement('br'), names);
+                        line.appendChild(text);
+                        panel.appendChild(line);
+                    }
+                }
             }
 
             function closeTalk() {
@@ -4249,6 +4422,7 @@
             document.getElementById('pagePrev').addEventListener('click', () => changePage(-1));
             document.getElementById('pageNext').addEventListener('click', () => changePage(1));
             document.getElementById('bagButton').addEventListener('click', toggleBag);
+            document.getElementById('questButton').addEventListener('click', () => toggleQuestLog());
             document.getElementById('sheetButton').addEventListener('click', toggleSheet);
             document.getElementById('reclaimButton').addEventListener('click', tryReclaim);
             document.getElementById('pagePrev').addEventListener('mousedown', (e) => e.preventDefault());
@@ -4274,6 +4448,10 @@
 
             // Input
             document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && document.getElementById('questlog').classList.contains('open')) {
+                    toggleQuestLog(false);
+                    return;
+                }
                 if (e.key === 'Escape' && document.getElementById('worldmap').classList.contains('open')) {
                     toggleWorldMap(false);
                     return;
@@ -4312,6 +4490,7 @@
                     else if ((character.class ? wornWeapon() : equippedWeapon) === 'sword') tryAttack('sword');
                     else showMessage('Select a spell');
                 }
+                if (k === 'l') toggleQuestLog();
                 if (k === 'b' || k === 'i') toggleBag();
                 if (k === 'c') toggleSheet();
                 if (k === 'f') tryLoot();

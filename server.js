@@ -250,6 +250,12 @@ const QUESTS = {
     }
 };
 
+function questZoneName(quest) {
+    if (!quest || !quest.zoneId) return '';
+    const zone = listDesignedZones().find(entry => entry.id === quest.zoneId);
+    return zone ? zone.name : '';
+}
+
 function publicQuests() {
     const out = {};
     for (const [id, quest] of Object.entries(QUESTS)) {
@@ -264,6 +270,8 @@ function publicQuests() {
             requires: quest.requires || '',
             item: quest.item || '',
             named: quest.named || '',
+            zoneId: quest.zoneId || '',
+            zoneName: questZoneName(quest),
             rewardKind: quest.rewardKind || '',
             rewardName: quest.rewardName || '',
             rewardQty: quest.rewardQty || 1
