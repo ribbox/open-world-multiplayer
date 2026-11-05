@@ -79,9 +79,30 @@ function rawHeight(x, z) {
     return h;
 }
 
-const ROAD_HALF = 6;
+const ROAD_BED = 1.55;
+const ROAD_SHOULDER = 2.9;
 let designedRoads = [];
 let roadSamples = [];
+
+function limitRoadGrade(dense) {
+    const grade = Math.max(0.12, Math.min(0.32, shape.maxSlope * 0.42));
+    for (let pass = 0; pass < 8; pass++) {
+        for (let i = 1; i < dense.length; i++) {
+            const dist = Math.hypot(dense[i].x - dense[i - 1].x, dense[i].z - dense[i - 1].z) || 1;
+            const rise = dist * grade;
+            const dy = dense[i].y - dense[i - 1].y;
+            if (dy > rise) dense[i].y = dense[i - 1].y + rise;
+            else if (dy < -rise) dense[i].y = dense[i - 1].y - rise;
+        }
+        for (let i = dense.length - 2; i >= 0; i--) {
+            const dist = Math.hypot(dense[i].x - dense[i + 1].x, dense[i].z - dense[i + 1].z) || 1;
+            const rise = dist * grade;
+            const dy = dense[i].y - dense[i + 1].y;
+            if (dy > rise) dense[i].y = dense[i + 1].y + rise;
+            else if (dy < -rise) dense[i].y = dense[i + 1].y - rise;
+        }
+    }
+}
 
 function rebuildRoads() {
     roadSamples = [];
@@ -95,7 +116,7 @@ function rebuildRoads() {
             const bx = curve[i + 1][0];
             const bz = curve[i + 1][1];
             const len = Math.hypot(bx - ax, bz - az);
-            const steps = Math.max(1, Math.ceil(len / 4));
+            const steps = Math.max(1, Math.ceil(len / 2));
             for (let s = 0; s < steps; s++) {
                 const t = s / steps;
                 dense.push({ x: ax + (bx - ax) * t, z: az + (bz - az) * t, y: 0 });
@@ -103,24 +124,16 @@ function rebuildRoads() {
         }
         const last = curve[curve.length - 1];
         dense.push({ x: last[0], z: last[1], y: 0 });
-        for (const point of dense) point.y = Math.max(rawHeight(point.x, point.z), WATER_LEVEL + 0.28);
-        for (let pass = 0; pass < 6; pass++) {
-            for (let i = 1; i < dense.length; i++) {
-                const dist = Math.hypot(dense[i].x - dense[i - 1].x, dense[i].z - dense[i - 1].z) || 1;
-                const rise = dist * 0.18;
-                const dy = dense[i].y - dense[i - 1].y;
-                if (dy > rise) dense[i].y = dense[i - 1].y + rise;
-                else if (dy < -rise) dense[i].y = dense[i - 1].y - rise;
-            }
-            for (let i = dense.length - 2; i >= 0; i--) {
-                const dist = Math.hypot(dense[i].x - dense[i + 1].x, dense[i].z - dense[i + 1].z) || 1;
-                const rise = dist * 0.18;
-                const dy = dense[i].y - dense[i + 1].y;
-                if (dy > rise) dense[i].y = dense[i + 1].y + rise;
-                else if (dy < -rise) dense[i].y = dense[i + 1].y - rise;
+        for (const point of dense) point.y = rawHeight(point.x, point.z);
+        limitRoadGrade(dense);
+        let lifted = false;
+        for (const point of dense) {
+            if (point.y < WATER_LEVEL + 0.28) {
+                point.y = WATER_LEVEL + 0.28;
+                lifted = true;
             }
         }
-        for (const point of dense) point.y = Math.max(point.y, WATER_LEVEL + 0.28);
+        if (lifted) limitRoadGrade(dense);
         roadSamples.push(dense);
     }
 }
@@ -128,12 +141,23 @@ function rebuildRoads() {
 export function roadAt(x, z) {
     let best = null;
     for (const road of roadSamples) {
-        for (const point of road) {
-            const dx = point.x - x;
-            const dz = point.z - z;
-            if (Math.abs(dx) > ROAD_HALF || Math.abs(dz) > ROAD_HALF) continue;
+        for (let i = 1; i < road.length; i++) {
+            const a = road[i - 1];
+            const b = road[i];
+            const abx = b.x - a.x;
+            const abz = b.z - a.z;
+            const len2 = abx * abx + abz * abz || 1e-6;
+            let t = ((x - a.x) * abx + (z - a.z) * abz) / len2;
+            if (t < 0) t = 0;
+            else if (t > 1) t = 1;
+            const px = a.x + abx * t;
+            const pz = a.z + abz * t;
+            const dx = x - px;
+            const dz = z - pz;
+            if (Math.abs(dx) > ROAD_SHOULDER || Math.abs(dz) > ROAD_SHOULDER) continue;
             const dist = Math.hypot(dx, dz);
-            if (!best || dist < best.dist) best = { dist, y: point.y };
+            if (dist > ROAD_SHOULDER) continue;
+            if (!best || dist < best.dist) best = { dist, y: a.y + (b.y - a.y) * t };
         }
     }
     return best;
@@ -146,9 +170,9 @@ export function listRoads() {
 export function terrainHeight(x, z) {
     let h = rawHeight(x, z);
     const road = roadAt(x, z);
-    if (road && road.dist < ROAD_HALF) {
-        const t = 1 - road.dist / ROAD_HALF;
-        const blend = t * t * (3 - 2 * t);
+    if (road && road.dist < ROAD_SHOULDER) {
+        const edge = road.dist <= ROAD_BED ? 1 : 1 - (road.dist - ROAD_BED) / (ROAD_SHOULDER - ROAD_BED);
+        const blend = edge * edge * (3 - 2 * edge);
         h = h * (1 - blend) + road.y * blend;
     }
     return applyBoundary(x, z, h);
@@ -175,7 +199,7 @@ export function chunkResources(cx, cz) {
         const x = cx * CHUNK_SIZE + px;
         const z = cz * CHUNK_SIZE + pz;
         if (terrainHeight(x, z) < WATER_LEVEL + 0.2 || boundaryInset(x, z) < 8) continue;
-        if (roadAt(x, z) && roadAt(x, z).dist < 5.2) continue;
+        if (roadAt(x, z) && roadAt(x, z).dist < 1.9) continue;
         items.push({
             id: 's-' + cx + '-' + cz + '-' + i,
             type,
@@ -197,7 +221,7 @@ export function chunkResources(cx, cz) {
         const x = cx * CHUNK_SIZE + px;
         const z = cz * CHUNK_SIZE + pz;
         if (terrainHeight(x, z) < WATER_LEVEL + 0.45 || boundaryInset(x, z) < 8) continue;
-        if (roadAt(x, z) && roadAt(x, z).dist < 5.2) continue;
+        if (roadAt(x, z) && roadAt(x, z).dist < 1.9) continue;
         items.push({
             id: 'b-' + cx + '-' + cz + '-' + i,
             type: 'boulder',
@@ -219,7 +243,7 @@ export function chunkResources(cx, cz) {
             const pz = (extra() - 0.5) * CHUNK_SIZE * 0.8;
             const x = cx * CHUNK_SIZE + px;
             const z = cz * CHUNK_SIZE + pz;
-            if (terrainHeight(x, z) < WATER_LEVEL + 0.35 || boundaryInset(x, z) < 8 || (roadAt(x, z) && roadAt(x, z).dist < 5.2)) continue;
+            if (terrainHeight(x, z) < WATER_LEVEL + 0.35 || boundaryInset(x, z) < 8 || (roadAt(x, z) && roadAt(x, z).dist < 1.9)) continue;
             const index = items.length;
             items.push({ id: `${cx},${cz},${index}`, type: 'herb', x, z, px, pz, sx: 0, sy: 0, sz: 0, hits: 2 });
         }
@@ -228,7 +252,7 @@ export function chunkResources(cx, cz) {
             const pz = (extra() - 0.5) * CHUNK_SIZE * 0.8;
             const x = cx * CHUNK_SIZE + px;
             const z = cz * CHUNK_SIZE + pz;
-            if (terrainHeight(x, z) >= WATER_LEVEL + 0.35 && boundaryInset(x, z) >= 8 && !(roadAt(x, z) && roadAt(x, z).dist < 5.2)) {
+            if (terrainHeight(x, z) >= WATER_LEVEL + 0.35 && boundaryInset(x, z) >= 8 && !(roadAt(x, z) && roadAt(x, z).dist < 1.9)) {
                 const index = items.length;
                 items.push({ id: `${cx},${cz},${index}`, type: 'sulfur', x, z, px, pz, sx: 0.45, sy: 0.7, sz: 0.45, hits: 3 });
             }

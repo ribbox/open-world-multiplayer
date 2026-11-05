@@ -1708,7 +1708,7 @@
             const allColliders = [];
 
             function addTerrain(group, cx, cz) {
-                const seg = 28;
+                const seg = 48;
                 const geo = new THREE.PlaneGeometry(chunkSize, chunkSize, seg, seg);
                 geo.rotateX(-Math.PI / 2);
                 const pos = geo.attributes.position;
@@ -1726,13 +1726,12 @@
                     if (y < WATER_LEVEL + 0.15) wet = true;
                     const cliff = edgeKind === 'hills' && boundaryInset(wx, wz) < 18;
                     const onRoad = roadAt(wx, wz);
-                    const road = onRoad && onRoad.dist < 5.4;
-                    const sand = sandReady && !road && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
-                    const grass = !sand && !road && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
+                    const roadDist = onRoad ? onRoad.dist : 99;
+                    const bed = roadDist < 1.7;
+                    const sand = sandReady && !bed && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
+                    const grass = !sand && !bed && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
                     biome[i] = sand ? 2 : grass ? 1 : 0;
-                    const tint = road
-                        ? [0.52, 0.36, 0.2]
-                        : grass || sand
+                    let tint = grass || sand
                         ? [1, 1, 1]
                         : y < WATER_LEVEL - 0.15
                         ? [0.07, 0.2, 0.3]
@@ -1742,6 +1741,15 @@
                         : y > 7.5 ? [0.42, 0.48, 0.34]
                         : y > 4.2 ? [0.32, 0.5, 0.22]
                         : [0.16, 0.46, 0.15];
+                    if (roadDist < 2.9) {
+                        const edge = roadDist <= 1.15 ? 1 : 1 - (roadDist - 1.15) / (2.9 - 1.15);
+                        const mix = edge * edge * (3 - 2 * edge);
+                        tint = [
+                            tint[0] * (1 - mix) + 0.52 * mix,
+                            tint[1] * (1 - mix) + 0.36 * mix,
+                            tint[2] * (1 - mix) + 0.2 * mix
+                        ];
+                    }
                     colors[i * 3] = tint[0];
                     colors[i * 3 + 1] = tint[1];
                     colors[i * 3 + 2] = tint[2];
@@ -1776,7 +1784,7 @@
                         ].map(([lx, lz]) => terrainHeight(cx * chunkSize + lx, cz * chunkSize + lz));
                         if (Math.min(...corners) >= WATER_LEVEL + 0.05) continue;
                         const mid = roadAt(cx * chunkSize + x0 + step / 2, cz * chunkSize + z0 + step / 2);
-                        if (mid && mid.dist < 5) continue;
+                        if (mid && mid.dist < 1.7) continue;
                         const y = WATER_LEVEL;
                         verts.push(
                             x0, y, z0, x0 + step, y, z0, x0, y, z0 + step,
