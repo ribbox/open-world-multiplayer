@@ -625,7 +625,7 @@ export function worldBounds() {
 
 export function clampWorld(x, z, margin = 2) {
     if (shape.samples && shape.samples.length >= 3) {
-        const allow = shape.edge === 'sea' ? shape.swim : -margin;
+        const allow = shape.edge === 'sea' ? -shape.swim : -margin;
         if (boundaryInset(x, z) >= allow) return { x, z };
         return pullInside(x, z, allow);
     }
