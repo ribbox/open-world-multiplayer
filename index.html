@@ -1725,13 +1725,10 @@
                     uv.setXY(i, wx / 20, wz / 20);
                     if (y < WATER_LEVEL + 0.15) wet = true;
                     const cliff = edgeKind === 'hills' && boundaryInset(wx, wz) < 18;
-                    const onRoad = roadAt(wx, wz);
-                    const roadDist = onRoad ? onRoad.dist : 99;
-                    const bed = roadDist < 1.7;
-                    const sand = sandReady && !bed && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
-                    const grass = !sand && !bed && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
+                    const sand = sandReady && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
+                    const grass = !sand && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
                     biome[i] = sand ? 2 : grass ? 1 : 0;
-                    let tint = grass || sand
+                    const tint = grass || sand
                         ? [1, 1, 1]
                         : y < WATER_LEVEL - 0.15
                         ? [0.07, 0.2, 0.3]
@@ -1741,15 +1738,6 @@
                         : y > 7.5 ? [0.42, 0.48, 0.34]
                         : y > 4.2 ? [0.32, 0.5, 0.22]
                         : [0.16, 0.46, 0.15];
-                    if (roadDist < 2.9) {
-                        const edge = roadDist <= 1.15 ? 1 : 1 - (roadDist - 1.15) / (2.9 - 1.15);
-                        const mix = edge * edge * (3 - 2 * edge);
-                        tint = [
-                            tint[0] * (1 - mix) + 0.52 * mix,
-                            tint[1] * (1 - mix) + 0.36 * mix,
-                            tint[2] * (1 - mix) + 0.2 * mix
-                        ];
-                    }
                     colors[i * 3] = tint[0];
                     colors[i * 3 + 1] = tint[1];
                     colors[i * 3 + 2] = tint[2];
@@ -1902,6 +1890,74 @@
                 colliders.forEach(c => allColliders.push(c));
             }
 
+            const roadRibbonMat = new THREE.MeshLambertMaterial({
+                color: 0xa88862,
+                polygonOffset: true,
+                polygonOffsetFactor: -2,
+                polygonOffsetUnits: -2
+            });
+            const roadRibbons = [];
+
+            function clearRoadRibbons() {
+                for (const mesh of roadRibbons) {
+                    scene.remove(mesh);
+                    mesh.geometry.dispose();
+                }
+                roadRibbons.length = 0;
+            }
+
+            function addRoadRibbons() {
+                clearRoadRibbons();
+                const half = 1.15;
+                for (const road of listRoads()) {
+                    const curve = curvePoints(road.points, road.edges, false);
+                    if (curve.length < 2) continue;
+                    const pts = [];
+                    for (let i = 0; i < curve.length - 1; i++) {
+                        const ax = curve[i][0];
+                        const az = curve[i][1];
+                        const bx = curve[i + 1][0];
+                        const bz = curve[i + 1][1];
+                        const len = Math.hypot(bx - ax, bz - az);
+                        const steps = Math.max(1, Math.ceil(len / 1.1));
+                        for (let s = 0; s < steps; s++) {
+                            const t = s / steps;
+                            pts.push([ax + (bx - ax) * t, az + (bz - az) * t]);
+                        }
+                    }
+                    pts.push([curve[curve.length - 1][0], curve[curve.length - 1][1]]);
+                    const positions = [];
+                    const normals = [];
+                    const indices = [];
+                    for (let i = 0; i < pts.length; i++) {
+                        const prev = pts[Math.max(0, i - 1)];
+                        const next = pts[Math.min(pts.length - 1, i + 1)];
+                        let dx = next[0] - prev[0];
+                        let dz = next[1] - prev[1];
+                        const span = Math.hypot(dx, dz) || 1;
+                        dx /= span;
+                        dz /= span;
+                        const y = terrainHeight(pts[i][0], pts[i][1]) + 0.04;
+                        positions.push(pts[i][0] - dz * half, y, pts[i][1] + dx * half);
+                        positions.push(pts[i][0] + dz * half, y, pts[i][1] - dx * half);
+                        normals.push(0, 1, 0, 0, 1, 0);
+                        if (i > 0) {
+                            const a = (i - 1) * 2;
+                            indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+                        }
+                    }
+                    const geo = new THREE.BufferGeometry();
+                    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                    geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+                    geo.setIndex(indices);
+                    const mesh = new THREE.Mesh(geo, roadRibbonMat);
+                    mesh.receiveShadow = true;
+                    mesh.frustumCulled = false;
+                    scene.add(mesh);
+                    roadRibbons.push(mesh);
+                }
+            }
+
             function reloadChunks() {
                 for (const data of loadedChunks.values()) {
                     for (const c of data.colliders) {
@@ -1913,6 +1969,7 @@
                 }
                 loadedChunks.clear();
                 terrainMeshes.length = 0;
+                addRoadRibbons();
             }
 
             function removeCollider(c) {
@@ -3069,6 +3126,7 @@
             }
 
             updateChunks();
+            addRoadRibbons();
 
             const picker = document.getElementById('actionPicker');
             const PICKER_GROUPS = [
