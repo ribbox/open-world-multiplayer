@@ -219,7 +219,7 @@ function questBlurb(quest) {
     const many = quest.count === 1 ? label : label + 's';
     if (quest.type === 'gather') {
         const who = quest.named || many;
-        return 'Gather ' + quest.count + ' ' + (quest.item || 'items') + '. ' + who + ' drop them.';
+        return 'Gather ' + quest.count + ' ' + (quest.item || 'items') + '. ' + who + ' sometimes leave them in a chest.';
     }
     if (quest.type === 'named') return 'Kill ' + (quest.named || label) + '.';
     if (quest.type === 'protect') return 'Protect ' + (quest.named || 'the villager') + '. Defeat ' + quest.count + ' attackers.';
@@ -336,14 +336,6 @@ function noteKill(player, npc) {
         } else if (quest.type === 'protect' && npc.questId === id) {
             row.count += 1;
             changed = true;
-        } else if (quest.type === 'gather' && quest.item && (namedHit || (!quest.named && kindHit))) {
-            const leftover = addToSlots(player, { kind: 'quest', name: quest.item, qty: 1 });
-            if (leftover) player.questNote = 'Bag full';
-            else {
-                row.count += 1;
-                changed = true;
-                item = true;
-            }
         }
     }
     if (changed || item) player.questDirty = true;
@@ -1831,13 +1823,15 @@ function publicChest(chest) {
     return { id: chest.id, x: chest.x, z: chest.z, level: chest.level, items: chest.items };
 }
 
-function spawnChest(npc) {
+function spawnChest(npc, player) {
+    const items = rollLoot(npc.level, npc.loot);
+    for (const drop of questChestDrops(player, npc)) items.push(drop);
     const chest = {
         id: 'c' + (chestSeq++),
         x: npc.x,
         z: npc.z,
         level: npc.level,
-        items: rollLoot(npc.level, npc.loot),
+        items,
         spawnedAt: Date.now()
     };
     chests.set(chest.id, chest);
@@ -1845,18 +1839,72 @@ function spawnChest(npc) {
     return chest;
 }
 
+function questMatchesMob(quest, npc) {
+    const namedHit = quest.named && npc.name === quest.named;
+    const kindHit = quest.mob && npc.kind === quest.mob;
+    return namedHit || (!quest.named && kindHit);
+}
+
+function questChestDrops(player, npc) {
+    if (!player || !player.quests) return [];
+    const drops = [];
+    for (const [id, quest] of Object.entries(QUESTS)) {
+        if (quest.type !== 'gather' || !quest.item) continue;
+        const row = player.quests[id];
+        if (!row || row.state !== 'active' || row.failed || row.count >= quest.count) continue;
+        if (!questMatchesMob(quest, npc)) continue;
+        if (Math.random() > 0.6) continue;
+        drops.push({ kind: 'quest', name: quest.item, qty: 1, questId: id });
+    }
+    return drops;
+}
+
+function needsQuestItem(player, item) {
+    if (!item || item.kind !== 'quest') return true;
+    for (const [id, quest] of Object.entries(QUESTS)) {
+        if (quest.type !== 'gather' || quest.item !== item.name) continue;
+        if (item.questId && item.questId !== id) continue;
+        const row = player.quests && player.quests[id];
+        if (row && row.state === 'active' && !row.failed && row.count < quest.count) return true;
+    }
+    return false;
+}
+
+function creditQuestItem(player, item, qty) {
+    const quest = (item.questId && QUESTS[item.questId]) || Object.values(QUESTS).find(entry => entry.type === 'gather' && entry.item === item.name);
+    if (!quest || quest.type !== 'gather') return false;
+    const row = player.quests && player.quests[quest.id];
+    if (!row || row.state !== 'active' || row.failed || row.count >= quest.count) return false;
+    row.count = Math.min(quest.count, row.count + qty);
+    player.questDirty = true;
+    return true;
+}
+
 function giveLoot(player, items) {
     const taken = [];
     const leftover = [];
+    let quested = false;
     for (const item of items) {
+        if (item.kind === 'quest' && !needsQuestItem(player, item)) {
+            leftover.push(item);
+            continue;
+        }
         const qty = item.qty || 1;
         const rest = addToSlots(player, item);
         const left = rest ? rest.qty : 0;
-        if (qty - left > 0) taken.push({ ...item, qty: qty - left });
-        if (rest) leftover.push(rest);
+        const got = qty - left;
+        if (got > 0) {
+            taken.push({ ...item, qty: got });
+            if (item.kind === 'quest' && creditQuestItem(player, item, got)) quested = true;
+        }
+        if (rest) {
+            if (item.questId) rest.questId = item.questId;
+            leftover.push(rest);
+        }
     }
     if (taken.length) savePlayer(player);
-    return { taken, leftover };
+    if (quested) savePlayer(player);
+    return { taken, leftover, quested };
 }
 
 let lastNpcTick = Date.now();
@@ -2362,7 +2410,7 @@ wss.on('connection', (ws) => {
                     downNpc(npc);
                     gained = xpForKill(player, npc);
                     leveled = grantXp(player, gained);
-                    chest = spawnChest(npc);
+                    chest = spawnChest(npc, player);
                     noteKill(player, npc);
                 }
                 broadcast({
@@ -2437,9 +2485,10 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'lootResult', ok: false, reason: 'Too far' });
                 return;
             }
-            const { taken, leftover } = giveLoot(player, chest.items);
+            const { taken, leftover, quested } = giveLoot(player, chest.items);
             if (!taken.length) {
-                send(ws, { type: 'lootResult', ok: false, reason: 'Inventory full', inventory: inventoryOf(player) });
+                const onlyQuest = leftover.length > 0 && leftover.every(item => item.kind === 'quest');
+                send(ws, { type: 'lootResult', ok: false, reason: onlyQuest ? 'Nothing you need' : 'Inventory full', inventory: inventoryOf(player) });
                 return;
             }
             if (leftover.length) {
@@ -2455,8 +2504,10 @@ wss.on('connection', (ws) => {
                 items: taken,
                 leftover: leftover.length,
                 inventory: inventoryOf(player),
+                quests: quested ? player.quests : undefined,
                 ...statsOf(player)
             });
+            if (quested) player.questDirty = false;
             return;
         }
 
@@ -2674,7 +2725,7 @@ wss.on('connection', (ws) => {
                     downNpc(npc);
                     gained = xpForKill(player, npc);
                     leveled = grantXp(player, gained);
-                    chest = spawnChest(npc);
+                    chest = spawnChest(npc, player);
                     noteKill(player, npc);
                 }
                 broadcast({

@@ -4864,8 +4864,9 @@
                         else {
                             applyInventory(data.inventory);
                             applyStats(data);
+                            const ready = data.quests ? applyQuests(data.quests) : '';
                             const names = (data.items || []).map(item => (item.qty > 1 ? item.qty + ' ' : '') + item.name);
-                            showMessage((names.join(', ') || 'Empty') + (data.leftover ? ' (bag full)' : ''));
+                            showMessage((names.join(', ') || 'Empty') + (data.leftover ? ' (bag full)' : '') + (ready ? ' · ' + ready : ''));
                         }
                     } else if (data.type === 'discardResult') {
                         if (!data.ok) showMessage(data.reason || 'Cannot destroy');
