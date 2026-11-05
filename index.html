@@ -1277,8 +1277,9 @@
                 if (mapLayers.npcs) for (const entry of worldNpcs.values()) {
                     const p = place(entry.group.position.x, entry.group.position.z);
                     if (!p || !seenAt(entry.group.position.x, entry.group.position.z)) continue;
-                    ctx.fillStyle = '#e74c3c';
-                    ctx.fillRect(p.mx - 3, p.mz - 3, 6, 6);
+                    ctx.fillStyle = entry.elite ? '#f1c40f' : '#e74c3c';
+                    const s = entry.elite ? 4 : 3;
+                    ctx.fillRect(p.mx - s, p.mz - s, s * 2, s * 2);
                 }
                 if (mapLayers.npcs) for (const entry of worldCivs.values()) {
                     const p = place(entry.group.position.x, entry.group.position.z);
@@ -1554,8 +1555,8 @@
                     ctx.font = '12px sans-serif';
                     ctx.fillText(zone.name, label.mx, label.mz - 8, 110);
                     ctx.font = 'bold 14px sans-serif';
-                    ctx.fillStyle = levelColor(zone.level);
-                    ctx.fillText(String(zone.level), label.mx, label.mz + 8);
+                    ctx.fillStyle = zone.elite ? '#f1c40f' : levelColor(zone.level);
+                    ctx.fillText(zone.elite ? zone.level + ' Elite' : String(zone.level), label.mx, label.mz + 8);
                     for (const camp of zone.camps) {
                         if (!seenAt(camp.x, camp.z)) continue;
                         const mark = toMap(camp.x, camp.z);
@@ -2175,15 +2176,15 @@
                     return;
                 }
                 document.getElementById('targetHp').hidden = false;
-                frame.style.borderColor = aimed.kind === 'player' ? 'rgba(80,180,255,0.8)' : 'rgba(255,80,80,0.7)';
+                frame.style.borderColor = aimed.elite ? 'rgba(241,196,15,0.95)' : aimed.kind === 'player' ? 'rgba(80,180,255,0.8)' : 'rgba(255,80,80,0.7)';
                 document.getElementById('targetName').textContent = aimed.kind === 'player'
                     ? aimed.name
-                    : aimed.name + '  Lv ' + (aimed.level || 1);
+                    : (aimed.elite ? 'Elite ' : '') + aimed.name + '  Lv ' + (aimed.level || 1);
                 const pct = aimed.maxHp ? Math.max(0, Math.min(1, (aimed.hp || 0) / aimed.maxHp)) : 1;
                 const fill = document.getElementById('targetHpFill');
                 fill.style.width = (pct * 100) + '%';
-                fill.style.background = aimed.kind === 'player' ? '#3d9eff' : '#e74c3c';
-                targetRing.material.color.set(aimed.kind === 'player' ? 0x3d9eff : 0xff3333);
+                fill.style.background = aimed.kind === 'player' ? '#3d9eff' : aimed.elite ? '#f1c40f' : '#e74c3c';
+                targetRing.material.color.set(aimed.kind === 'player' ? 0x3d9eff : aimed.elite ? 0xf1c40f : 0xff3333);
                 targetRing.visible = true;
                 targetRing.position.set(aimed.group.position.x, 0.05, aimed.group.position.z);
             }
@@ -2451,28 +2452,33 @@
                 }
             }
 
-            function makeNpcSprite(name, level, hp, maxHp) {
+            function makeNpcSprite(name, level, hp, maxHp, elite) {
                 const canvas = document.createElement('canvas');
                 canvas.width = 512;
                 canvas.height = 224;
                 const ctx = canvas.getContext('2d');
-                ctx.fillStyle = 'rgba(0,0,0,0.72)';
+                ctx.fillStyle = elite ? 'rgba(42,28,6,0.88)' : 'rgba(0,0,0,0.72)';
                 ctx.fillRect(16, 8, 480, 104);
-                ctx.fillStyle = '#ff6666';
+                if (elite) {
+                    ctx.strokeStyle = '#f1c40f';
+                    ctx.lineWidth = 8;
+                    ctx.strokeRect(20, 12, 472, 96);
+                }
+                ctx.fillStyle = elite ? '#f6e27a' : '#ff6666';
                 ctx.font = 'bold 40px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(name || 'Hostile', 256, 40);
+                ctx.fillText(elite ? 'Elite ' + (name || 'Hostile') : (name || 'Hostile'), 256, 40);
                 ctx.font = '32px Arial';
                 ctx.fillText('Lv ' + level, 256, 84);
                 ctx.fillStyle = '#222';
                 ctx.fillRect(56, 132, 400, 28);
                 const width = Math.max(0, Math.min(400, 400 * (hp / (maxHp || 1))));
-                ctx.fillStyle = '#e74c3c';
+                ctx.fillStyle = elite ? '#f1c40f' : '#e74c3c';
                 ctx.fillRect(56, 132, width, 28);
                 const tex = sharpTexture(canvas);
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-                sprite.scale.set(1.8, 0.78, 1);
+                sprite.scale.set(elite ? 2.15 : 1.8, elite ? 0.94 : 0.78, 1);
                 sprite.position.y = 2.45;
                 sprite.visible = false;
                 sprite.userData.texture = tex;
@@ -2964,13 +2970,14 @@
                     if (old.material) old.material.dispose();
                     if (old.userData.texture) old.userData.texture.dispose();
                 }
-                const label = makeNpcSprite(state.name, state.level, state.hp, state.maxHp);
+                const label = makeNpcSprite(state.name, state.level, state.hp, state.maxHp, state.elite);
                 label.position.y = entry.group.userData.labelY || 2.45;
                 label.visible = state.id === selectedNpcId;
                 entry.group.add(label);
                 entry.group.userData.label = label;
                 entry.name = state.name || entry.name;
                 entry.level = state.level;
+                entry.elite = !!state.elite;
                 entry.hp = state.hp;
                 entry.maxHp = state.maxHp || entry.maxHp || state.hp;
                 if (selectedNpcId === state.id) refreshTargetFrame();
@@ -2983,8 +2990,9 @@
                     const body = cloneNpcModel(state.kind || 'boar');
                     if (!body) return;
                     const group = new THREE.Group();
-                    const rank = 0.9 + Math.min(12, state.level || 1) * 0.05;
+                    const rank = (0.9 + Math.min(12, state.level || 1) * 0.05) * (state.elite ? 1.28 : 1);
                     body.scale.setScalar(rank);
+                    if (state.elite) tintHostile(body, '#f1c40f', 0.28);
                     body.updateWorldMatrix(true, true);
                     const bounds = new THREE.Box3().setFromObject(body);
                     group.add(body);
@@ -2993,15 +3001,15 @@
                     group.userData.bobAmp = state.kind === 'wisp' ? 0.16 : 0.035;
                     group.position.set(state.x, 0, state.z);
                     scene.add(group);
-                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, name: state.name || 'Hostile', level: -1, hp: -1, maxHp: state.maxHp || 1, bob: Math.random() * Math.PI * 2 };
+                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, name: state.name || 'Hostile', level: -1, hp: -1, maxHp: state.maxHp || 1, elite: !!state.elite, bob: Math.random() * Math.PI * 2 };
                     group.userData.npcId = state.id;
                     worldNpcs.set(state.id, entry);
                 }
                 entry.tx = state.x;
                 entry.tz = state.z;
                 entry.rotY = state.rotY || 0;
-                if (entry.name !== (state.name || entry.name) || entry.level !== state.level || entry.hp !== state.hp) {
-                    setNpcLabel(entry, { name: state.name || entry.name, level: state.level, hp: state.hp, maxHp: state.maxHp || entry.maxHp, id: state.id });
+                if (entry.name !== (state.name || entry.name) || entry.level !== state.level || entry.hp !== state.hp || entry.elite !== !!state.elite) {
+                    setNpcLabel(entry, { name: state.name || entry.name, level: state.level, hp: state.hp, maxHp: state.maxHp || entry.maxHp, elite: !!state.elite, id: state.id });
                 }
             }
 

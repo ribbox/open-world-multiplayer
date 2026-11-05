@@ -226,7 +226,7 @@ function questBlurb(quest) {
         const who = quest.named || many;
         return 'Gather ' + quest.count + ' ' + (quest.item || 'items') + '. ' + who + ' sometimes leave them in a chest.';
     }
-    if (quest.type === 'named') return 'Kill ' + (quest.named || label) + '.';
+    if (quest.type === 'named') return 'Kill ' + (quest.elite ? 'the elite ' : '') + (quest.named || label) + '.';
     if (quest.type === 'protect') return 'Protect ' + (quest.named || 'the villager') + '. Defeat ' + quest.count + ' attackers.';
     return 'Kill ' + quest.count + ' ' + many + '.';
 }
@@ -480,8 +480,10 @@ function spawnQuestMob(quest, questId, index, x, z, guardId) {
         aggroId: null,
         attackAt: 0
     };
-    npc.maxHp = npcMaxHp(npc.level);
-    npc.hp = npc.maxHp;
+    const zone = designedZoneAt(x, z);
+    const elite = quest.type === 'named' ? !!quest.elite : !!(zone && zone.elite);
+    const base = quest.type !== 'named' && zone && zone.hp > 0 ? zone.hp : 0;
+    applyElite(npc, elite, base);
     npc.homeX = x;
     npc.homeZ = z;
     pickWander(npc);
@@ -610,8 +612,7 @@ function spawnHerdMob(quest, x, z) {
             aggroId: null,
             attackAt: 0
         };
-        npc.maxHp = bonusHp > 0 ? bonusHp : npcMaxHp(level);
-        npc.hp = npc.maxHp;
+        applyElite(npc, ground && ground.elite, bonusHp);
         pickWander(npc);
         npcs.set(npc.id, npc);
         return npc;
@@ -690,6 +691,13 @@ function npcMaxHp(level) {
     return Math.max(1, worldRules.hpBase + level * worldRules.hpPerLevel);
 }
 
+function applyElite(npc, elite, baseHp) {
+    npc.elite = !!elite;
+    const base = baseHp > 0 ? baseHp : npcMaxHp(npc.level);
+    npc.maxHp = npc.elite ? Math.round(base * 2.5) : base;
+    npc.hp = npc.maxHp;
+}
+
 function publicPlayer(id, p) {
     return {
         id,
@@ -718,7 +726,8 @@ function publicNpc(n) {
         maxHp: n.maxHp,
         name: n.name,
         kind: n.kind,
-        tint: n.tint
+        tint: n.tint,
+        elite: !!n.elite
     };
 }
 
@@ -772,9 +781,8 @@ function placeNpc(npc, spot) {
         npc.tint = shaped.tint;
         npc.loot = drawn.loot || shaped.loot;
         npc.level = drawn.level;
-        npc.maxHp = drawn.hp > 0 ? drawn.hp : npcMaxHp(npc.level);
-    }
-    npc.hp = npc.maxHp;
+        applyElite(npc, drawn.elite, drawn.hp);
+    } else applyElite(npc, false, 0);
     npc.alive = true;
     npc.aggroId = null;
     npc.homeX = npc.x;
@@ -1019,7 +1027,8 @@ function damageScale(playerLevel, mobLevel) {
 
 function xpForKill(player, npc) {
     if (!npc || npc.level <= player.level - worldRules.grayLevels) return 0;
-    return worldRules.xpPerMobLevel * npc.level;
+    const base = worldRules.xpPerMobLevel * npc.level;
+    return npc.elite ? Math.round(base * 1.5) : base;
 }
 
 function grantXp(player, amount) {
@@ -2005,7 +2014,8 @@ function tickNpcs() {
             npc.rotY = Math.atan2(dx, dz);
             if (now >= npc.attackAt && now >= target.invulnUntil) {
                 npc.attackAt = now + 1300;
-                const damage = Math.max(1, 1 + npc.level - target.armor);
+                const raw = 1 + npc.level;
+                const damage = Math.max(1, Math.round(raw * (npc.elite ? 1.8 : 1)) - target.armor);
                 target.hp = Math.max(0, target.hp - damage);
                 send(target.ws, { type: 'hurt', damage, attackerId: npc.id, attacker: npc.level, ...statsOf(target) });
                 if (target.hp <= 0) becomeGhost(target, now);
@@ -3133,6 +3143,7 @@ function sanitizeQuests(input) {
             count: type === 'named' ? 1 : clampNum(raw.count, 3, 1, 40),
             item: String(raw.item || '').trim().slice(0, 24),
             named: String(raw.named || '').trim().slice(0, 24),
+            elite: type === 'named' && !!raw.elite,
             custom: !!raw.custom,
             text: String(raw.text || '').slice(0, 180),
             coins: clampNum(raw.coins, 10, 0, 500),

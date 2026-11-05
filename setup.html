@@ -223,6 +223,8 @@
             current.loot = document.getElementById('zLoot').value;
             current.perMin = Math.max(0, Math.min(30, Math.round(Number(document.getElementById('zPerMin').value) || 0)));
             current.cap = Math.max(0, Math.min(40, Math.round(Number(document.getElementById('zCap').value) || 0)));
+            const elite = document.getElementById('zElite');
+            current.elite = !!(elite && elite.checked);
         }
         function renderFields() {
             const box = document.getElementById('zoneFields');
@@ -261,9 +263,15 @@
             const cap = field('Most mobs in this zone', 'zCap', current.cap == null ? 8 : current.cap);
             cap.type = 'number';
             const hint = document.createElement('p');
-            hint.textContent = 'Spawns are spread at random through each minute. They stop when the zone reaches the limit.';
-            box.append(labelWrap('Mobs spawned per minute', perMin), labelWrap('Most mobs in this zone', cap), hint);
-            for (const el of [name, mob, level, hp, loot, perMin, cap]) el.addEventListener('change', () => { remember(); readFields(); draw(); renderZones(); });
+            hint.textContent = 'Spawns are spread at random through each minute. They stop when the zone reaches the limit. Elite mobs have more health and hit harder.';
+            const eliteLabel = document.createElement('label');
+            const eliteBox = document.createElement('input');
+            eliteBox.type = 'checkbox';
+            eliteBox.id = 'zElite';
+            eliteBox.checked = !!current.elite;
+            eliteLabel.append(eliteBox, document.createTextNode(' Elite area'));
+            box.append(labelWrap('Mobs spawned per minute', perMin), labelWrap('Most mobs in this zone', cap), eliteLabel, hint);
+            for (const el of [name, mob, level, hp, loot, perMin, cap, eliteBox]) el.addEventListener('change', () => { remember(); readFields(); draw(); renderZones(); });
             const campsTitle = document.createElement('h2');
             campsTitle.textContent = 'Camps';
             box.appendChild(campsTitle);
@@ -345,7 +353,7 @@
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'zone' + (index === selected ? ' on' : '');
-                button.textContent = entry.name + ' · ' + entry.mob + ' ' + entry.level;
+                button.textContent = entry.name + ' · ' + entry.mob + ' ' + entry.level + (entry.elite ? ' · elite' : '');
                 button.addEventListener('click', () => {
                     selected = index;
                     questZoneId = entry.id;
@@ -434,7 +442,7 @@
             for (const road of config.roads || []) strokeRoad(road.points, road.edges, '#8d6a3a', 4);
             if (roadDraft.length) strokeRoad(roadDraft, roadEdges, '#e6c07a', 3);
             config.zones.forEach((entry, index) => {
-                strokeZone(entry.points, entry.edges, index === selected ? 'rgba(241,196,15,0.35)' : 'rgba(90,170,255,0.28)', index === selected ? '#f1c40f' : '#9cf', true);
+                strokeZone(entry.points, entry.edges, index === selected ? 'rgba(241,196,15,0.35)' : entry.elite ? 'rgba(230,126,34,0.34)' : 'rgba(90,170,255,0.28)', index === selected ? '#f1c40f' : entry.elite ? '#e67e22' : '#9cf', true);
                 for (const camp of entry.camps) mark(camp.x, camp.z, CAMP_COLOR[camp.layout] || '#f1c40f', 5);
                 for (const node of entry.nodes) {
                     const color = node.type === 'tree' ? '#27ae60' : node.type === 'plain-tree' ? '#145a32' : node.type === 'rock' ? '#e67e22' : node.type === 'plain-rock' ? '#888' : node.type === 'herb' ? '#7dff4a' : '#f4d03f';
@@ -1043,7 +1051,7 @@
             const many = Number(quest.count) === 1 ? label : label + 's';
             if (quest.custom && quest.text) return quest.text;
             if (quest.type === 'gather') return 'Gather ' + (quest.count || 1) + ' ' + (quest.item || 'items') + '. ' + (quest.named || many) + ' drop them.';
-            if (quest.type === 'named') return 'Kill ' + (quest.named || label) + '.';
+            if (quest.type === 'named') return 'Kill ' + (quest.elite ? 'the elite ' : '') + (quest.named || label) + '.';
             if (quest.type === 'protect') return 'Protect ' + (quest.named || 'the villager') + '. Defeat ' + (quest.count || 1) + ' attackers.';
             return 'Kill ' + (quest.count || 1) + ' ' + many + '.';
         }
@@ -1216,6 +1224,13 @@
                 form.append(protectLabel, protect);
             } else if (quest.type === 'named') {
                 addField('Mob name', quest.named, value => { quest.named = value; });
+                const eliteLabel = document.createElement('label');
+                const elite = document.createElement('input');
+                elite.type = 'checkbox';
+                elite.checked = !!quest.elite;
+                elite.addEventListener('change', () => { quest.elite = elite.checked; renderQuests(); });
+                eliteLabel.append(elite, document.createTextNode(' Elite'));
+                form.appendChild(eliteLabel);
             } else if (quest.type === 'gather') {
                 addField('Only this mob name, optional', quest.named, value => { quest.named = value; });
             }
