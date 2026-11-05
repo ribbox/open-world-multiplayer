@@ -2546,8 +2546,22 @@
                 return Object.entries(quests).some(([id, item]) => item.state === 'done' && questDefs[id] && String(questDefs[id].name || '').toLowerCase() === needle);
             }
 
+            function offeredHere(entry) {
+                const ids = [];
+                const push = (id) => { if (id && !ids.includes(id)) ids.push(id); };
+                if (entry.quests) for (const id of entry.quests) push(id);
+                push(entry.quest);
+                for (const [id, def] of Object.entries(questDefs)) {
+                    if (!def || !def.giver || !entry.name) continue;
+                    if (String(def.giver).toLowerCase() !== String(entry.name).toLowerCase()) continue;
+                    if (def.zoneId && !String(entry.id || '').includes('-' + def.zoneId + '-')) continue;
+                    push(id);
+                }
+                return ids;
+            }
+
             function questOfferState(entry) {
-                const ids = entry.quests && entry.quests.length ? entry.quests : (entry.quest ? [entry.quest] : []);
+                const ids = offeredHere(entry);
                 let available = false;
                 let active = false;
                 let ready = false;
@@ -2609,7 +2623,15 @@
             }
 
             function ensureCivilian(civ) {
-                if (!civ || !npcModelsReady || worldCivs.has(civ.id)) return;
+                if (!civ || !npcModelsReady) return;
+                if (worldCivs.has(civ.id)) {
+                    const entry = worldCivs.get(civ.id);
+                    entry.quests = civ.quests || (civ.quest ? [civ.quest] : []);
+                    entry.quest = civ.quest || entry.quests[0] || '';
+                    entry.name = civ.name;
+                    entry.text = civ.text || entry.text;
+                    return;
+                }
                 const body = cloneNpcModel(civ.role);
                 if (!body) return;
                 if (civ.role === 'inn') tintHostile(body, civ.tint || '#e67e22', 0.55);
@@ -3999,8 +4021,8 @@
                     });
                     panel.appendChild(button);
                 }
-                if ((entry.quests && entry.quests.length) || entry.quest) {
-                    const offered = entry.quests && entry.quests.length ? entry.quests : [entry.quest];
+                if ((entry.quests && entry.quests.length) || entry.quest || offeredHere(entry).length) {
+                    const offered = offeredHere(entry);
                     const listed = offered.filter(questId => {
                         const def = questDefs[questId];
                         if (!def) return false;

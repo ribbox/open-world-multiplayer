@@ -119,7 +119,7 @@ function pushCampRole(list, camp, zone, index, role, title, tint, text) {
     const name = camp[role];
     if (!name) return;
     const spot = campSpot(camp.layout, role, camp.x, camp.z);
-    if (!onLand(spot.x, spot.z)) return;
+    if (!campStanding(spot.x, spot.z)) return;
     list.push({
         id: 'd' + role + '-' + zone.id + '-' + index,
         name,
@@ -135,6 +135,11 @@ function pushCampRole(list, camp, zone, index, role, title, tint, text) {
 
 function onLand(x, z) {
     return boundaryInset(x, z) >= 6 && !waterAt(x, z);
+}
+
+function campStanding(x, z) {
+    if (designedZoneAt(x, z) && boundaryInset(x, z) >= -2) return true;
+    return boundaryInset(x, z) >= 0 && !waterAt(x, z);
 }
 
 function mapSpawn() {
@@ -169,7 +174,7 @@ function rebuildCivilians() {
     }
     for (const zone of listDesignedZones()) {
         zone.camps.forEach((camp, index) => {
-            if (!onLand(camp.x, camp.z)) return;
+            if (!campStanding(camp.x, camp.z)) return;
             pushCampRole(CIVILIANS, camp, zone, index, 'inn', 'Innkeeper', '#e67e22', 'I keep the inn in ' + zone.name + '. You can set your spawn here.');
             pushCampRole(CIVILIANS, camp, zone, index, 'shop', 'Shop', '#f1c40f', 'I buy and sell in ' + zone.name + '.');
             pushCampRole(CIVILIANS, camp, zone, index, 'trainer', 'Trainer', '#5dade2', 'I train spells in ' + zone.name + '.');
@@ -195,7 +200,7 @@ function campSites() {
     }
     for (const zone of listDesignedZones()) {
         zone.camps.forEach((camp, index) => {
-            if (!onLand(camp.x, camp.z)) return;
+            if (!campStanding(camp.x, camp.z)) return;
             sites.push({ id: 'dcamp-' + zone.id + '-' + index, x: camp.x, z: camp.z, layout: camp.layout || 'hamlet' });
         });
     }
@@ -272,6 +277,7 @@ function publicQuests() {
             named: quest.named || '',
             zoneId: quest.zoneId || '',
             zoneName: questZoneName(quest),
+            giver: quest.giver || '',
             rewardKind: quest.rewardKind || '',
             rewardName: quest.rewardName || '',
             rewardQty: quest.rewardQty || 1
@@ -358,15 +364,27 @@ function questDoneByName(player, name) {
 }
 
 function civInZone(zoneId, role, camp, name) {
+    const wanted = String(name || '').trim().toLowerCase();
     if (zoneId && role && Number.isInteger(camp)) {
         const exact = CIVILIANS.find(civ => civ.id === 'd' + role + '-' + zoneId + '-' + camp);
-        if (exact) return exact;
+        if (exact && (!wanted || exact.name.toLowerCase() === wanted)) return exact;
     }
-    if (zoneId && name) {
-        const inZone = CIVILIANS.find(civ => civ.id.includes('-' + zoneId + '-') && civ.name.toLowerCase() === name.toLowerCase() && (!role || civ.role === role));
-        if (inZone) return inZone;
+    if (zoneId && wanted) {
+        const named = CIVILIANS.find(civ => String(civ.id).includes('-' + zoneId + '-') && civ.name.toLowerCase() === wanted && (!role || civ.role === role))
+            || CIVILIANS.find(civ => String(civ.id).includes('-' + zoneId + '-') && civ.name.toLowerCase() === wanted);
+        if (named) return named;
     }
     return null;
+}
+
+function offersQuest(civ, questId) {
+    const quest = questId && QUESTS[questId];
+    if (!civ || !quest) return false;
+    if (Array.isArray(civ.quests) && civ.quests.includes(questId)) return true;
+    if (civ.quest === questId) return true;
+    if (!quest.giver || civ.name.toLowerCase() !== quest.giver.toLowerCase()) return false;
+    if (quest.zoneId && !String(civ.id).includes('-' + quest.zoneId + '-')) return false;
+    return true;
 }
 
 function bindQuestGivers() {
@@ -2533,8 +2551,7 @@ wss.on('connection', (ws) => {
 
         if (data.type === 'acceptQuest') {
             const civ = nearCivilian(player, data.id);
-            const offered = civ && (civ.quests || (civ.quest ? [civ.quest] : []));
-            const questId = offered && data.quest && offered.includes(data.quest) ? data.quest : (offered && offered[0]);
+            const questId = data.quest && offersQuest(civ, data.quest) ? data.quest : '';
             const quest = questId && QUESTS[questId];
             if (!civ || !quest) {
                 send(ws, { type: 'quests', ok: false, reason: civ ? 'No quest here' : 'Too far', quests: player.quests });
@@ -2576,8 +2593,7 @@ wss.on('connection', (ws) => {
 
         if (data.type === 'turnIn') {
             const civ = nearCivilian(player, data.id);
-            const offered = civ && (civ.quests || (civ.quest ? [civ.quest] : []));
-            const questId = offered && data.quest && offered.includes(data.quest) ? data.quest : (offered && offered[0]);
+            const questId = data.quest && offersQuest(civ, data.quest) ? data.quest : '';
             const quest = questId && QUESTS[questId];
             const row = questId && player.quests[questId];
             if (!civ || !quest || !row || row.state !== 'active') {
