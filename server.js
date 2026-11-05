@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS } from './worldgen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -3021,6 +3021,7 @@ function defaultWorldConfig() {
         adminPassword: '',
         loot: JSON.parse(JSON.stringify(LOOT_TABLES)),
         zones: [],
+        roads: [],
         quests: []
     };
 }
@@ -3120,6 +3121,25 @@ function sanitizeQuests(input) {
     return out;
 }
 
+function sanitizeRoads(input) {
+    const list = Array.isArray(input) ? input : [];
+    const out = [];
+    const seen = new Set();
+    for (const raw of list.slice(0, 40)) {
+        if (!raw || typeof raw !== 'object') continue;
+        let id = String(raw.id || '').slice(0, 24);
+        if (!/^[a-z0-9-]{2,24}$/i.test(id)) id = 'r' + Math.random().toString(36).slice(2, 8);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const points = (Array.isArray(raw.points) ? raw.points : []).slice(0, 24).map(point => [Math.round(Number(point[0])), Math.round(Number(point[1]))]).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+        if (points.length < 2) continue;
+        const edges = [];
+        for (let i = 0; i < points.length - 1; i++) edges.push(raw.edges && raw.edges[i] === 'organic' ? 'organic' : 'line');
+        out.push({ id, points, edges });
+    }
+    return out;
+}
+
 function sanitizeWorld(input) {
     const src = input && typeof input === 'object' ? input : {};
     return {
@@ -3132,6 +3152,7 @@ function sanitizeWorld(input) {
         adminPassword: typeof src.adminPassword === 'string' ? src.adminPassword.slice(0, 64) : '',
         loot: sanitizeLoot(src.loot),
         zones: Array.isArray(src.zones) ? src.zones : [],
+        roads: sanitizeRoads(src.roads),
         bounds: sanitizeBounds(src.bounds),
         quests: sanitizeQuests(src.quests)
     };
@@ -3153,6 +3174,7 @@ function publicWorld() {
         spawnCap: worldRules.spawnCap,
         bounds: worldShape(),
         zones: listDesignedZones(),
+        roads: listRoads(),
         quests: (worldConfig && worldConfig.quests) || []
     };
 }

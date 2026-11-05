@@ -433,7 +433,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset, campYaw, campSpot } from './worldgen.js';
+        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, listRoads, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset, campYaw, campSpot, roadAt } from './worldgen.js';
 
         let bootWorld = null;
         try {
@@ -1217,6 +1217,22 @@
                     }
                 }
 
+                ctx.strokeStyle = '#8d6a3a';
+                ctx.lineWidth = 3;
+                ctx.lineJoin = 'round';
+                for (const road of listRoads()) {
+                    const path = curvePoints(road.points, road.edges, false);
+                    ctx.beginPath();
+                    let moved = false;
+                    for (const point of path) {
+                        if (!seenAt(point[0], point[1])) { moved = false; continue; }
+                        const spot = project(point[0], point[1]);
+                        if (!moved) { ctx.moveTo(spot.mx, spot.mz); moved = true; }
+                        else ctx.lineTo(spot.mx, spot.mz);
+                    }
+                    ctx.stroke();
+                }
+
                 for (const c of allColliders) {
                     if (!c.type || c.type === 'boulder') continue;
                     if ((c.type === 'tree' || c.type === 'plain-tree') && !mapLayers.trees) continue;
@@ -1521,6 +1537,21 @@
                         ctx.fillRect(mark.mx - 3, mark.mz - 3, 6, 6);
                     }
                 }
+                ctx.strokeStyle = '#c4a574';
+                ctx.lineWidth = 3;
+                ctx.lineJoin = 'round';
+                for (const road of listRoads()) {
+                    const path = curvePoints(road.points, road.edges, false);
+                    ctx.beginPath();
+                    let moved = false;
+                    for (const point of path) {
+                        if (!seenAt(point[0], point[1])) { moved = false; continue; }
+                        const spot = toMap(point[0], point[1]);
+                        if (!moved) { ctx.moveTo(spot.mx, spot.mz); moved = true; }
+                        else ctx.lineTo(spot.mx, spot.mz);
+                    }
+                    ctx.stroke();
+                }
                 if (mapLayers.players) for (const entry of remotePlayers.values()) {
                     if (!seenAt(entry.mesh.position.x, entry.mesh.position.z)) continue;
                     const rp = toMap(entry.mesh.position.x, entry.mesh.position.z);
@@ -1694,10 +1725,14 @@
                     uv.setXY(i, wx / 20, wz / 20);
                     if (y < WATER_LEVEL + 0.15) wet = true;
                     const cliff = edgeKind === 'hills' && boundaryInset(wx, wz) < 18;
-                    const sand = sandReady && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
-                    const grass = !sand && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
+                    const onRoad = roadAt(wx, wz);
+                    const road = onRoad && onRoad.dist < 5.4;
+                    const sand = sandReady && !road && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
+                    const grass = !sand && !road && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
                     biome[i] = sand ? 2 : grass ? 1 : 0;
-                    const tint = grass || sand
+                    const tint = road
+                        ? [0.52, 0.36, 0.2]
+                        : grass || sand
                         ? [1, 1, 1]
                         : y < WATER_LEVEL - 0.15
                         ? [0.07, 0.2, 0.3]
@@ -1740,6 +1775,8 @@
                             [x0 + step, z0 + step]
                         ].map(([lx, lz]) => terrainHeight(cx * chunkSize + lx, cz * chunkSize + lz));
                         if (Math.min(...corners) >= WATER_LEVEL + 0.05) continue;
+                        const mid = roadAt(cx * chunkSize + x0 + step / 2, cz * chunkSize + z0 + step / 2);
+                        if (mid && mid.dist < 5) continue;
                         const y = WATER_LEVEL;
                         verts.push(
                             x0, y, z0, x0 + step, y, z0, x0, y, z0 + step,

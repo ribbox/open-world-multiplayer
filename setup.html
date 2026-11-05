@@ -56,7 +56,7 @@
                 <button type="button" id="tabQuests">Quests</button>
             </div>
             <div id="panelMap">
-                <p>Drag the map to move it, and scroll to zoom. Draw a zone or the world edge. A zone that crosses the coast is cut back to the shoreline. Chop tree and Mine rock can be gathered. Tree and Rock are scenery and cannot. Place a camp, then choose its buildings. Every camp has an innkeeper. Shop, trainer, and quest giver are optional.</p>
+                <p>Drag the map to move it, and scroll to zoom. Draw a zone or the world edge. A zone that crosses the coast is cut back to the shoreline. Chop tree and Mine rock can be gathered. Tree and Rock are scenery and cannot. Place a camp, then choose its buildings. Every camp has an innkeeper. Shop, trainer, and quest giver are optional. The Road tool connects two camps. Click the first camp, add bends if you need them, click the next camp, then Finish outline. Straight or organic applies to each new stretch.</p>
                 <div class="row">
                     <button type="button" id="editZones" class="on">Zones</button>
                     <button type="button" id="editBounds">World edge</button>
@@ -69,6 +69,8 @@
                 <button type="button" id="clearBounds">Clear world edge</button>
                 <h2>Zones</h2>
                 <div id="zoneList"></div>
+                <h2>Roads</h2>
+                <div id="roadList"></div>
             </div>
             <div id="panelRules" hidden>
                 <label>Hit point base</label>
@@ -152,6 +154,8 @@
         let selected = -1;
         let drawing = 'zone';
         let edgeMode = 'line';
+        let roadDraft = [];
+        let roadEdges = [];
         let draft = [];
         let draftEdges = [];
         let drag = null;
@@ -423,6 +427,8 @@
             if (config.bounds && config.bounds.points && config.bounds.points.length >= 3) {
                 strokeZone(config.bounds.points, config.bounds.edges, drawing === 'bounds' ? 'rgba(80,160,220,0.18)' : 'rgba(40,90,140,0.12)', config.bounds.edge === 'sea' ? '#7ec8e3' : '#c4a574', true);
             }
+            for (const road of config.roads || []) strokeRoad(road.points, road.edges, '#8d6a3a', 4);
+            if (roadDraft.length) strokeRoad(roadDraft, roadEdges, '#e6c07a', 3);
             config.zones.forEach((entry, index) => {
                 strokeZone(entry.points, entry.edges, index === selected ? 'rgba(241,196,15,0.35)' : 'rgba(90,170,255,0.28)', index === selected ? '#f1c40f' : '#9cf', true);
                 for (const camp of entry.camps) mark(camp.x, camp.z, CAMP_COLOR[camp.layout] || '#f1c40f', 5);
@@ -460,6 +466,85 @@
             if (closed && points.length >= 3) ctx.fill();
             ctx.stroke();
             for (const point of points) mark(point[0], point[1], stroke, 3);
+        }
+        function strokeRoad(points, edges, color, width) {
+            if (!points || points.length < 2) {
+                if (points) for (const point of points) mark(point[0], point[1], color, 3);
+                return;
+            }
+            const path = curvePoints(points, edges || [], false);
+            ctx.beginPath();
+            path.forEach((point, index) => {
+                const p = toScreen(point[0], point[1]);
+                if (index === 0) ctx.moveTo(p.px, p.py);
+                else ctx.lineTo(p.px, p.py);
+            });
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+            for (const point of points) mark(point[0], point[1], color, 3);
+        }
+        function allCamps() {
+            const camps = [];
+            for (const zone of config.zones || []) for (const camp of zone.camps || []) camps.push(camp);
+            return camps;
+        }
+        function snapCamp(x, z) {
+            let best = null;
+            let dist = 28;
+            for (const camp of allCamps()) {
+                const d = Math.hypot(camp.x - x, camp.z - z);
+                if (d < dist) { dist = d; best = camp; }
+            }
+            return best;
+        }
+        function nearestRoad(x, z) {
+            let best = -1;
+            let dist = 12;
+            (config.roads || []).forEach((road, index) => {
+                const path = curvePoints(road.points, road.edges, false);
+                for (let i = 1; i < path.length; i++) {
+                    const ax = path[i - 1][0];
+                    const az = path[i - 1][1];
+                    const bx = path[i][0];
+                    const bz = path[i][1];
+                    const dx = bx - ax;
+                    const dz = bz - az;
+                    const len = dx * dx + dz * dz || 1;
+                    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / len));
+                    const d = Math.hypot(x - (ax + dx * t), z - (az + dz * t));
+                    if (d < dist) { dist = d; best = index; }
+                }
+            });
+            return best;
+        }
+        function renderRoads() {
+            const list = document.getElementById('roadList');
+            list.textContent = '';
+            const roads = config.roads || [];
+            if (!roads.length) {
+                const empty = document.createElement('p');
+                empty.textContent = 'No roads yet.';
+                list.appendChild(empty);
+                return;
+            }
+            roads.forEach((road, index) => {
+                const row = document.createElement('div');
+                row.className = 'row';
+                const label = document.createElement('span');
+                label.textContent = 'Road ' + (index + 1) + ' · ' + road.points.length + ' points';
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.textContent = 'Delete';
+                remove.addEventListener('click', () => {
+                    config.roads.splice(index, 1);
+                    renderRoads();
+                    draw();
+                });
+                row.append(label, remove);
+                list.appendChild(row);
+            });
         }
         function outlineSamples(points, edges) {
             return points.length >= 3 ? curvePoints(points, edges || [], true) : points;
@@ -562,7 +647,7 @@
             if (drawing === 'bounds') return config.bounds;
             return zone();
         }
-        const toolNames = [['draw', 'Draw'], ['select', 'Select'], ['camp', 'Camp'], ['tree', 'Chop tree'], ['rock', 'Mine rock'], ['plain-tree', 'Tree'], ['plain-rock', 'Rock'], ['herb', 'Herb'], ['sulfur', 'Sulfur'], ['erase', 'Erase']];
+        const toolNames = [['draw', 'Draw'], ['select', 'Select'], ['road', 'Road'], ['camp', 'Camp'], ['tree', 'Chop tree'], ['rock', 'Mine rock'], ['plain-tree', 'Tree'], ['plain-rock', 'Rock'], ['herb', 'Herb'], ['sulfur', 'Sulfur'], ['erase', 'Erase']];
         const tools = document.getElementById('tools');
         for (const [id, label] of toolNames) {
             const button = document.createElement('button');
@@ -577,6 +662,26 @@
             tools.appendChild(button);
         }
         document.getElementById('finish').addEventListener('click', () => {
+            if (tool === 'road') {
+                if (!config.roads) config.roads = [];
+                if (roadDraft.length < 2) { note('A road needs a start camp and an end camp'); return; }
+                const start = snapCamp(roadDraft[0][0], roadDraft[0][1]);
+                const end = snapCamp(roadDraft[roadDraft.length - 1][0], roadDraft[roadDraft.length - 1][1]);
+                if (!start || Math.hypot(start.x - roadDraft[0][0], start.z - roadDraft[0][1]) > 1) { note('Start the road on a camp'); return; }
+                if (!end || Math.hypot(end.x - roadDraft[roadDraft.length - 1][0], end.z - roadDraft[roadDraft.length - 1][1]) > 1) { note('End the road on a camp'); return; }
+                if (start.x === end.x && start.z === end.z) { note('Connect two different camps'); return; }
+                config.roads.push({
+                    id: 'r' + Math.random().toString(36).slice(2, 8),
+                    points: roadDraft.map(point => point.slice()),
+                    edges: roadEdges.slice()
+                });
+                roadDraft = [];
+                roadEdges = [];
+                renderRoads();
+                draw();
+                note('Road added. Save the world.');
+                return;
+            }
             if (draft.length < 3) { note('An outline needs at least 3 points'); return; }
             const edges = draftEdges.slice();
             edges.push(edgeMode);
@@ -720,6 +825,15 @@
                 note(draft.length + ' points. The newest side is ' + (edgeMode === 'organic' ? 'organic' : 'straight') + '.');
                 return;
             }
+            if (tool === 'road') {
+                const camp = snapCamp(spot.x, spot.z);
+                const next = camp ? [Math.round(camp.x), Math.round(camp.z)] : point;
+                if (roadDraft.length) roadEdges.push(edgeMode);
+                roadDraft.push(next);
+                draw();
+                note(camp ? 'On a camp. Add bends or click the next camp, then Finish outline.' : 'Bend added. The road still needs to end on a camp.');
+                return;
+            }
             if (tool === 'select') {
                 const outline = activeOutline();
                 if (outline && outline.points && outline.points.length >= 2) {
@@ -742,6 +856,16 @@
                 return;
             }
             const current = zone();
+            if (tool === 'erase') {
+                const road = nearestRoad(spot.x, spot.z);
+                if (road >= 0) {
+                    config.roads.splice(road, 1);
+                    renderRoads();
+                    draw();
+                    note('Road removed');
+                    return;
+                }
+            }
             if (!current) { note('Select a zone first'); return; }
             if (!inside(spot.x, spot.z, outlineSamples(current.points, current.edges))) { note('Place that inside the outline'); return; }
             if (tool === 'camp') {
@@ -1137,6 +1261,7 @@
                 spawnCap: config.spawnCap,
                 bounds: config.bounds,
                 zones: config.zones || [],
+                roads: config.roads || [],
                 loot: config.loot || {},
                 quests: config.quests || []
             };
@@ -1146,7 +1271,7 @@
             link.download = 'world.json';
             link.click();
             URL.revokeObjectURL(link.href);
-            note('World exported, including zones, camps, nodes, loot, and quests');
+            note('World exported, including zones, camps, roads, nodes, loot, and quests');
         });
         document.getElementById('importMapBtn').addEventListener('click', () => document.getElementById('importMap').click());
         document.getElementById('importMap').addEventListener('change', async (event) => {
@@ -1169,11 +1294,13 @@
                 const saved = await api('/api/setup/config', { method: 'PUT', body: JSON.stringify(parsed) });
                 config = saved.config;
                 if (!Array.isArray(config.quests)) config.quests = [];
+                if (!Array.isArray(config.roads)) config.roads = [];
                 applyRuleFields();
                 selected = config.zones.length ? 0 : -1;
                 questZoneId = selected >= 0 ? config.zones[selected].id : '';
                 questPick = -1;
                 renderZones();
+                renderRoads();
                 renderFields();
                 renderLoot();
                 if (!document.getElementById('panelQuests').hidden) renderQuests();
@@ -1220,7 +1347,9 @@
                 config = await api('/api/setup/config');
                 showApp();
                 fillRules();
+                if (!Array.isArray(config.roads)) config.roads = [];
                 renderZones();
+                renderRoads();
                 renderFields();
                 renderLoot();
                 draw();

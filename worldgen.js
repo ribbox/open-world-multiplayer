@@ -67,7 +67,7 @@ function lakeDepth(x, z) {
     return depth;
 }
 
-export function terrainHeight(x, z) {
+function rawHeight(x, z) {
     let h = hills(x, z);
     const river = riverMask(x, z);
     if (river > 0) h = h * (1 - river) + (WATER_LEVEL - 1.7) * river;
@@ -76,6 +76,81 @@ export function terrainHeight(x, z) {
     const dist = Math.hypot(x, z);
     const flat = Math.min(1, Math.max(0, (dist - 12) / 28));
     h = h * flat + 0.9 * (1 - flat);
+    return h;
+}
+
+const ROAD_HALF = 6;
+let designedRoads = [];
+let roadSamples = [];
+
+function rebuildRoads() {
+    roadSamples = [];
+    for (const road of designedRoads) {
+        const curve = curvePoints(road.points, road.edges, false);
+        if (curve.length < 2) continue;
+        const dense = [];
+        for (let i = 0; i < curve.length - 1; i++) {
+            const ax = curve[i][0];
+            const az = curve[i][1];
+            const bx = curve[i + 1][0];
+            const bz = curve[i + 1][1];
+            const len = Math.hypot(bx - ax, bz - az);
+            const steps = Math.max(1, Math.ceil(len / 4));
+            for (let s = 0; s < steps; s++) {
+                const t = s / steps;
+                dense.push({ x: ax + (bx - ax) * t, z: az + (bz - az) * t, y: 0 });
+            }
+        }
+        const last = curve[curve.length - 1];
+        dense.push({ x: last[0], z: last[1], y: 0 });
+        for (const point of dense) point.y = Math.max(rawHeight(point.x, point.z), WATER_LEVEL + 0.28);
+        for (let pass = 0; pass < 6; pass++) {
+            for (let i = 1; i < dense.length; i++) {
+                const dist = Math.hypot(dense[i].x - dense[i - 1].x, dense[i].z - dense[i - 1].z) || 1;
+                const rise = dist * 0.18;
+                const dy = dense[i].y - dense[i - 1].y;
+                if (dy > rise) dense[i].y = dense[i - 1].y + rise;
+                else if (dy < -rise) dense[i].y = dense[i - 1].y - rise;
+            }
+            for (let i = dense.length - 2; i >= 0; i--) {
+                const dist = Math.hypot(dense[i].x - dense[i + 1].x, dense[i].z - dense[i + 1].z) || 1;
+                const rise = dist * 0.18;
+                const dy = dense[i].y - dense[i + 1].y;
+                if (dy > rise) dense[i].y = dense[i + 1].y + rise;
+                else if (dy < -rise) dense[i].y = dense[i + 1].y - rise;
+            }
+        }
+        for (const point of dense) point.y = Math.max(point.y, WATER_LEVEL + 0.28);
+        roadSamples.push(dense);
+    }
+}
+
+export function roadAt(x, z) {
+    let best = null;
+    for (const road of roadSamples) {
+        for (const point of road) {
+            const dx = point.x - x;
+            const dz = point.z - z;
+            if (Math.abs(dx) > ROAD_HALF || Math.abs(dz) > ROAD_HALF) continue;
+            const dist = Math.hypot(dx, dz);
+            if (!best || dist < best.dist) best = { dist, y: point.y };
+        }
+    }
+    return best;
+}
+
+export function listRoads() {
+    return designedRoads.map(road => ({ id: road.id, points: road.points, edges: road.edges }));
+}
+
+export function terrainHeight(x, z) {
+    let h = rawHeight(x, z);
+    const road = roadAt(x, z);
+    if (road && road.dist < ROAD_HALF) {
+        const t = 1 - road.dist / ROAD_HALF;
+        const blend = t * t * (3 - 2 * t);
+        h = h * (1 - blend) + road.y * blend;
+    }
     return applyBoundary(x, z, h);
 }
 
@@ -100,6 +175,7 @@ export function chunkResources(cx, cz) {
         const x = cx * CHUNK_SIZE + px;
         const z = cz * CHUNK_SIZE + pz;
         if (terrainHeight(x, z) < WATER_LEVEL + 0.2 || boundaryInset(x, z) < 8) continue;
+        if (roadAt(x, z) && roadAt(x, z).dist < 5.2) continue;
         items.push({
             id: 's-' + cx + '-' + cz + '-' + i,
             type,
@@ -121,6 +197,7 @@ export function chunkResources(cx, cz) {
         const x = cx * CHUNK_SIZE + px;
         const z = cz * CHUNK_SIZE + pz;
         if (terrainHeight(x, z) < WATER_LEVEL + 0.45 || boundaryInset(x, z) < 8) continue;
+        if (roadAt(x, z) && roadAt(x, z).dist < 5.2) continue;
         items.push({
             id: 'b-' + cx + '-' + cz + '-' + i,
             type: 'boulder',
@@ -142,7 +219,7 @@ export function chunkResources(cx, cz) {
             const pz = (extra() - 0.5) * CHUNK_SIZE * 0.8;
             const x = cx * CHUNK_SIZE + px;
             const z = cz * CHUNK_SIZE + pz;
-            if (terrainHeight(x, z) < WATER_LEVEL + 0.35 || boundaryInset(x, z) < 8) continue;
+            if (terrainHeight(x, z) < WATER_LEVEL + 0.35 || boundaryInset(x, z) < 8 || (roadAt(x, z) && roadAt(x, z).dist < 5.2)) continue;
             const index = items.length;
             items.push({ id: `${cx},${cz},${index}`, type: 'herb', x, z, px, pz, sx: 0, sy: 0, sz: 0, hits: 2 });
         }
@@ -151,7 +228,7 @@ export function chunkResources(cx, cz) {
             const pz = (extra() - 0.5) * CHUNK_SIZE * 0.8;
             const x = cx * CHUNK_SIZE + px;
             const z = cz * CHUNK_SIZE + pz;
-            if (terrainHeight(x, z) >= WATER_LEVEL + 0.35 && boundaryInset(x, z) >= 8) {
+            if (terrainHeight(x, z) >= WATER_LEVEL + 0.35 && boundaryInset(x, z) >= 8 && !(roadAt(x, z) && roadAt(x, z).dist < 5.2)) {
                 const index = items.length;
                 items.push({ id: `${cx},${cz},${index}`, type: 'sulfur', x, z, px, pz, sx: 0.45, sy: 0.7, sz: 0.45, hits: 3 });
             }
@@ -692,6 +769,7 @@ export function applyWorldConfig(config) {
     shape.samples = shape.points.length >= 3 ? curvePoints(shape.points, shape.edges, true) : null;
     designedZones = [];
     designedNodes = [];
+    designedRoads = [];
     const zones = Array.isArray(config && config.zones) ? config.zones : [];
     for (const zone of zones.slice(0, 24)) {
         const points = (Array.isArray(zone.points) ? zone.points : []).slice(0, 80).map(point => [Number(point[0]), Number(point[1])]).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
@@ -735,6 +813,19 @@ export function applyWorldConfig(config) {
         }
         designedZones.push(entry);
     }
+    const roads = Array.isArray(config && config.roads) ? config.roads : [];
+    for (const road of roads.slice(0, 40)) {
+        const points = (Array.isArray(road.points) ? road.points : []).slice(0, 24).map(point => [Number(point[0]), Number(point[1])]).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+        if (points.length < 2) continue;
+        const edges = [];
+        for (let i = 0; i < points.length - 1; i++) edges.push(road.edges && road.edges[i] === 'organic' ? 'organic' : 'line');
+        designedRoads.push({
+            id: String(road.id || ('road-' + designedRoads.length)).slice(0, 24),
+            points,
+            edges
+        });
+    }
+    rebuildRoads();
 }
 
 export function customMap() {
