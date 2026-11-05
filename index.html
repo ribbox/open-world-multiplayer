@@ -1892,6 +1892,7 @@
 
             const roadRibbonMat = new THREE.MeshLambertMaterial({
                 color: 0xa88862,
+                side: THREE.DoubleSide,
                 polygonOffset: true,
                 polygonOffsetFactor: -2,
                 polygonOffsetUnits: -2
@@ -1908,7 +1909,7 @@
 
             function addRoadRibbons() {
                 clearRoadRibbons();
-                const half = 1.15;
+                const half = 1.35;
                 for (const road of listRoads()) {
                     const curve = curvePoints(road.points, road.edges, false);
                     if (curve.length < 2) continue;
@@ -1937,13 +1938,13 @@
                         const span = Math.hypot(dx, dz) || 1;
                         dx /= span;
                         dz /= span;
-                        const y = terrainHeight(pts[i][0], pts[i][1]) + 0.04;
+                        const y = terrainHeight(pts[i][0], pts[i][1]) + 0.08;
                         positions.push(pts[i][0] - dz * half, y, pts[i][1] + dx * half);
                         positions.push(pts[i][0] + dz * half, y, pts[i][1] - dx * half);
                         normals.push(0, 1, 0, 0, 1, 0);
                         if (i > 0) {
                             const a = (i - 1) * 2;
-                            indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+                            indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
                         }
                     }
                     const geo = new THREE.BufferGeometry();
