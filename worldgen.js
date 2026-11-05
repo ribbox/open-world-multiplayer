@@ -542,16 +542,20 @@ function pullInside(x, z, minInset) {
 function applyBoundary(x, z, h) {
     const inset = boundaryInset(x, z);
     if (shape.edge === 'sea') {
+        const road = roadAt(x, z, 8);
+        const onPath = road && road.dist < 8;
+        if ((staysDry(x, z) && inset >= 0) || (onPath && inset > -5)) {
+            return Math.max(h, WATER_LEVEL + 1.05);
+        }
         if (inset >= 8) return h;
         if (inset >= 0) {
             const t = (8 - inset) / 8;
-            const shore = WATER_LEVEL + 0.5;
-            const next = h * (1 - t * t) + shore * (t * t);
-            return staysDry(x, z) ? Math.max(next, WATER_LEVEL + 0.6) : next;
+            const shore = WATER_LEVEL + 0.55;
+            return h * (1 - t * t) + shore * (t * t);
         }
         const t = Math.min(1, -inset / 9);
         const deep = WATER_LEVEL - 1.6 - Math.min(10, -inset) * 0.2;
-        return (WATER_LEVEL - 0.2) * (1 - t) + deep * t;
+        return (WATER_LEVEL - 0.15) * (1 - t) + deep * t;
     }
     if (inset < 42) {
         const u = Math.min(1, (42 - inset) / 42);
