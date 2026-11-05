@@ -67,12 +67,14 @@ function lakeDepth(x, z) {
     return depth;
 }
 
-function rawHeight(x, z) {
+function rawHeight(x, z, carve = true) {
     let h = hills(x, z);
-    const river = riverMask(x, z);
-    if (river > 0) h = h * (1 - river) + (WATER_LEVEL - 1.7) * river;
-    const lake = lakeDepth(x, z);
-    if (lake > 0) h = Math.min(h, WATER_LEVEL - lake);
+    if (carve) {
+        const river = riverMask(x, z);
+        if (river > 0) h = h * (1 - river) + (WATER_LEVEL - 1.7) * river;
+        const lake = lakeDepth(x, z);
+        if (lake > 0) h = Math.min(h, WATER_LEVEL - lake);
+    }
     const dist = Math.hypot(x, z);
     const flat = Math.min(1, Math.max(0, (dist - 12) / 28));
     h = h * flat + 0.9 * (1 - flat);
@@ -124,21 +126,13 @@ function rebuildRoads() {
         }
         const last = curve[curve.length - 1];
         dense.push({ x: last[0], z: last[1], y: 0 });
-        for (const point of dense) point.y = rawHeight(point.x, point.z);
+        for (const point of dense) point.y = rawHeight(point.x, point.z, false);
         limitRoadGrade(dense);
-        let lifted = false;
-        for (const point of dense) {
-            if (point.y < WATER_LEVEL + 0.28) {
-                point.y = WATER_LEVEL + 0.28;
-                lifted = true;
-            }
-        }
-        if (lifted) limitRoadGrade(dense);
         roadSamples.push(dense);
     }
 }
 
-export function roadAt(x, z) {
+export function roadAt(x, z, reach = ROAD_SHOULDER) {
     let best = null;
     for (const road of roadSamples) {
         for (let i = 1; i < road.length; i++) {
@@ -154,9 +148,9 @@ export function roadAt(x, z) {
             const pz = a.z + abz * t;
             const dx = x - px;
             const dz = z - pz;
-            if (Math.abs(dx) > ROAD_SHOULDER || Math.abs(dz) > ROAD_SHOULDER) continue;
+            if (Math.abs(dx) > reach || Math.abs(dz) > reach) continue;
             const dist = Math.hypot(dx, dz);
-            if (dist > ROAD_SHOULDER) continue;
+            if (dist > reach) continue;
             if (!best || dist < best.dist) best = { dist, y: a.y + (b.y - a.y) * t };
         }
     }
@@ -167,8 +161,19 @@ export function listRoads() {
     return designedRoads.map(road => ({ id: road.id, points: road.points, edges: road.edges }));
 }
 
+function staysDry(x, z) {
+    if (typeof designedZoneAt === 'function' && designedZoneAt(x, z)) return true;
+    for (const zone of designedZones) {
+        for (const camp of zone.camps || []) {
+            if ((camp.x - x) ** 2 + (camp.z - z) ** 2 < 28 * 28) return true;
+        }
+    }
+    const road = roadAt(x, z, 14);
+    return !!(road && road.dist < 14);
+}
+
 export function terrainHeight(x, z) {
-    let h = rawHeight(x, z);
+    let h = rawHeight(x, z, !staysDry(x, z));
     const road = roadAt(x, z);
     if (road && road.dist < ROAD_SHOULDER) {
         const edge = road.dist <= ROAD_BED ? 1 : 1 - (road.dist - ROAD_BED) / (ROAD_SHOULDER - ROAD_BED);
@@ -537,12 +542,16 @@ function pullInside(x, z, minInset) {
 function applyBoundary(x, z, h) {
     const inset = boundaryInset(x, z);
     if (shape.edge === 'sea') {
-        if (inset < 26) {
-            const t = Math.min(1, (26 - inset) / 12);
-            const deep = WATER_LEVEL - 1.7 - Math.max(0, -inset) * 0.05;
-            return h * (1 - t) + deep * t;
+        if (inset >= 8) return h;
+        if (inset >= 0) {
+            const t = (8 - inset) / 8;
+            const shore = WATER_LEVEL + 0.5;
+            const next = h * (1 - t * t) + shore * (t * t);
+            return staysDry(x, z) ? Math.max(next, WATER_LEVEL + 0.6) : next;
         }
-        return h;
+        const t = Math.min(1, -inset / 9);
+        const deep = WATER_LEVEL - 1.6 - Math.min(10, -inset) * 0.2;
+        return (WATER_LEVEL - 0.2) * (1 - t) + deep * t;
     }
     if (inset < 42) {
         const u = Math.min(1, (42 - inset) / 42);
