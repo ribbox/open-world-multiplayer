@@ -328,8 +328,31 @@
         #error {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             color: #ff6b6b; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 8px;
-            font-size: 16px; max-width: 400px; text-align: center; z-index: 20; display: none;
+            font-size: 16px; max-width: 400px; text-align: center; z-index: 120; display: none;
         }
+        #loading {
+            position: fixed; inset: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: center;
+            background: #102018; color: #fff; font-family: Arial, sans-serif;
+        }
+        #loading.done { display: none; }
+        #loadingCard { width: min(420px, 86vw); }
+        #loadingTitle { font-size: 22px; margin-bottom: 16px; letter-spacing: 0.04em; }
+        #loadingTrack {
+            height: 16px; background: #1b2b22; border: 1px solid #3d5c49;
+            border-radius: 8px; overflow: hidden;
+        }
+        #loadingBar { height: 100%; width: 0%; background: #3ddc84; }
+        #loading:not(.counting) #loadingBar {
+            width: 38%;
+            animation: loadingSlide 1s ease-in-out infinite;
+        }
+        #loading.counting #loadingBar { animation: none; transition: width 0.18s linear; }
+        @keyframes loadingSlide {
+            0% { transform: translateX(-120%); }
+            100% { transform: translateX(280%); }
+        }
+        #loadingLabel { margin-top: 12px; font-size: 14px; color: #c9ddd0; min-height: 1.2em; }
     </style>
     <script type="importmap">
     {
@@ -341,6 +364,13 @@
     </script>
 </head>
 <body>
+    <div id="loading" role="status" aria-live="polite">
+        <div id="loadingCard">
+            <div id="loadingTitle">Open World</div>
+            <div id="loadingTrack"><div id="loadingBar"></div></div>
+            <div id="loadingLabel">Starting</div>
+        </div>
+    </div>
     <div id="info">
         <button type="button" id="hideInfo" aria-label="Hide instructions">×</button>
         <strong>Open World Prototype</strong><br>
@@ -458,6 +488,9 @@
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
         import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, listRoads, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset, campYaw, campSpot, roadAt, listDungeons, dungeonById, dungeonWorld, dungeonLocal, dungeonClamp, dungeonBlocked } from './worldgen.js';
 
+        const loadingLabel = document.getElementById('loadingLabel');
+        if (loadingLabel) loadingLabel.textContent = 'Loading the world';
+
         let bootWorld = null;
         try {
             const worldResponse = await fetch('/api/world');
@@ -565,7 +598,59 @@
             nameInput.value = playerName;
 
             // Load player model from server
-            const loader = new GLTFLoader();
+            let loadAssetsReady = false;
+            let loadWorldReady = false;
+            let playReady = false;
+            let loadDone = 0;
+            let loadTotal = 1;
+            function loadFileName(url) {
+                const name = String(url || '').split('/').pop().split('?')[0];
+                return name.replace(/\.glb$/i, '').replace(/[-_]/g, ' ') || 'assets';
+            }
+            function paintLoading(url) {
+                const cover = document.getElementById('loading');
+                if (cover) cover.classList.add('counting');
+                const bar = document.getElementById('loadingBar');
+                const label = document.getElementById('loadingLabel');
+                if (!bar) return;
+                if (loadAssetsReady && loadWorldReady) {
+                    bar.style.width = '100%';
+                    if (label) label.textContent = 'Ready';
+                    if (!playReady) {
+                        playReady = true;
+                        const cover = document.getElementById('loading');
+                        setTimeout(() => { if (cover) cover.classList.add('done'); }, 240);
+                    }
+                    return;
+                }
+                const count = Math.max(1, loadTotal);
+                const pct = Math.min(96, Math.round((loadDone / count) * 92) + (loadAssetsReady ? 4 : 0));
+                bar.style.width = pct + '%';
+                if (!label) return;
+                if (loadAssetsReady) label.textContent = 'Entering the world';
+                else label.textContent = 'Loading ' + loadFileName(url) + '   ' + Math.min(loadDone, count) + ' / ' + count;
+            }
+            const loadManager = new THREE.LoadingManager();
+            loadManager.itemStart('/icons/fantasy-icons.png');
+            loadManager.onStart = (_url, loaded, total) => {
+                loadDone = loaded;
+                loadTotal = total;
+                paintLoading(_url);
+            };
+            loadManager.onProgress = (url, loaded, total) => {
+                loadDone = loaded;
+                loadTotal = total;
+                paintLoading(url);
+            };
+            loadManager.onLoad = () => {
+                loadAssetsReady = true;
+                loadDone = loadTotal;
+                paintLoading();
+            };
+            loadManager.onError = (url) => {
+                console.warn('Asset failed', url);
+            };
+            const loader = new GLTFLoader(loadManager);
             loader.load(
                 '/models/player.glb',
                 (gltf) => {
@@ -4741,11 +4826,16 @@
                 paintIcon(document.getElementById('sheetButton'), 'character');
                 updateInventoryUI();
                 if (document.getElementById('sheet').classList.contains('open')) renderSheet();
+                loadManager.itemEnd('/icons/fantasy-icons.png');
+            };
+            iconSheet.onerror = () => {
+                loadManager.itemEnd('/icons/fantasy-icons.png');
             };
             iconSheet.src = '/icons/fantasy-icons.png';
 
             // Input
             document.addEventListener('keydown', (e) => {
+                if (!playReady) return;
                 if (e.key === 'Escape' && document.getElementById('questlog').classList.contains('open')) {
                     toggleQuestLog(false);
                     return;
@@ -5370,6 +5460,8 @@
                         (data.players || []).forEach(p => {
                             if (p.id !== myId) ensureRemote(p);
                         });
+                        loadWorldReady = true;
+                        paintLoading();
                     } else if (data.type === 'join' && data.id !== myId) {
                         ensureRemote(data);
                     } else if (data.type === 'update' && data.id !== myId) {
