@@ -973,26 +973,43 @@ function projectSamples(samples, x, z) {
         const abx = b[0] - a[0];
         const abz = b[1] - a[1];
         const len2 = abx * abx + abz * abz || 1e-6;
-        let t = ((x - a[0]) * abx + (z - a[1]) * abz) / len2;
+        const rawT = ((x - a[0]) * abx + (z - a[1]) * abz) / len2;
+        let t = rawT;
         if (t < 0) t = 0;
         else if (t > 1) t = 1;
         const px = a[0] + abx * t;
         const pz = a[1] + abz * t;
         const dist = Math.hypot(x - px, z - pz);
-        if (!best || dist < best.dist) best = { dist, x: px, z: pz };
+        if (!best || dist < best.dist) best = { dist, x: px, z: pz, rawT, abx, abz };
     }
     return best;
 }
 
-export function dungeonClamp(dungeon, x, z) {
+export function dungeonClamp(dungeon, x, z, pad = 0.75) {
     const local = dungeonLocal(dungeon, x, z);
     const samples = dungeon.samples && dungeon.samples.length ? dungeon.samples : dungeon.points;
     const best = projectSamples(samples, local.x, local.z);
     if (!best) return dungeonWorld(dungeon, samples[0][0], samples[0][1]);
-    if (best.dist <= DUNGEON_HALF) return { x, z };
-    const nx = (local.x - best.x) / (best.dist || 1);
-    const nz = (local.z - best.z) / (best.dist || 1);
-    return dungeonWorld(dungeon, best.x + nx * (DUNGEON_HALF - 0.08), best.z + nz * (DUNGEON_HALF - 0.08));
+    let lx = local.x;
+    let lz = local.z;
+    const px = best.x;
+    const pz = best.z;
+    if (best.rawT < 0 || best.rawT > 1) {
+        const len = Math.hypot(best.abx, best.abz) || 1;
+        const fx = best.abx / len;
+        const fz = best.abz / len;
+        const relx = lx - px;
+        const relz = lz - pz;
+        const along = relx * fx + relz * fz;
+        lx = px + relx - fx * along;
+        lz = pz + relz - fz * along;
+    }
+    const dx = lx - px;
+    const dz = lz - pz;
+    const dist = Math.hypot(dx, dz);
+    const limit = Math.max(1.2, DUNGEON_HALF - pad);
+    if (dist <= limit) return dungeonWorld(dungeon, lx, lz);
+    return dungeonWorld(dungeon, px + (dx / dist) * limit, pz + (dz / dist) * limit);
 }
 
 export function dungeonTravel(dungeon, x, z) {

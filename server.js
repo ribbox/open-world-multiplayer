@@ -1921,7 +1921,16 @@ function rollLoot(level, tableId) {
     const table = tables[tableId] || tables.hide || LOOT_TABLES.hide;
     const count = 1 + Math.floor((level - 1) / 2) + (Math.random() < 0.5 ? 1 : 0);
     const items = [];
-    for (let i = 0; i < count; i++) items.push(lootItem(rollRow(table), level));
+    const seen = new Set();
+    let spins = 0;
+    while (items.length < count && spins < count * 8) {
+        spins += 1;
+        const item = lootItem(rollRow(table), level);
+        const key = [item.kind, item.name, item.slot || '', item.amount || 0, item.armor || 0, item.recipe || ''].join('|');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        items.push(item);
+    }
     return items;
 }
 
@@ -2292,8 +2301,10 @@ wss.on('connection', (ws) => {
                 else {
                     const held = dungeonClamp(cave, player.x, player.z);
                     if (dungeonBlocked(cave, prevX, prevZ, held.x, held.z)) {
-                        player.x = prevX;
-                        player.z = prevZ;
+                        const back = dungeonClamp(cave, prevX, prevZ);
+                        const outside = Math.hypot(back.x - prevX, back.z - prevZ) > 0.3;
+                        player.x = outside ? held.x : prevX;
+                        player.z = outside ? held.z : prevZ;
                     } else {
                         player.x = held.x;
                         player.z = held.z;

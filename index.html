@@ -40,6 +40,14 @@
             margin-top: 4px;
         }
         #bagHint { font-size: 11px; color: #ccc; margin-top: 6px; max-width: 176px; line-height: 1.3; }
+        #itemTip {
+            position: fixed; z-index: 80; max-width: 220px; padding: 8px 10px;
+            background: rgba(8, 10, 16, 0.94); color: #fff;
+            border: 1px solid rgba(255,255,255,0.35); border-radius: 6px;
+            font-size: 12px; line-height: 1.35; pointer-events: none;
+        }
+        #itemTip[hidden] { display: none; }
+        #itemTip .tip-name { font-weight: bold; font-size: 13px; margin-bottom: 2px; }
         #coinLine { color: #f1c40f; margin-top: 4px; }
         #supplyLabel { margin-top: 8px; font-size: 12px; color: #ddd; }
         #supplySlots { display: grid; grid-template-columns: repeat(4, 40px); gap: 3px; margin-top: 4px; }
@@ -437,6 +445,7 @@
     <div id="questlog"></div>
     <div id="shop"></div>
     <div id="talkHint"></div>
+    <div id="itemTip" hidden></div>
     <div id="talk"></div>
     <div id="actionPicker" hidden></div>
     <div id="mapReadout"><div id="zoneName">Camp Glade</div><div id="zoneCoords">50.0, 50.0</div><div id="mapHint">Click for the world map</div></div>
@@ -1029,7 +1038,75 @@
                 feet: { cloth: 130, leather: 130, plate: 131 },
                 offhand: { cloth: 105, leather: 96, plate: 97 }
             };
+            const SLOT_NAMES = { head: 'Head', neck: 'Neck', shoulders: 'Shoulders', cloak: 'Cloak', chest: 'Chest', hands: 'Hands', waist: 'Waist', legs: 'Legs', feet: 'Feet', weapon: 'Weapon', offhand: 'Off hand' };
+            const STYLE_NAMES = { cloth: 'Cloth', leather: 'Leather', plate: 'Plate' };
+            function itemTipLines(item) {
+                const lines = [];
+                if (!item) return lines;
+                if (item.kind === 'health') lines.push('Restores ' + (item.amount || 0) + ' health');
+                else if (item.kind === 'mana') lines.push('Restores ' + (item.amount || 0) + ' mana');
+                else if (item.kind === 'bomb') lines.push('Deals ' + (item.amount || 0) + ' damage');
+                else if (item.kind === 'armor') {
+                    const style = STYLE_NAMES[item.style] || 'Armor';
+                    lines.push(style + ' armor' + (item.magic ? ' · magic' : ''));
+                    if (SLOT_NAMES[item.slot]) lines.push(SLOT_NAMES[item.slot]);
+                    lines.push('Armor +' + (item.armor || 0));
+                } else if (item.kind === 'weapon') {
+                    const weapon = item.weapon === 'staff' ? 'Staff' : 'Sword';
+                    lines.push((item.magic ? 'Magic ' : '') + weapon);
+                    if (SLOT_NAMES[item.slot]) lines.push(SLOT_NAMES[item.slot]);
+                    if (item.armor) lines.push('Armor +' + item.armor);
+                } else if (item.kind === 'recipe') lines.push('Pattern · click to learn');
+                else if (item.kind === 'quest') lines.push('Quest item');
+                else if (item.kind === 'junk') lines.push('Junk');
+                if (item.qty > 1) lines.push('Quantity ' + item.qty);
+                return lines;
+            }
+            function hideItemTip() {
+                const tip = document.getElementById('itemTip');
+                if (tip) tip.hidden = true;
+            }
+            function moveItemTip(e) {
+                const tip = document.getElementById('itemTip');
+                if (!tip || tip.hidden) return;
+                const pad = 14;
+                let x = e.clientX + pad;
+                let y = e.clientY + pad;
+                const w = tip.offsetWidth || 180;
+                const h = tip.offsetHeight || 64;
+                if (x + w > window.innerWidth - 8) x = Math.max(8, e.clientX - w - pad);
+                if (y + h > window.innerHeight - 8) y = Math.max(8, e.clientY - h - pad);
+                tip.style.left = x + 'px';
+                tip.style.top = y + 'px';
+            }
+            function showItemTip(item, e, extra) {
+                const tip = document.getElementById('itemTip');
+                if (!tip || !item) return;
+                tip.textContent = '';
+                const title = document.createElement('div');
+                title.className = 'tip-name';
+                title.textContent = item.name || 'Item';
+                tip.appendChild(title);
+                for (const line of itemTipLines(item)) {
+                    const row = document.createElement('div');
+                    row.textContent = line;
+                    tip.appendChild(row);
+                }
+                for (const line of extra || []) {
+                    const row = document.createElement('div');
+                    row.textContent = line;
+                    tip.appendChild(row);
+                }
+                tip.hidden = false;
+                moveItemTip(e);
+            }
+            function bindItemTip(el, item, extra) {
+                el.addEventListener('mouseenter', (e) => showItemTip(item, e, extra));
+                el.addEventListener('mousemove', moveItemTip);
+                el.addEventListener('mouseleave', hideItemTip);
+            }
             function updateInventoryUI() {
+                hideItemTip();
                 const slots = inventory.slots || [];
                 const used = slots.filter(Boolean).length;
                 const extra = inventory.bagSlots ? ' +' + inventory.bagSlots : '';
@@ -1050,11 +1127,17 @@
                             qty.textContent = String(slot.qty);
                             cell.appendChild(qty);
                         }
-                        cell.title = slot.kind === 'recipe'
-                            ? slot.name + ' — click to learn'
+                        cell.title = '';
+                        const use = slot.kind === 'recipe'
+                            ? 'Click to learn'
                             : (slot.kind === 'health' || slot.kind === 'mana')
-                            ? slot.name + ' — click to drink'
-                            : slot.name + ' x' + slot.qty;
+                            ? 'Click to drink'
+                            : (slot.kind === 'bomb')
+                            ? 'Click to throw at your target'
+                            : (slot.kind === 'armor' || slot.kind === 'weapon')
+                            ? 'Equip from the character sheet'
+                            : '';
+                        bindItemTip(cell, slot, use ? [use] : []);
                     } else {
                         cell.title = 'Empty';
                     }
@@ -1079,7 +1162,8 @@
                     mark.className = 'qty';
                     mark.textContent = String(qty);
                     cell.appendChild(mark);
-                    cell.title = name + ' x' + qty + ' — does not use a bag slot';
+                    cell.title = '';
+                    bindItemTip(cell, { kind, name, qty }, ['Supply', 'Does not use a bag slot']);
                     cell.addEventListener('contextmenu', (e) => {
                         e.preventDefault();
                         if (!qty || !gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
@@ -2176,31 +2260,52 @@
             }
 
             function ribbonGeo(pts, half, y, side, ny) {
+                const frames = [];
+                for (let i = 0; i < pts.length; i++) {
+                    const p0 = pts[Math.max(0, i - 1)];
+                    const p1 = pts[i];
+                    const p2 = pts[Math.min(pts.length - 1, i + 1)];
+                    let d1x = p1[0] - p0[0];
+                    let d1z = p1[1] - p0[1];
+                    let d2x = p2[0] - p1[0];
+                    let d2z = p2[1] - p1[1];
+                    const l1 = Math.hypot(d1x, d1z) || 1;
+                    const l2 = Math.hypot(d2x, d2z) || 1;
+                    d1x /= l1; d1z /= l1; d2x /= l2; d2z /= l2;
+                    if (i === 0) { d1x = d2x; d1z = d2z; }
+                    if (i === pts.length - 1) { d2x = d1x; d2z = d1z; }
+                    const n1x = -d1z;
+                    const n1z = d1x;
+                    const n2x = -d2z;
+                    const n2z = d2x;
+                    let mx = n1x + n2x;
+                    let mz = n1z + n2z;
+                    let ml = Math.hypot(mx, mz);
+                    if (ml < 1e-4) { mx = n2x; mz = n2z; ml = 1; }
+                    mx /= ml; mz /= ml;
+                    let scale = 1 / Math.max(0.4, mx * n2x + mz * n2z);
+                    if (scale > 2.4) scale = 2.4;
+                    const w = half * scale;
+                    frames.push({
+                        lx: p1[0] + mx * w, lz: p1[1] + mz * w,
+                        rx: p1[0] - mx * w, rz: p1[1] - mz * w
+                    });
+                }
                 const positions = [];
                 const normals = [];
                 const indices = [];
-                for (let i = 0; i < pts.length; i++) {
-                    const prev = pts[Math.max(0, i - 1)];
-                    const next = pts[Math.min(pts.length - 1, i + 1)];
-                    let dx = next[0] - prev[0];
-                    let dz = next[1] - prev[1];
-                    const span = Math.hypot(dx, dz) || 1;
-                    dx /= span;
-                    dz /= span;
-                    const leftX = pts[i][0] - dz * half;
-                    const leftZ = pts[i][1] + dx * half;
-                    const rightX = pts[i][0] + dz * half;
-                    const rightZ = pts[i][1] - dx * half;
+                for (let i = 0; i < frames.length; i++) {
+                    const edge = frames[i];
                     if (side === 0) {
                         const up = ny || 1;
-                        positions.push(leftX, y, leftZ, rightX, y, rightZ);
+                        positions.push(edge.lx, y, edge.lz, edge.rx, y, edge.rz);
                         normals.push(0, up, 0, 0, up, 0);
                     } else if (side < 0) {
-                        positions.push(leftX, 0, leftZ, leftX, y, leftZ);
-                        normals.push(-dz, 0, dx, -dz, 0, dx);
+                        positions.push(edge.lx, 0, edge.lz, edge.lx, y, edge.lz);
+                        normals.push(edge.lx - pts[i][0], 0, edge.lz - pts[i][1], edge.lx - pts[i][0], 0, edge.lz - pts[i][1]);
                     } else {
-                        positions.push(rightX, 0, rightZ, rightX, y, rightZ);
-                        normals.push(dz, 0, -dx, dz, 0, -dx);
+                        positions.push(edge.rx, 0, edge.rz, edge.rx, y, edge.rz);
+                        normals.push(edge.rx - pts[i][0], 0, edge.rz - pts[i][1], edge.rx - pts[i][0], 0, edge.rz - pts[i][1]);
                     }
                     if (i > 0) {
                         const a = (i - 1) * 2;
@@ -2261,18 +2366,8 @@
 
             function caveCamInside(x, z) {
                 if (!activeCave) return false;
-                const held = dungeonClamp(activeCave, x, z);
-                if (Math.hypot(held.x - x, held.z - z) > 0.28) return false;
-                const samples = activeCave.samples && activeCave.samples.length ? activeCave.samples : activeCave.points;
-                if (!samples || samples.length < 2) return false;
-                const local = dungeonLocal(activeCave, x, z);
-                const a = samples[0];
-                const b = samples[1];
-                const abx = b[0] - a[0];
-                const abz = b[1] - a[1];
-                const len = Math.hypot(abx, abz) || 1;
-                const along = ((local.x - a[0]) * abx + (local.z - a[1]) * abz) / len;
-                return along >= 0.45;
+                const held = dungeonClamp(activeCave, x, z, 1.15);
+                return Math.hypot(held.x - x, held.z - z) <= 0.25;
             }
 
             function buildDungeonMesh(cave) {
@@ -2282,11 +2377,18 @@
                     const world = dungeonWorld(cave, point[0], point[1]);
                     return [world.x, world.z];
                 });
+                const shell = pts.slice();
+                if (shell.length >= 2) {
+                    const a = shell[shell.length - 2];
+                    const b = shell[shell.length - 1];
+                    const span = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+                    shell.push([b[0] + (b[0] - a[0]) / span * 1.35, b[1] + (b[1] - a[1]) / span * 1.35]);
+                }
                 dungeonRoot = new THREE.Group();
-                const floor = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, 0, 0), new THREE.MeshLambertMaterial({ color: 0x3d342c, side: THREE.DoubleSide }));
-                const ceiling = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, CAVE_HEIGHT, 0), new THREE.MeshLambertMaterial({ color: 0x3c3548, side: THREE.DoubleSide }));
-                const left = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, CAVE_HEIGHT, -1), new THREE.MeshLambertMaterial({ color: 0x322a3c, side: THREE.DoubleSide }));
-                const right = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, CAVE_HEIGHT, 1), new THREE.MeshLambertMaterial({ color: 0x2c2634, side: THREE.DoubleSide }));
+                const floor = new THREE.Mesh(ribbonGeo(shell, DUNGEON_HALF, 0, 0), new THREE.MeshLambertMaterial({ color: 0x3d342c, side: THREE.DoubleSide }));
+                const ceiling = new THREE.Mesh(ribbonGeo(shell, DUNGEON_HALF, CAVE_HEIGHT, 0), new THREE.MeshLambertMaterial({ color: 0x3c3548, side: THREE.DoubleSide }));
+                const left = new THREE.Mesh(ribbonGeo(shell, DUNGEON_HALF, CAVE_HEIGHT, -1), new THREE.MeshLambertMaterial({ color: 0x322a3c, side: THREE.DoubleSide }));
+                const right = new THREE.Mesh(ribbonGeo(shell, DUNGEON_HALF, CAVE_HEIGHT, 1), new THREE.MeshLambertMaterial({ color: 0x2c2634, side: THREE.DoubleSide }));
                 floor.receiveShadow = true;
                 dungeonRoot.add(floor, ceiling, left, right);
                 dungeonRayMeshes.push(left, right, floor, ceiling);
@@ -4702,7 +4804,9 @@
                     button.className = 'paper-slot ' + slot + (piece ? ' filled' : '');
                     const shown = piece || { kind: slot === 'weapon' ? 'weapon' : 'armor', slot, weapon: slot === 'weapon' && character.class === 'mage' ? 'staff' : 'sword' };
                     paintItem(button, shown, !piece);
-                    button.title = piece ? piece.name + (piece.armor ? ' · armor ' + piece.armor : '') + ' (click to unequip)' : labels[slot];
+                    button.title = '';
+                    if (piece) bindItemTip(button, piece, ['Click to unequip']);
+                    else button.title = labels[slot];
                     button.addEventListener('click', () => {
                         if (piece) sendCharacter('unequip', { slot });
                     });
@@ -4845,7 +4949,8 @@
                     line.className = 'spell-row';
                     line.appendChild(itemCanvas(slot));
                     const label = document.createElement('div');
-                    label.textContent = slot.name + (slot.armor ? ' · armor ' + slot.armor : '');
+                    label.textContent = slot.name;
+                    bindItemTip(line, slot, ['Click Equip']);
                     line.appendChild(label);
                     const button = document.createElement('button');
                     button.type = 'button';
@@ -5107,7 +5212,9 @@
                 resolveCollisions(characterGroup.position);
                 if (activeCave) {
                     const held = dungeonClamp(activeCave, characterGroup.position.x, characterGroup.position.z);
-                    if (!dungeonBlocked(activeCave, feetX, feetZ, held.x, held.z)) {
+                    const feetHeld = dungeonClamp(activeCave, feetX, feetZ);
+                    const feetOut = Math.hypot(feetHeld.x - feetX, feetHeld.z - feetZ) > 0.3;
+                    if (!dungeonBlocked(activeCave, feetX, feetZ, held.x, held.z) || feetOut) {
                         characterGroup.position.x = held.x;
                         characterGroup.position.z = held.z;
                     } else {
@@ -5249,7 +5356,7 @@
                             desired.z = pz + (oz - pz) * lo;
                         }
                     }
-                    const heldCam = dungeonClamp(activeCave, desired.x, desired.z);
+                    const heldCam = dungeonClamp(activeCave, desired.x, desired.z, 1.15);
                     desired.x = heldCam.x;
                     desired.z = heldCam.z;
                     if (desired.y > CAVE_HEIGHT - 1.15) desired.y = CAVE_HEIGHT - 1.15;
@@ -5274,6 +5381,9 @@
                 const floorY = (bedY < WATER_LEVEL ? WATER_LEVEL + 1.35 : bedY + 1.05);
                 if (camera.position.y < floorY) camera.position.y = floorY;
                 } else {
+                    const heldCam = dungeonClamp(activeCave, camera.position.x, camera.position.z, 1.15);
+                    camera.position.x = heldCam.x;
+                    camera.position.z = heldCam.z;
                     if (camera.position.y < 1.05) camera.position.y = 1.05;
                     if (camera.position.y > CAVE_HEIGHT - 0.8) camera.position.y = CAVE_HEIGHT - 0.8;
                 }
