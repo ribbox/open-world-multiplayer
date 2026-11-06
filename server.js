@@ -1919,17 +1919,18 @@ function lootItem(row, level) {
 function rollLoot(level, tableId) {
     const tables = lootTables || LOOT_TABLES;
     const table = tables[tableId] || tables.hide || LOOT_TABLES.hide;
-    const count = 1 + Math.floor((level - 1) / 2) + (Math.random() < 0.5 ? 1 : 0);
+    const coins = table.filter(row => row.kind === 'coins');
+    const junk = table.filter(row => row.kind === 'junk');
+    const goods = table.filter(row => row.kind !== 'coins' && row.kind !== 'junk' && row.kind !== 'recipe');
+    const patterns = table.filter(row => row.kind === 'recipe');
     const items = [];
-    const seen = new Set();
-    let spins = 0;
-    while (items.length < count && spins < count * 8) {
-        spins += 1;
-        const item = lootItem(rollRow(table), level);
-        const key = [item.kind, item.name, item.slot || '', item.amount || 0, item.armor || 0, item.recipe || ''].join('|');
-        if (seen.has(key)) continue;
-        seen.add(key);
-        items.push(item);
+    if (coins.length && Math.random() < 0.7) items.push(lootItem(rollRow(coins), level));
+    if (patterns.length && Math.random() < 0.04) items.push(lootItem(rollRow(patterns), level));
+    else if (goods.length) items.push(lootItem(rollRow(goods), level));
+    if (junk.length && Math.random() < 0.6) items.push(lootItem(rollRow(junk), level));
+    if (!items.length) {
+        const fallback = goods[0] || junk[0] || coins[0] || patterns[0];
+        if (fallback) items.push(lootItem(fallback, level));
     }
     return items;
 }
