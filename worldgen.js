@@ -755,7 +755,9 @@ export function itemRarity(item) {
 export function sellPrice(item) {
     if (!item) return 0;
     const rarity = itemRarity(item);
-    let quality = 1 + (item.armor || 0);
+    const stats = item.stats || {};
+    const bonus = (stats.strength || 0) + (stats.stamina || 0) + (stats.intellect || 0);
+    let quality = 1 + (item.armor || 0) + bonus;
     if (item.magic) quality += 2;
     if (item.amount) quality += Math.floor(item.amount / 12);
     return Math.max(1, rarity * quality);

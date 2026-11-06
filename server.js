@@ -725,10 +725,64 @@ function npcMaxHp(level) {
     return Math.max(1, worldRules.hpBase + level * worldRules.hpPerLevel);
 }
 
+const STAT_KEYS = ['strength', 'stamina', 'intellect'];
+
+function cleanStats(raw) {
+    const stats = {};
+    for (const key of STAT_KEYS) {
+        const n = Math.max(0, Math.round(Number(raw && raw[key]) || 0));
+        if (n) stats[key] = n;
+    }
+    return stats;
+}
+
+function mobBias(kind) {
+    return kind === 'wisp' || kind === 'cultist' ? 'intellect' : 'strength';
+}
+
+function mobStatBlock(level, kind) {
+    const lv = Math.max(1, Math.round(level) || 1);
+    const stamina = lv;
+    const primary = lv + 1;
+    if (mobBias(kind) === 'intellect') return { strength: 0, stamina, intellect: primary };
+    return { strength: primary, stamina, intellect: 0 };
+}
+
+function gearAmount(level) {
+    return Math.max(1, Math.round((level * level) / 33));
+}
+
+function gearReq(level) {
+    return level <= 4 ? 1 : Math.max(1, level - 1);
+}
+
+function classBaseStats(player) {
+    const steps = Math.max(0, (player.level || 1) - 1);
+    if (player.class === 'mage') {
+        return { strength: 0, stamina: 1 + Math.floor(steps / 2), intellect: 1 + steps };
+    }
+    if (player.class === 'warrior') {
+        return { strength: 1 + steps, stamina: 1 + Math.floor(steps / 2), intellect: 0 };
+    }
+    return { strength: 1, stamina: 1, intellect: 0 };
+}
+
+function totalStats(player) {
+    const total = classBaseStats(player);
+    for (const slot of EQUIP_SLOTS) {
+        const piece = player.equipment && player.equipment[slot];
+        if (!piece || !piece.stats) continue;
+        for (const key of STAT_KEYS) total[key] += piece.stats[key] || 0;
+    }
+    return total;
+}
+
 function applyElite(npc, elite, baseHp) {
     npc.elite = !!elite;
+    npc.stats = mobStatBlock(npc.level, npc.kind);
     const base = baseHp > 0 ? baseHp : npcMaxHp(npc.level);
-    npc.maxHp = npc.elite ? Math.round(base * 2.5) : base;
+    const hp = base + (npc.stats.stamina || 0) * 2;
+    npc.maxHp = npc.elite ? Math.round(hp * 2.5) : hp;
     npc.hp = npc.maxHp;
 }
 
@@ -762,7 +816,8 @@ function publicNpc(n) {
         kind: n.kind,
         tint: n.tint,
         elite: !!n.elite,
-        dungeonId: n.dungeonId || ''
+        dungeonId: n.dungeonId || '',
+        stats: n.stats || { strength: 0, stamina: 0, intellect: 0 }
     };
 }
 
@@ -1108,8 +1163,7 @@ function grantXp(player, amount) {
     while (player.xp >= xpToNext(player.level)) {
         player.xp -= xpToNext(player.level);
         player.level += 1;
-        player.maxHp = maxHpFor(player.level);
-        player.maxMana = maxManaFor(player);
+        refreshDerived(player);
         player.hp = player.maxHp;
         player.mana = player.maxMana;
         leveled = true;
@@ -1127,7 +1181,8 @@ function statsOf(player) {
         maxHp: player.maxHp,
         mana: Math.floor(player.mana),
         maxMana: player.maxMana,
-        armor: player.armor
+        armor: player.armor,
+        stats: player.stats || { strength: 0, stamina: 0, intellect: 0 }
     };
 }
 
@@ -1244,11 +1299,11 @@ function sanitizeActionBar(pages) {
 const EQUIP_SLOTS = ['head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'waist', 'legs', 'feet', 'weapon', 'offhand'];
 const CLASS_KITS = {
     warrior: {
-        weapon: { kind: 'weapon', weapon: 'sword', name: 'Worn Sword', qty: 1, armor: 0, amount: 0, slot: 'weapon' },
+        weapon: { kind: 'weapon', weapon: 'sword', name: 'Worn Sword', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { strength: 1 }, reqLevel: 1 },
         trained: ['sword', 'power-strike']
     },
     mage: {
-        weapon: { kind: 'weapon', weapon: 'staff', name: 'Apprentice Staff', qty: 1, armor: 0, amount: 0, slot: 'weapon' },
+        weapon: { kind: 'weapon', weapon: 'staff', name: 'Apprentice Staff', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { intellect: 1 }, reqLevel: 1 },
         trained: ['staff', 'arcane-bolt']
     }
 };
@@ -1409,9 +1464,15 @@ function armorValue(player) {
 }
 
 function refreshDerived(player) {
+    player.stats = totalStats(player);
     player.armor = armorValue(player);
-    player.maxMana = maxManaFor(player);
-    if (player.mana > player.maxMana) player.mana = player.maxMana;
+    const nextHp = maxHpFor(player.level) + player.stats.stamina * 4;
+    const nextMana = maxManaFor(player) + player.stats.intellect * 2;
+    const wasFull = !player.maxHp || player.hp >= player.maxHp;
+    player.maxHp = nextHp;
+    if (wasFull || player.hp > nextHp) player.hp = nextHp;
+    if (player.mana > nextMana) player.mana = nextMana;
+    player.maxMana = nextMana;
 }
 
 function talentPoints(player) {
@@ -1443,7 +1504,8 @@ function publicCharacter(player) {
         points: talentPoints(player),
         known: knownSpells(player),
         spells: SPELLS,
-        talentsDef: TALENTS
+        talentsDef: TALENTS,
+        stats: player.stats || totalStats(player)
     };
 }
 
@@ -1534,6 +1596,20 @@ function learnPattern(player, index) {
     return null;
 }
 
+function craftedStats(recipe) {
+    if (!recipe || (recipe.kind !== 'armor' && recipe.kind !== 'weapon')) return { stats: {}, reqLevel: 1 };
+    const intellect = recipe.style === 'cloth' || recipe.weapon === 'staff';
+    let amount = Math.min(3, Math.max(1, recipe.armor || 1));
+    if (recipe.magic) amount += 1;
+    if (recipe.loot) amount += 1;
+    const stats = { [intellect ? 'intellect' : 'strength']: amount };
+    if (recipe.style === 'plate' || recipe.loot) stats.stamina = 1;
+    let reqLevel = 1;
+    if (recipe.style === 'plate' || recipe.set === 'plate') reqLevel = 6;
+    if (recipe.loot) reqLevel = 8;
+    return { stats, reqLevel };
+}
+
 function craftItem(player, id) {
     const recipe = RECIPES[id];
     if (!recipe) return 'Unknown recipe';
@@ -1544,6 +1620,7 @@ function craftItem(player, id) {
     normalizeSlots(player);
     if (!player.slots.some(slot => !slot)) return 'Inventory full';
     for (const [kind, qty] of Object.entries(recipe.cost)) takeKind(player, kind, qty);
+    const made = craftedStats(recipe);
     const rest = addToSlots(player, {
         kind: recipe.kind,
         name: recipe.name,
@@ -1553,7 +1630,9 @@ function craftItem(player, id) {
         slot: recipe.slot || '',
         style: recipe.style || '',
         magic: !!recipe.magic,
-        amount: recipe.amount || 0
+        amount: recipe.amount || 0,
+        stats: made.stats,
+        reqLevel: made.reqLevel
     });
     if (rest) {
         for (const [kind, qty] of Object.entries(recipe.cost)) {
@@ -1626,6 +1705,7 @@ function equipItem(player, equipSlot, bagIndex) {
     const fits = item.kind === 'weapon' ? 'weapon' : (item.slot || 'chest');
     if (item.kind !== 'weapon' && item.kind !== 'armor') return 'Cannot equip that';
     if (fits !== equipSlot) return 'Does not fit';
+    if ((item.reqLevel || 1) > (player.level || 1)) return 'Requires level ' + (item.reqLevel || 1);
     if (!player.class) return 'Choose a class first';
     if (item.kind === 'weapon' && item.weapon !== CLASS_KITS[player.class].weapon.weapon) return 'Wrong class';
     const piece = copySlot(item);
@@ -1670,7 +1750,13 @@ function stackLimit(item) {
 }
 
 function sameStack(a, b) {
-    return a && b && a.kind === b.kind && a.name === b.name && (a.amount || 0) === (b.amount || 0) && (a.armor || 0) === (b.armor || 0) && (a.slot || '') === (b.slot || '') && (a.weapon || '') === (b.weapon || '');
+    if (!a || !b || a.kind !== b.kind || a.name !== b.name) return false;
+    if ((a.amount || 0) !== (b.amount || 0) || (a.armor || 0) !== (b.armor || 0)) return false;
+    if ((a.slot || '') !== (b.slot || '') || (a.weapon || '') !== (b.weapon || '')) return false;
+    if ((a.reqLevel || 1) !== (b.reqLevel || 1)) return false;
+    const as = a.stats || {};
+    const bs = b.stats || {};
+    return (as.strength || 0) === (bs.strength || 0) && (as.stamina || 0) === (bs.stamina || 0) && (as.intellect || 0) === (bs.intellect || 0);
 }
 
 function slotCapacity(player) {
@@ -1722,17 +1808,19 @@ function addToSlots(player, source) {
             slot: source.slot || '',
             style: source.style || '',
             magic: !!source.magic,
-            recipe: source.recipe || ''
+            recipe: source.recipe || '',
+            stats: cleanStats(source.stats),
+            reqLevel: Math.max(1, Math.round(Number(source.reqLevel) || 1))
         };
         qty -= take;
         if (qty <= 0) return null;
     }
-    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0, weapon: source.weapon || '', slot: source.slot || '', style: source.style || '', magic: !!source.magic, recipe: source.recipe || '' };
+    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0, weapon: source.weapon || '', slot: source.slot || '', style: source.style || '', magic: !!source.magic, recipe: source.recipe || '', stats: cleanStats(source.stats), reqLevel: Math.max(1, Math.round(Number(source.reqLevel) || 1)) };
 }
 
 function copySlot(slot) {
     if (!slot) return null;
-    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0, weapon: slot.weapon || '', slot: slot.slot || '', style: slot.style || '', magic: !!slot.magic, recipe: slot.recipe || '' };
+    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0, weapon: slot.weapon || '', slot: slot.slot || '', style: slot.style || '', magic: !!slot.magic, recipe: slot.recipe || '', stats: cleanStats(slot.stats), reqLevel: Math.max(1, Math.round(Number(slot.reqLevel) || 1)) };
 }
 
 function absorbWallet(player) {
@@ -1889,7 +1977,7 @@ function rollRow(table) {
     return table[table.length - 1];
 }
 
-function lootItem(row, level) {
+function lootItem(row, level, tableId) {
     const kind = row.kind;
     if (kind === 'junk') {
         const names = row.names || ['Bent nail', 'Torn cloth', 'Cracked bead'];
@@ -1911,9 +1999,81 @@ function lootItem(row, level) {
         const id = ids[Math.floor(Math.random() * ids.length)];
         return { kind: 'recipe', name: 'Pattern: ' + RECIPES[id].name, qty: 1, recipe: id };
     }
-    const wear = ['head', 'shoulders', 'chest', 'hands', 'legs', 'feet'][Math.floor(Math.random() * 6)];
-    const wearName = { head: 'Plate Helm', shoulders: 'Plate Pauldrons', chest: 'Plate Scrap', hands: 'Plate Gauntlets', legs: 'Plate Greaves', feet: 'Plate Sabatons' };
-    return { kind: 'armor', slot: wear, style: 'plate', name: wearName[wear], qty: 1, armor: 1 + Math.floor((level - 1) / 2) };
+    return makeGear(level, tableId || 'plate');
+}
+
+const GEAR_SLOTS = ['head', 'shoulders', 'chest', 'hands', 'waist', 'legs', 'feet', 'neck', 'cloak', 'weapon', 'offhand'];
+
+function gearFocus(tableId) {
+    if (tableId === 'silk' || tableId === 'wisp' || tableId === 'magic') return 'intellect';
+    return 'strength';
+}
+
+function makeGear(level, tableId) {
+    const lv = Math.max(1, Math.round(level) || 1);
+    const amount = gearAmount(lv);
+    const focus = gearFocus(tableId);
+    const magic = tableId === 'wisp' || tableId === 'magic';
+    const style = focus === 'intellect' ? 'cloth' : (tableId === 'ore' || tableId === 'plate' ? 'plate' : 'leather');
+    const slot = GEAR_SLOTS[Math.floor(Math.random() * GEAR_SLOTS.length)];
+    const stats = { [focus]: amount };
+    if (lv >= 6) stats.stamina = amount;
+    let armor = 0;
+    if (style === 'plate') armor = 1 + Math.floor(lv / 6);
+    else if (style === 'leather') armor = Math.floor(lv / 8);
+    const piece = {
+        kind: slot === 'weapon' ? 'weapon' : 'armor',
+        name: 'Gear',
+        qty: 1,
+        armor,
+        weapon: '',
+        slot,
+        style: slot === 'weapon' ? '' : style,
+        magic: magic && focus === 'intellect',
+        amount: 0,
+        stats,
+        reqLevel: gearReq(lv)
+    };
+    if (slot === 'weapon') {
+        if (focus === 'intellect') {
+            piece.weapon = 'staff';
+            piece.name = amount >= 6 ? 'Arcane Staff' : 'Carved Staff';
+            piece.magic = amount >= 6 || magic;
+        } else {
+            piece.weapon = 'sword';
+            piece.name = amount >= 6 ? 'Rune Blade' : 'Iron Sword';
+        }
+    } else if (slot === 'offhand') {
+        if (focus === 'intellect') {
+            piece.name = 'Spell Focus';
+            piece.style = 'cloth';
+            piece.magic = true;
+            piece.armor = Math.max(1, armor);
+        } else {
+            piece.name = 'Iron Buckler';
+            piece.style = 'plate';
+            piece.armor = Math.max(1, 1 + Math.floor(lv / 6));
+        }
+    } else if (slot === 'neck') {
+        piece.name = focus === 'intellect' ? 'Gem Pendant' : (style === 'plate' ? 'Iron Pendant' : 'Hide Pendant');
+        piece.style = focus === 'intellect' ? 'cloth' : style;
+    } else {
+        const prefix = magic && style === 'cloth' ? 'Rune' : (style === 'plate' ? 'Plate' : style === 'leather' ? 'Leather' : 'Cloth');
+        const part = {
+            head: style === 'plate' ? 'Helm' : style === 'leather' ? 'Cap' : 'Hood',
+            shoulders: style === 'plate' ? 'Pauldrons' : 'Shoulders',
+            chest: style === 'plate' ? 'Breastplate' : style === 'leather' ? 'Jerkin' : 'Robe',
+            hands: 'Gloves',
+            waist: style === 'cloth' ? 'Sash' : 'Belt',
+            legs: style === 'plate' ? 'Greaves' : 'Pants',
+            feet: style === 'plate' ? 'Sabatons' : style === 'leather' ? 'Boots' : 'Shoes',
+            cloak: 'Cloak'
+        };
+        if (style === 'plate' && slot === 'hands') part.hands = 'Gauntlets';
+        piece.name = prefix + ' ' + part[slot];
+    }
+    if (style === 'cloth' && slot === 'chest') piece.armor = Math.max(piece.armor, 1);
+    return piece;
 }
 
 function rollLoot(level, tableId) {
@@ -1924,14 +2084,12 @@ function rollLoot(level, tableId) {
     const goods = table.filter(row => row.kind !== 'coins' && row.kind !== 'junk' && row.kind !== 'recipe');
     const patterns = table.filter(row => row.kind === 'recipe');
     const items = [];
-    if (coins.length && Math.random() < 0.7) items.push(lootItem(rollRow(coins), level));
-    if (patterns.length && Math.random() < 0.04) items.push(lootItem(rollRow(patterns), level));
-    else if (goods.length) items.push(lootItem(rollRow(goods), level));
-    if (junk.length && Math.random() < 0.6) items.push(lootItem(rollRow(junk), level));
-    if (!items.length) {
-        const fallback = goods[0] || junk[0] || coins[0] || patterns[0];
-        if (fallback) items.push(lootItem(fallback, level));
-    }
+    if (coins.length && Math.random() < 0.7) items.push(lootItem(rollRow(coins), level, tableId));
+    if (patterns.length && Math.random() < 0.04) items.push(lootItem(rollRow(patterns), level, tableId));
+    else if (Math.random() < 0.55 || !goods.length) items.push(makeGear(level, tableId));
+    else if (goods.length) items.push(lootItem(rollRow(goods), level, tableId));
+    if (junk.length && Math.random() < 0.6) items.push(lootItem(rollRow(junk), level, tableId));
+    if (!items.length) items.push(makeGear(level, tableId));
     return items;
 }
 
@@ -2099,7 +2257,9 @@ function tickNpcs() {
             npc.rotY = Math.atan2(dx, dz);
             if (now >= npc.attackAt && now >= target.invulnUntil) {
                 npc.attackAt = now + 1300;
-                const raw = 1 + npc.level;
+                const block = npc.stats || mobStatBlock(npc.level, npc.kind);
+                const primary = mobBias(npc.kind) === 'intellect' ? (block.intellect || npc.level) : (block.strength || npc.level);
+                const raw = 1 + primary;
                 const damage = Math.max(1, Math.round(raw * (npc.elite ? 1.8 : 1)) - target.armor);
                 target.hp = Math.max(0, target.hp - damage);
                 send(target.ws, { type: 'hurt', damage, attackerId: npc.id, attacker: npc.level, ...statsOf(target) });
@@ -2530,7 +2690,7 @@ wss.on('connection', (ws) => {
                     }
                     subject = ally;
                 }
-                const healed = spec.heal(player.level);
+                const healed = spec.heal(player.level) + ((player.stats && player.stats.intellect) || 0);
                 subject.hp = Math.min(subject.maxHp, subject.hp + healed);
                 player.lastAttack = now;
                 broadcast({
@@ -2569,7 +2729,10 @@ wss.on('connection', (ws) => {
             player.lastAttack = now;
             const rank = (player.spellRanks && player.spellRanks[data.ability || 'sword']) || 1;
             const bolts = (data.ability === 'arcane-bolt') ? rank : 1;
-            const per = spec.damage(player.level) + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0);
+            const statBonus = spec.weapon === 'sword'
+                ? ((player.stats && player.stats.strength) || 0)
+                : ((player.stats && player.stats.intellect) || 0);
+            const per = spec.damage(player.level) + statBonus + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0);
             const projectile = data.ability === 'arcane-bolt' || data.ability === 'arcane-surge';
             const travel = projectile ? Math.min(900, Math.max(220, Math.round(dist * 140))) : 0;
             broadcast({

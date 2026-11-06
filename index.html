@@ -119,13 +119,15 @@
         #mapLayers i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
         #targetFrame {
             position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-            width: 220px; color: white; background: rgba(0,0,0,0.72);
+            width: 260px; color: white; background: rgba(0,0,0,0.72);
             border: 1px solid rgba(255,80,80,0.7); border-radius: 6px;
             padding: 6px 8px; z-index: 12; pointer-events: none;
         }
         #targetFrame[hidden] { display: none; }
         #targetName { font-size: 13px; margin-bottom: 4px; }
         #targetHp { height: 8px; background: #3a1a1a; border-radius: 4px; overflow: hidden; }
+        #targetStats { font-size: 11px; color: #f0d090; margin-top: 4px; }
+        #targetStats[hidden] { display: none; }
         #hurtFlash {
             position: fixed; inset: 0; pointer-events: none; z-index: 8;
             box-shadow: inset 0 0 0 rgba(160, 0, 0, 0);
@@ -392,6 +394,7 @@
         Click an NPC or another player, or press Tab, to target them<br>
         P: Invite the targeted player. A party holds up to 5<br>
         C: Character sheet. Reset character is on that page and returns you to level 1<br>
+        Strength raises melee hits, Intellect raises spells and mana, Stamina raises health<br>
         Character sheet Craft tab makes gear. A shop assistant has Buy and Sell tabs<br>
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
@@ -430,6 +433,9 @@
             &nbsp; HP <span id="hpCount">20</span>/<span id="maxHpCount">20</span>
             &nbsp; MP <span id="manaCount">10</span>/<span id="maxManaCount">10</span>
             &nbsp; Ar <span id="armorCount">0</span>
+            &nbsp; Str <span id="strCount">0</span>
+            &nbsp; Sta <span id="staCount">0</span>
+            &nbsp; Int <span id="intCount">0</span>
             &nbsp; Coins <span id="purse">0</span>
         </div>
         <div id="barRow">
@@ -488,6 +494,7 @@
     <div id="targetFrame" hidden>
         <div id="targetName">Target</div>
         <div id="targetHp"><div id="targetHpFill"></div></div>
+        <div id="targetStats" hidden></div>
     </div>
     <div id="message"></div>
     <div id="log"></div>
@@ -973,7 +980,7 @@
             }
             updateToolUI();
 
-            const stats = { level: 1, xp: 0, xpToNext: 50, hp: 20, maxHp: 20, mana: 10, maxMana: 10, armor: 0 };
+            const stats = { level: 1, xp: 0, xpToNext: 50, hp: 20, maxHp: 20, mana: 10, maxMana: 10, armor: 0, strength: 0, stamina: 0, intellect: 0 };
             function updateStatsUI() {
                 document.getElementById('levelCount').textContent = stats.level;
                 document.getElementById('xpCount').textContent = stats.xp;
@@ -983,6 +990,9 @@
                 document.getElementById('manaCount').textContent = stats.mana;
                 document.getElementById('maxManaCount').textContent = stats.maxMana;
                 document.getElementById('armorCount').textContent = stats.armor;
+                document.getElementById('strCount').textContent = stats.strength;
+                document.getElementById('staCount').textContent = stats.stamina;
+                document.getElementById('intCount').textContent = stats.intellect;
             }
             function applyStats(data) {
                 if (data.level != null) stats.level = data.level;
@@ -993,6 +1003,11 @@
                 if (data.mana != null) stats.mana = data.mana;
                 if (data.maxMana != null) stats.maxMana = data.maxMana;
                 if (data.armor != null) stats.armor = data.armor;
+                if (data.stats) {
+                    stats.strength = data.stats.strength || 0;
+                    stats.stamina = data.stats.stamina || 0;
+                    stats.intellect = data.stats.intellect || 0;
+                }
                 updateStatsUI();
             }
 
@@ -1061,6 +1076,13 @@
                 } else if (item.kind === 'recipe') lines.push('Pattern · click to learn');
                 else if (item.kind === 'quest') lines.push('Quest item');
                 else if (item.kind === 'junk') lines.push('Junk');
+                if (item.kind === 'armor' || item.kind === 'weapon') {
+                    const bonus = item.stats || {};
+                    if (bonus.strength) lines.push('+' + bonus.strength + ' Strength');
+                    if (bonus.stamina) lines.push('+' + bonus.stamina + ' Stamina');
+                    if (bonus.intellect) lines.push('+' + bonus.intellect + ' Intellect');
+                    if ((item.reqLevel || 1) > 1) lines.push('Requires level ' + item.reqLevel);
+                }
                 if (item.qty > 1) lines.push('Quantity ' + item.qty);
                 return lines;
             }
@@ -2639,7 +2661,7 @@
                 }
                 const npc = worldNpcs.get(selectedNpcId);
                 if (npc && !npc.dying) {
-                    return { kind: 'npc', id: selectedNpcId, group: npc.group, name: npc.name || 'Hostile', level: npc.level, hp: npc.hp, maxHp: npc.maxHp };
+                    return { kind: 'npc', id: selectedNpcId, group: npc.group, name: npc.name || 'Hostile', level: npc.level, hp: npc.hp, maxHp: npc.maxHp, elite: npc.elite, stats: npc.stats };
                 }
                 const remote = remotePlayers.get(selectedNpcId);
                 if (remote) {
@@ -2659,10 +2681,12 @@
             function refreshTargetFrame() {
                 const frame = document.getElementById('targetFrame');
                 const aimed = currentTarget();
+                const statLine = document.getElementById('targetStats');
                 if (!aimed) {
                     selectedNpcId = null;
                     targetRing.visible = false;
                     frame.hidden = true;
+                    if (statLine) statLine.hidden = true;
                     return;
                 }
                 frame.hidden = false;
@@ -2670,6 +2694,7 @@
                     frame.style.borderColor = 'rgba(46,204,113,0.85)';
                     document.getElementById('targetName').textContent = aimed.name + '  ' + aimed.title;
                     document.getElementById('targetHp').hidden = true;
+                    if (statLine) statLine.hidden = true;
                     targetRing.material.color.set(0x2ecc71);
                     targetRing.visible = true;
                     targetRing.position.set(aimed.group.position.x, 0.05, aimed.group.position.z);
@@ -2684,6 +2709,13 @@
                 const fill = document.getElementById('targetHpFill');
                 fill.style.width = (pct * 100) + '%';
                 fill.style.background = aimed.kind === 'player' ? '#3d9eff' : aimed.elite ? '#f1c40f' : '#e74c3c';
+                if (statLine) {
+                    if (aimed.kind === 'npc' && aimed.stats) {
+                        const bonus = aimed.stats;
+                        statLine.hidden = false;
+                        statLine.textContent = 'Str ' + (bonus.strength || 0) + '   Sta ' + (bonus.stamina || 0) + '   Int ' + (bonus.intellect || 0);
+                    } else statLine.hidden = true;
+                }
                 targetRing.material.color.set(aimed.kind === 'player' ? 0x3d9eff : aimed.elite ? 0xf1c40f : 0xff3333);
                 targetRing.visible = true;
                 targetRing.position.set(aimed.group.position.x, 0.05, aimed.group.position.z);
@@ -3502,17 +3534,18 @@
                     group.userData.bobAmp = state.kind === 'wisp' ? 0.16 : 0.035;
                     group.position.set(state.x, state.dungeonId ? 0.2 : 0, state.z);
                     scene.add(group);
-                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, name: state.name || 'Hostile', level: -1, hp: -1, maxHp: state.maxHp || 1, elite: !!state.elite, dungeonId: state.dungeonId || '', bob: Math.random() * Math.PI * 2 };
+                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, name: state.name || 'Hostile', level: -1, hp: -1, maxHp: state.maxHp || 1, elite: !!state.elite, dungeonId: state.dungeonId || '', stats: state.stats || null, bob: Math.random() * Math.PI * 2 };
                     group.userData.npcId = state.id;
                     worldNpcs.set(state.id, entry);
                 }
                 entry.dungeonId = state.dungeonId || entry.dungeonId || '';
+                if (state.stats) entry.stats = state.stats;
                 entry.tx = state.x;
                 entry.tz = state.z;
                 entry.rotY = state.rotY || 0;
                 if (entry.name !== (state.name || entry.name) || entry.level !== state.level || entry.hp !== state.hp || entry.elite !== !!state.elite) {
                     setNpcLabel(entry, { name: state.name || entry.name, level: state.level, hp: state.hp, maxHp: state.maxHp || entry.maxHp, elite: !!state.elite, id: state.id });
-                }
+                } else if (state.stats && selectedNpcId === state.id) refreshTargetFrame();
             }
 
             function forgetNpc(id) {
@@ -4790,8 +4823,8 @@
                     const row = document.createElement('div');
                     row.className = 'row';
                     for (const [id, name, text] of [
-                        ['warrior', 'Warrior', 'Sword, Power Strike, and a Might tree.'],
-                        ['mage', 'Mage', 'Arcane Bolt, Mend, and an Arcane tree.']
+                        ['warrior', 'Warrior', 'Strength and stamina. Sword, Power Strike, and a Might tree.'],
+                        ['mage', 'Mage', 'Intellect and stamina. Arcane Bolt, Mend, and an Arcane tree.']
                     ]) {
                         const button = document.createElement('button');
                         button.type = 'button';
@@ -4805,7 +4838,12 @@
                 }
 
                 const summary = document.createElement('p');
-                summary.textContent = character.class[0].toUpperCase() + character.class.slice(1) + '  ·  Talent points ' + (character.points || 0);
+                const bonus = character.stats || {};
+                summary.textContent = character.class[0].toUpperCase() + character.class.slice(1)
+                    + '  ·  Str ' + (bonus.strength || 0)
+                    + '  Sta ' + (bonus.stamina || 0)
+                    + '  Int ' + (bonus.intellect || 0)
+                    + '  ·  Talent points ' + (character.points || 0);
                 panel.appendChild(summary);
                 const row = document.createElement('div');
                 row.className = 'row';
@@ -4968,7 +5006,13 @@
                     line.className = 'spell-row';
                     line.appendChild(itemCanvas(slot));
                     const label = document.createElement('div');
-                    label.textContent = slot.name;
+                    const bonus = slot.stats || {};
+                    const bits = [];
+                    if (bonus.strength) bits.push('+' + bonus.strength + ' Str');
+                    if (bonus.stamina) bits.push('+' + bonus.stamina + ' Sta');
+                    if (bonus.intellect) bits.push('+' + bonus.intellect + ' Int');
+                    if ((slot.reqLevel || 1) > 1) bits.push('Lv ' + slot.reqLevel);
+                    label.textContent = slot.name + (bits.length ? ' · ' + bits.join(' ') : '');
                     bindItemTip(line, slot, ['Click Equip']);
                     line.appendChild(label);
                     const button = document.createElement('button');
