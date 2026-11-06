@@ -254,10 +254,11 @@
         #talkHint.on { display: block; }
         #talk {
             display: none; position: absolute; left: 50%; top: 72px; transform: translateX(-50%);
-            width: min(420px, calc(100vw - 24px)); max-height: calc(100vh - 180px); overflow: auto;
+            width: min(520px, calc(100vw - 24px)); max-height: calc(100vh - 180px); overflow: auto;
             background: rgba(16, 18, 24, 0.94); color: white; border: 1px solid rgba(46,204,113,0.8);
             border-radius: 8px; padding: 14px 16px; z-index: 25; pointer-events: auto;
         }
+        #talk .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 4px; }
         #talk.open { display: block; }
         #talk h2 { margin: 0 0 6px; font-size: 18px; }
         .bar-slot { background-repeat: no-repeat; background-position: center 16px; background-size: 30px 30px; }
@@ -391,7 +392,7 @@
         Click an NPC or another player, or press Tab, to target them<br>
         P: Invite the targeted player. A party holds up to 5<br>
         C: Character sheet. Reset character is on that page and returns you to level 1<br>
-        Character sheet Craft tab makes gear. A shop assistant buys and sells, grouped by rarity<br>
+        Character sheet Craft tab makes gear. A shop assistant has Buy and Sell tabs<br>
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
         Train spells only while standing at a trainer. Gather herbs by hand and sulfur with a pickaxe<br>
@@ -846,6 +847,7 @@
             try { trackedQuests = JSON.parse(localStorage.getItem('ow-quest-track') || '[]'); } catch { trackedQuests = []; }
             if (!Array.isArray(trackedQuests)) trackedQuests = [];
             let talkingId = null;
+            let serviceTab = '';
             let selectedNpcId = null;
             const shots = [];
             const combatFx = [];
@@ -4277,7 +4279,7 @@
                 }
                 renderBar();
                 if (document.getElementById('sheet').classList.contains('open')) renderSheet();
-                if (document.getElementById('shop').classList.contains('open')) renderShop();
+                refreshOpenTalk();
             }
 
             function nearestCivilian(range) {
@@ -4487,149 +4489,77 @@
                 talkingId = null;
             }
 
-            function renderTalk(entry) {
-                const panel = document.getElementById('talk');
-                panel.classList.add('open');
-                panel.textContent = '';
-                talkingId = entry.id;
-                const close = document.createElement('button');
-                close.type = 'button';
-                close.className = 'text-btn';
-                close.textContent = 'Close';
-                close.addEventListener('click', closeTalk);
-                panel.appendChild(close);
-                const title = document.createElement('h2');
-                title.textContent = entry.name;
-                panel.appendChild(title);
-                const role = document.createElement('p');
-                role.textContent = entry.title;
-                panel.appendChild(role);
-                const body = document.createElement('p');
-                body.textContent = entry.text || '';
-                panel.appendChild(body);
-                if (entry.role === 'inn') {
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'text-btn gold-btn';
-                    const here = boundSpawn && entry.group && Math.hypot(boundSpawn.x - entry.group.position.x, boundSpawn.z - entry.group.position.z) < 1.5;
-                    button.textContent = here ? 'This is your spawn' : 'Set spawn here';
-                    button.addEventListener('click', () => sendCharacter('setSpawn', { id: entry.id }));
-                    panel.appendChild(button);
-                } else if (entry.role === 'shop') {
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'text-btn gold-btn';
-                    button.textContent = 'Open shop';
-                    button.addEventListener('click', () => {
-                        closeTalk();
-                        if (!document.getElementById('shop').classList.contains('open')) toggleShop();
-                        else renderShop();
-                    });
-                    panel.appendChild(button);
-                } else if (entry.role === 'trainer') {
+            function refreshOpenTalk() {
+                if (!talkingId || !document.getElementById('talk').classList.contains('open')) return;
+                const entry = worldCivs.get(talkingId);
+                if (entry) renderTalk(entry);
+            }
+
+            function questCandidates(entry) {
+                return offeredHere(entry).filter(questId => {
+                    const def = questDefs[questId];
+                    if (!def) return false;
+                    const row = quests[questId];
+                    if (row && row.state === 'done') return false;
+                    if (row && row.state === 'active' && !row.failed) return true;
+                    if (!prereqDone(def.requires)) return false;
+                    if ((stats.level || 1) < (def.minLevel || 1)) return false;
+                    return true;
+                });
+            }
+
+            function activitiesFor(entry) {
+                const tabs = [];
+                if (entry.role === 'shop') tabs.push(['buy', 'Buy'], ['sell', 'Sell']);
+                else if (entry.role === 'trainer') tabs.push(['spells', 'Spells'], ['talents', 'Talents']);
+                else if (entry.role === 'inn') tabs.push(['rest', 'Rest']);
+                if (offeredHere(entry).length) tabs.push(['quests', 'Quests']);
+                return tabs;
+            }
+
+            function renderQuestOffers(parent, entry) {
+                const listed = questCandidates(entry);
+                if (!listed.length) {
+                    const none = document.createElement('p');
+                    none.textContent = 'No quests for you right now.';
+                    parent.appendChild(none);
+                    return;
+                }
+                for (const questId of listed) {
+                    const def = questDefs[questId] || { name: 'Quest', text: '', count: 1, coins: 0, xp: 0 };
+                    const row = quests[questId];
+                    const block = document.createElement('div');
+                    const line = document.createElement('p');
+                    const progress = row && row.state === 'active' ? '  ' + Math.min(row.count, def.count) + '/' + def.count : '';
+                    line.textContent = def.name + ' — ' + (def.text || '') + progress;
+                    block.appendChild(line);
+                    const reward = document.createElement('p');
+                    const bits = [];
+                    if (def.coins) bits.push(def.coins + ' coins');
+                    if (def.xp) bits.push(def.xp + ' XP');
+                    if (def.rewardName) bits.push((def.rewardQty > 1 ? def.rewardQty + ' ' : '') + def.rewardName);
+                    reward.textContent = bits.length ? 'Reward: ' + bits.join(', ') : '';
+                    if (reward.textContent) block.appendChild(reward);
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.className = 'text-btn';
-                    button.textContent = 'Open training';
-                    button.addEventListener('click', () => {
-                        closeTalk();
-                        sheetTab = 'spells';
-                        if (!document.getElementById('sheet').classList.contains('open')) toggleSheet();
-                        else renderSheet();
-                    });
-                    panel.appendChild(button);
-                }
-                if ((entry.quests && entry.quests.length) || entry.quest || offeredHere(entry).length) {
-                    const offered = offeredHere(entry);
-                    const listed = offered.filter(questId => {
-                        const def = questDefs[questId];
-                        if (!def) return false;
-                        const row = quests[questId];
-                        if (row && row.state === 'done') return false;
-                        if (row && row.state === 'active' && !row.failed) return true;
-                        if (!prereqDone(def.requires)) return false;
-                        if ((stats.level || 1) < (def.minLevel || 1)) return false;
-                        return true;
-                    });
-                    if (!listed.length) {
-                        const none = document.createElement('p');
-                        none.textContent = 'No quests for you right now.';
-                        panel.appendChild(none);
+                    if (!row || row.failed) {
+                        button.textContent = row && row.failed ? 'Try again' : 'Accept';
+                        button.addEventListener('click', () => sendCharacter('acceptQuest', { id: entry.id, quest: questId }));
+                    } else if (row.count >= def.count) {
+                        button.textContent = 'Turn in';
+                        button.className = 'text-btn gold-btn';
+                        button.addEventListener('click', () => sendCharacter('turnIn', { id: entry.id, quest: questId }));
+                    } else {
+                        button.textContent = row.count + '/' + def.count;
+                        button.disabled = true;
                     }
-                    for (const questId of listed) {
-                        const def = questDefs[questId] || { name: 'Quest', text: '', count: 1, coins: 0, xp: 0 };
-                        const row = quests[questId];
-                        const block = document.createElement('div');
-                        const line = document.createElement('p');
-                        const progress = row && row.state === 'active' ? '  ' + Math.min(row.count, def.count) + '/' + def.count : '';
-                        line.textContent = def.name + ' — ' + (def.text || '') + progress;
-                        block.appendChild(line);
-                        const reward = document.createElement('p');
-                        const bits = [];
-                        if (def.coins) bits.push(def.coins + ' coins');
-                        if (def.xp) bits.push(def.xp + ' XP');
-                        if (def.rewardName) bits.push((def.rewardQty > 1 ? def.rewardQty + ' ' : '') + def.rewardName);
-                        reward.textContent = bits.length ? 'Reward: ' + bits.join(', ') : '';
-                        if (reward.textContent) block.appendChild(reward);
-                        const button = document.createElement('button');
-                        button.type = 'button';
-                        button.className = 'text-btn';
-                        if (!row || row.failed) {
-                            button.textContent = row && row.failed ? 'Try again' : 'Accept';
-                            button.addEventListener('click', () => sendCharacter('acceptQuest', { id: entry.id, quest: questId }));
-                        } else if (row.count >= def.count) {
-                            button.textContent = 'Turn in';
-                            button.className = 'text-btn gold-btn';
-                            button.addEventListener('click', () => sendCharacter('turnIn', { id: entry.id, quest: questId }));
-                        } else {
-                            button.textContent = row.count + '/' + def.count;
-                            button.disabled = true;
-                        }
-                        block.appendChild(button);
-                        panel.appendChild(block);
-                    }
+                    block.appendChild(button);
+                    parent.appendChild(block);
                 }
             }
 
-            function tryTalk() {
-                const aimed = currentTarget();
-                let entry = null;
-                if (aimed && aimed.kind === 'civil') {
-                    const dx = aimed.group.position.x - characterGroup.position.x;
-                    const dz = aimed.group.position.z - characterGroup.position.z;
-                    if (dx * dx + dz * dz <= 3.6 * 3.6) entry = worldCivs.get(aimed.id);
-                }
-                if (!entry) entry = nearestCivilian(3.6);
-                if (!entry) {
-                    showMessage('No one close enough to talk to');
-                    return;
-                }
-                selectNpc(entry.id);
-                renderTalk(entry);
-            }
-
-            function toggleShop() {
-                const panel = document.getElementById('shop');
-                if (!panel.classList.contains('open') && !nearestRole('shop')) {
-                    showMessage('Talk to a shop assistant');
-                    return;
-                }
-                panel.classList.toggle('open');
-                if (panel.classList.contains('open')) renderShop();
-            }
-
-            function renderShop() {
-                const panel = document.getElementById('shop');
-                panel.textContent = '';
-                const close = document.createElement('button');
-                close.type = 'button';
-                close.className = 'text-btn';
-                close.textContent = 'Close';
-                close.addEventListener('click', toggleShop);
-                panel.appendChild(close);
-                const title = document.createElement('h2');
-                title.textContent = 'Recipe shop';
-                panel.appendChild(title);
+            function renderBuyList(parent) {
                 const craft = character.craft || { sets: {}, recipes: {} };
                 const known = new Set(character.recipes || []);
                 const learnedSets = new Set();
@@ -4638,13 +4568,13 @@
                 }
                 const coins = haveKind('coins');
                 const note = document.createElement('p');
-                note.textContent = 'Coins ' + coins + '. Stand next to a shop assistant. You can learn 2 crafting skills.';
-                panel.appendChild(note);
+                note.textContent = 'Coins ' + coins + '. You can learn 2 crafting skills.';
+                parent.appendChild(note);
                 const sets = Object.entries(craft.sets || {}).sort((a, b) => (a[1].rarity || 1) - (b[1].rarity || 1) || a[1].name.localeCompare(b[1].name));
                 if (!sets.length) {
                     const wait = document.createElement('p');
                     wait.textContent = 'The shop opens once you are connected.';
-                    panel.appendChild(wait);
+                    parent.appendChild(wait);
                     return;
                 }
                 const buyNames = ['', 'Common', 'Uncommon', 'Rare', 'Epic', 'Gem'];
@@ -4654,9 +4584,9 @@
                     if (rarity !== buyGroup) {
                         buyGroup = rarity;
                         const head = document.createElement('h3');
-                        head.textContent = 'Buy · ' + (buyNames[rarity] || 'Common');
+                        head.textContent = buyNames[rarity] || 'Common';
                         head.style.margin = '10px 0 4px';
-                        panel.appendChild(head);
+                        parent.appendChild(head);
                     }
                     const ids = Object.entries(craft.recipes || {}).filter(([, recipe]) => recipe.set === id && !recipe.loot);
                     const owned = ids.length > 0 && ids.every(([recipeId]) => known.has(recipeId));
@@ -4683,17 +4613,16 @@
                         button.addEventListener('click', () => sendCharacter('learnSet', { set: id }));
                     }
                     line.appendChild(button);
-                    panel.appendChild(line);
+                    parent.appendChild(line);
                 }
-                const sellTitle = document.createElement('h2');
-                sellTitle.textContent = 'Sell';
-                sellTitle.style.marginTop = '14px';
-                panel.appendChild(sellTitle);
+            }
+
+            function renderSellList(parent) {
                 const sellNote = document.createElement('p');
                 sellNote.textContent = nearestRole('shop')
                     ? 'Grouped by rarity. Junk is first. Shift-click sells the stack.'
                     : 'Stand next to a shop assistant to sell.';
-                panel.appendChild(sellNote);
+                parent.appendChild(sellNote);
                 const atShop = !!nearestRole('shop');
                 const sellNames = ['Junk', 'Common', 'Uncommon', 'Rare', 'Epic', 'Gem'];
                 const offers = [];
@@ -4709,6 +4638,12 @@
                     offers.push({ group, name: name + ' x' + qty + ' · ' + sellPrice({ kind }) + ' each', send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
                 }
                 offers.sort((a, b) => a.group - b.group || a.name.localeCompare(b.name));
+                if (!offers.length) {
+                    const empty = document.createElement('p');
+                    empty.textContent = 'Nothing to sell.';
+                    parent.appendChild(empty);
+                    return;
+                }
                 let sellGroup = -1;
                 for (const offer of offers) {
                     if (offer.group !== sellGroup) {
@@ -4716,7 +4651,7 @@
                         const head = document.createElement('h3');
                         head.textContent = sellNames[offer.group] || 'Common';
                         head.style.margin = '10px 0 4px';
-                        panel.appendChild(head);
+                        parent.appendChild(head);
                     }
                     const line = document.createElement('div');
                     line.className = 'spell-row';
@@ -4730,8 +4665,92 @@
                     button.disabled = !atShop;
                     button.addEventListener('click', (e) => offer.send(e.shiftKey));
                     line.appendChild(button);
-                    panel.appendChild(line);
+                    parent.appendChild(line);
                 }
+            }
+
+            function renderService(parent, entry, tab) {
+                if (tab === 'buy') renderBuyList(parent);
+                else if (tab === 'sell') renderSellList(parent);
+                else if (tab === 'spells') {
+                    if (!character.class) {
+                        const note = document.createElement('p');
+                        note.textContent = 'Choose a class on your character sheet before training.';
+                        parent.appendChild(note);
+                    } else renderSpellList(parent);
+                } else if (tab === 'talents') {
+                    if (!character.class) {
+                        const note = document.createElement('p');
+                        note.textContent = 'Choose a class on your character sheet before spending talents.';
+                        parent.appendChild(note);
+                    } else renderTalentList(parent);
+                } else if (tab === 'rest') {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn gold-btn';
+                    const here = boundSpawn && entry.group && Math.hypot(boundSpawn.x - entry.group.position.x, boundSpawn.z - entry.group.position.z) < 1.5;
+                    button.textContent = here ? 'This is your spawn' : 'Set spawn here';
+                    button.addEventListener('click', () => sendCharacter('setSpawn', { id: entry.id }));
+                    parent.appendChild(button);
+                } else if (tab === 'quests') renderQuestOffers(parent, entry);
+            }
+
+            function renderTalk(entry) {
+                const panel = document.getElementById('talk');
+                panel.classList.add('open');
+                panel.textContent = '';
+                const tabs = activitiesFor(entry);
+                if (talkingId !== entry.id) serviceTab = '';
+                talkingId = entry.id;
+                if (!tabs.some(([id]) => id === serviceTab)) serviceTab = tabs.length ? tabs[0][0] : '';
+                const close = document.createElement('button');
+                close.type = 'button';
+                close.className = 'text-btn';
+                close.textContent = 'Close';
+                close.addEventListener('click', closeTalk);
+                panel.appendChild(close);
+                const title = document.createElement('h2');
+                title.textContent = entry.name;
+                panel.appendChild(title);
+                const role = document.createElement('p');
+                role.textContent = entry.title;
+                panel.appendChild(role);
+                const body = document.createElement('p');
+                body.textContent = entry.text || '';
+                panel.appendChild(body);
+                if (tabs.length > 1) {
+                    const bar = document.createElement('div');
+                    bar.className = 'tabs';
+                    for (const [id, label] of tabs) {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'sheet-tab' + (serviceTab === id ? ' on' : '');
+                        button.textContent = label;
+                        button.addEventListener('click', () => {
+                            serviceTab = id;
+                            renderTalk(entry);
+                        });
+                        bar.appendChild(button);
+                    }
+                    panel.appendChild(bar);
+                }
+                if (serviceTab) renderService(panel, entry, serviceTab);
+            }
+            function tryTalk() {
+                const aimed = currentTarget();
+                let entry = null;
+                if (aimed && aimed.kind === 'civil') {
+                    const dx = aimed.group.position.x - characterGroup.position.x;
+                    const dz = aimed.group.position.z - characterGroup.position.z;
+                    if (dx * dx + dz * dz <= 3.6 * 3.6) entry = worldCivs.get(aimed.id);
+                }
+                if (!entry) entry = nearestCivilian(3.6);
+                if (!entry) {
+                    showMessage('No one close enough to talk to');
+                    return;
+                }
+                selectNpc(entry.id);
+                renderTalk(entry);
             }
 
             function toggleSheet() {
@@ -5829,7 +5848,7 @@
                         else {
                             if (data.inventory) applyInventory(data.inventory);
                             showMessage('Sold ' + data.name + ' for ' + data.price);
-                            if (document.getElementById('shop').classList.contains('open')) renderShop();
+                            refreshOpenTalk();
                         }
                     } else if (data.type === 'useResult') {
                         if (!data.ok) showMessage(data.reason || 'Cannot use');
