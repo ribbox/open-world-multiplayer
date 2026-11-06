@@ -486,7 +486,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, listRoads, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset, campYaw, campSpot, roadAt, listDungeons, dungeonById, dungeonWorld, dungeonLocal, dungeonClamp, dungeonBlocked, DUNGEON_HALF } from './worldgen.js';
+        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, listRoads, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset, campYaw, campSpot, roadAt, listDungeons, dungeonById, dungeonWorld, dungeonLocal, dungeonClamp, dungeonBlocked, dungeonTravel, DUNGEON_HALF } from './worldgen.js';
 
         const loadingLabel = document.getElementById('loadingLabel');
         if (loadingLabel) loadingLabel.textContent = 'Loading the world';
@@ -2127,6 +2127,7 @@
             }
 
             let activeCave = null;
+            const CAVE_HEIGHT = 9;
             let dungeonRoot = null;
             let portalRoot = null;
             const dungeonRayMeshes = [];
@@ -2134,7 +2135,7 @@
 
             function setCaveLook(on) {
                 if (on) {
-                    scene.fog = new THREE.Fog(0x141018, 5, 26);
+                    scene.fog = new THREE.Fog(0x141018, 14, 58);
                     scene.background = new THREE.Color(0x141018);
                     renderer.setClearColor(0x141018, 1);
                     ambientLight.intensity = 0.28;
@@ -2174,7 +2175,7 @@
                 }
             }
 
-            function ribbonGeo(pts, half, y, side) {
+            function ribbonGeo(pts, half, y, side, ny) {
                 const positions = [];
                 const normals = [];
                 const indices = [];
@@ -2191,8 +2192,9 @@
                     const rightX = pts[i][0] + dz * half;
                     const rightZ = pts[i][1] - dx * half;
                     if (side === 0) {
+                        const up = ny || 1;
                         positions.push(leftX, y, leftZ, rightX, y, rightZ);
-                        normals.push(0, 1, 0, 0, 1, 0);
+                        normals.push(0, up, 0, 0, up, 0);
                     } else if (side < 0) {
                         positions.push(leftX, 0, leftZ, leftX, y, leftZ);
                         normals.push(-dz, 0, dx, -dz, 0, dx);
@@ -2233,6 +2235,46 @@
                 return group;
             }
 
+            function caveCap(half, height, door) {
+                const group = new THREE.Group();
+                const mat = new THREE.MeshLambertMaterial({ color: 0x2c2636, side: THREE.DoubleSide });
+                if (!door) {
+                    const slab = new THREE.Mesh(new THREE.BoxGeometry(half * 2 + 0.5, height, 0.45), mat);
+                    slab.position.set(0, height * 0.5, 1.05);
+                    group.add(slab);
+                    return group;
+                }
+                const doorHalf = 1.34;
+                const doorTop = 3.08;
+                const topH = Math.max(0.4, height - doorTop);
+                const top = new THREE.Mesh(new THREE.BoxGeometry(half * 2 + 0.5, topH, 0.4), mat);
+                top.position.set(0, doorTop + topH * 0.5, 0.28);
+                const sideW = Math.max(0.4, half - doorHalf);
+                const sideGeo = new THREE.BoxGeometry(sideW, doorTop, 0.4);
+                const left = new THREE.Mesh(sideGeo, mat);
+                left.position.set(-(doorHalf + half) * 0.5, doorTop * 0.5, 0.28);
+                const right = new THREE.Mesh(sideGeo, mat);
+                right.position.set((doorHalf + half) * 0.5, doorTop * 0.5, 0.28);
+                group.add(top, left, right);
+                return group;
+            }
+
+            function caveCamInside(x, z) {
+                if (!activeCave) return false;
+                const held = dungeonClamp(activeCave, x, z);
+                if (Math.hypot(held.x - x, held.z - z) > 0.28) return false;
+                const samples = activeCave.samples && activeCave.samples.length ? activeCave.samples : activeCave.points;
+                if (!samples || samples.length < 2) return false;
+                const local = dungeonLocal(activeCave, x, z);
+                const a = samples[0];
+                const b = samples[1];
+                const abx = b[0] - a[0];
+                const abz = b[1] - a[1];
+                const len = Math.hypot(abx, abz) || 1;
+                const along = ((local.x - a[0]) * abx + (local.z - a[1]) * abz) / len;
+                return along >= 0.45;
+            }
+
             function buildDungeonMesh(cave) {
                 clearDungeonMesh();
                 const samples = cave.samples && cave.samples.length ? cave.samples : curvePoints(cave.points, cave.edges, false);
@@ -2242,9 +2284,9 @@
                 });
                 dungeonRoot = new THREE.Group();
                 const floor = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, 0, 0), new THREE.MeshLambertMaterial({ color: 0x3d342c, side: THREE.DoubleSide }));
-                const ceiling = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, 3.15, 0), new THREE.MeshLambertMaterial({ color: 0x17141c, side: THREE.DoubleSide }));
-                const left = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, 3.15, -1), new THREE.MeshLambertMaterial({ color: 0x2a2432, side: THREE.DoubleSide }));
-                const right = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, 3.15, 1), new THREE.MeshLambertMaterial({ color: 0x241f2c, side: THREE.DoubleSide }));
+                const ceiling = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, CAVE_HEIGHT, 0), new THREE.MeshLambertMaterial({ color: 0x3c3548, side: THREE.DoubleSide }));
+                const left = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, CAVE_HEIGHT, -1), new THREE.MeshLambertMaterial({ color: 0x322a3c, side: THREE.DoubleSide }));
+                const right = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, CAVE_HEIGHT, 1), new THREE.MeshLambertMaterial({ color: 0x2c2634, side: THREE.DoubleSide }));
                 floor.receiveShadow = true;
                 dungeonRoot.add(floor, ceiling, left, right);
                 dungeonRayMeshes.push(left, right, floor, ceiling);
@@ -2252,16 +2294,16 @@
                 for (let i = 0; i < pts.length; i += 6) {
                     if (lights >= 8) break;
                     lights += 1;
-                    const lamp = new THREE.PointLight(0xffaa66, 0.55, 11, 1.6);
-                    lamp.position.set(pts[i][0], 2.15, pts[i][1]);
+                    const lamp = new THREE.PointLight(0xffaa66, 1.15, 22, 1.15);
+                    lamp.position.set(pts[i][0], 6.7, pts[i][1]);
                     dungeonRoot.add(lamp);
                 }
                 for (const prop of cave.props || []) {
                     const world = dungeonWorld(cave, prop.x, prop.z);
                     let mesh;
                     if (prop.type === 'pillar') {
-                        mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 3.05, 7), new THREE.MeshLambertMaterial({ color: 0x6e655c }));
-                        mesh.position.set(world.x, 1.52, world.z);
+                        mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 8.2, 7), new THREE.MeshLambertMaterial({ color: 0x6e655c }));
+                        mesh.position.set(world.x, 4.1, world.z);
                     } else if (prop.type === 'root') {
                         mesh = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.42, 0.5), new THREE.MeshLambertMaterial({ color: 0x4a3020 }));
                         mesh.position.set(world.x, 0.24, world.z);
@@ -2280,6 +2322,19 @@
                 const mouth = pts[0];
                 const next = pts[Math.min(1, pts.length - 1)];
                 const yaw = Math.atan2(next[0] - mouth[0], next[1] - mouth[1]);
+                const mouthCap = caveCap(DUNGEON_HALF, CAVE_HEIGHT, true);
+                mouthCap.position.set(mouth[0], 0, mouth[1]);
+                mouthCap.rotation.y = yaw;
+                dungeonRoot.add(mouthCap);
+                mouthCap.traverse(obj => { if (obj.isMesh) dungeonRayMeshes.push(obj); });
+                const last = pts[pts.length - 1];
+                const prev = pts[Math.max(0, pts.length - 2)];
+                const endYaw = Math.atan2(last[0] - prev[0], last[1] - prev[1]);
+                const endCap = caveCap(DUNGEON_HALF, CAVE_HEIGHT, false);
+                endCap.position.set(last[0], 0, last[1]);
+                endCap.rotation.y = endYaw;
+                dungeonRoot.add(endCap);
+                endCap.traverse(obj => { if (obj.isMesh) dungeonRayMeshes.push(obj); });
                 dungeonRoot.add(makePortal(mouth[0], 0, mouth[1], yaw));
                 scene.add(dungeonRoot);
             }
@@ -5089,8 +5144,8 @@
                 } else {
                     characterGroup.position.y = groundY;
                 }
-                if (activeCave && characterGroup.position.y > 1.7) {
-                    characterGroup.position.y = 1.7;
+                if (activeCave && characterGroup.position.y > CAVE_HEIGHT - 2.2) {
+                    characterGroup.position.y = CAVE_HEIGHT - 2.2;
                     if (verticalVelocity > 0) verticalVelocity = 0;
                 }
 
@@ -5150,15 +5205,61 @@
                 }
 
                 const camTarget = characterGroup.position.clone().add(new THREE.Vector3(0, 1.55, 0));
+                const follow = activeCave ? Math.min(cameraDistance, 4.2) : cameraDistance;
                 const desired = new THREE.Vector3(
-                    characterGroup.position.x + Math.sin(cameraYaw) * cameraDistance,
-                    characterGroup.position.y + cameraHeight + Math.sin(cameraPitch) * 3,
-                    characterGroup.position.z + Math.cos(cameraYaw) * cameraDistance
+                    characterGroup.position.x + Math.sin(cameraYaw) * follow,
+                    characterGroup.position.y + cameraHeight + Math.sin(cameraPitch) * (activeCave ? 1.6 : 3),
+                    characterGroup.position.z + Math.cos(cameraYaw) * follow
                 );
+                if (activeCave) {
+                    const px = characterGroup.position.x;
+                    const pz = characterGroup.position.z;
+                    if (!caveCamInside(desired.x, desired.z)) {
+                        const ox = desired.x;
+                        const oz = desired.z;
+                        let lo = 0;
+                        let hi = 1;
+                        for (let step = 0; step < 10; step++) {
+                            const mid = (lo + hi) * 0.5;
+                            if (caveCamInside(px + (ox - px) * mid, pz + (oz - pz) * mid)) lo = mid;
+                            else hi = mid;
+                        }
+                        if (lo < 0.22 && dungeonTravel(activeCave, px, pz) < 2.5) {
+                            const samples = activeCave.samples && activeCave.samples.length ? activeCave.samples : activeCave.points;
+                            const a = dungeonWorld(activeCave, samples[0][0], samples[0][1]);
+                            const b = dungeonWorld(activeCave, samples[Math.min(1, samples.length - 1)][0], samples[Math.min(1, samples.length - 1)][1]);
+                            let fx = b.x - a.x;
+                            let fz = b.z - a.z;
+                            const span = Math.hypot(fx, fz) || 1;
+                            fx /= span;
+                            fz /= span;
+                            desired.x = px + fx * 0.85 + fz * 0.75;
+                            desired.z = pz + fz * 0.85 - fx * 0.75;
+                            if (!caveCamInside(desired.x, desired.z)) {
+                                desired.x = px + fx * 1.15;
+                                desired.z = pz + fz * 1.15;
+                            }
+                            desired.y = characterGroup.position.y + 2.35;
+                        } else if (lo < 0.22) {
+                            desired.x = px;
+                            desired.z = pz;
+                            desired.y = characterGroup.position.y + 2.5;
+                        } else {
+                            desired.x = px + (ox - px) * lo;
+                            desired.z = pz + (oz - pz) * lo;
+                        }
+                    }
+                    const heldCam = dungeonClamp(activeCave, desired.x, desired.z);
+                    desired.x = heldCam.x;
+                    desired.z = heldCam.z;
+                    if (desired.y > CAVE_HEIGHT - 1.15) desired.y = CAVE_HEIGHT - 1.15;
+                    if (desired.y < 1.15) desired.y = 1.15;
+                }
                 const rayDir = desired.clone().sub(camTarget);
                 const rayLen = rayDir.length() || 1;
                 rayDir.multiplyScalar(1 / rayLen);
                 const cameraRay = cameraRaycaster;
+                if (activeCave && dungeonRoot) dungeonRoot.updateWorldMatrix(true, true);
                 for (let i = 0; i < terrainMeshes.length; i++) terrainMeshes[i].updateWorldMatrix(true, false);
                 cameraRay.set(camTarget, rayDir);
                 cameraRay.far = rayLen;
@@ -5172,7 +5273,10 @@
                 const bedY = terrainHeight(camera.position.x, camera.position.z);
                 const floorY = (bedY < WATER_LEVEL ? WATER_LEVEL + 1.35 : bedY + 1.05);
                 if (camera.position.y < floorY) camera.position.y = floorY;
-                } else if (camera.position.y < 0.55) camera.position.y = 0.55;
+                } else {
+                    if (camera.position.y < 1.05) camera.position.y = 1.05;
+                    if (camera.position.y > CAVE_HEIGHT - 0.8) camera.position.y = CAVE_HEIGHT - 0.8;
+                }
                 camera.lookAt(camTarget);
 
                 if (!activeCave) updateChunks();

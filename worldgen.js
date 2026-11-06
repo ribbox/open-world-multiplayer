@@ -995,6 +995,31 @@ export function dungeonClamp(dungeon, x, z) {
     return dungeonWorld(dungeon, best.x + nx * (DUNGEON_HALF - 0.08), best.z + nz * (DUNGEON_HALF - 0.08));
 }
 
+export function dungeonTravel(dungeon, x, z) {
+    const local = dungeonLocal(dungeon, x, z);
+    const samples = dungeon.samples && dungeon.samples.length ? dungeon.samples : dungeon.points;
+    let best = null;
+    let walked = 0;
+    for (let i = 1; i < samples.length; i++) {
+        const a = samples[i - 1];
+        const b = samples[i];
+        const abx = b[0] - a[0];
+        const abz = b[1] - a[1];
+        const len = Math.hypot(abx, abz);
+        const len2 = abx * abx + abz * abz || 1e-6;
+        let t = ((local.x - a[0]) * abx + (local.z - a[1]) * abz) / len2;
+        if (t < 0) t = 0;
+        else if (t > 1) t = 1;
+        const px = a[0] + abx * t;
+        const pz = a[1] + abz * t;
+        const dist = Math.hypot(local.x - px, local.z - pz);
+        const along = walked + len * t;
+        if (!best || dist < best.dist) best = { dist, along };
+        walked += len;
+    }
+    return best ? best.along : 0;
+}
+
 export function dungeonBlocked(dungeon, x0, z0, x1, z1) {
     const end = dungeonLocal(dungeon, x1, z1);
     for (const prop of dungeon.props || []) {

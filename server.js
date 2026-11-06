@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked, dungeonTravel } from './worldgen.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -1043,6 +1043,26 @@ function becomeGhost(player, now) {
     savePlayer(player);
 }
 
+function dungeonThreat(npc) {
+    const cave = dungeonById(npc.dungeonId);
+    if (!cave) return null;
+    let best = null;
+    let bestD = AGGRO_RANGE * AGGRO_RANGE;
+    for (const player of players.values()) {
+        if (player.hp <= 0 || player.ghost) continue;
+        if (player.dungeonId !== npc.dungeonId) continue;
+        if (dungeonTravel(cave, player.x, player.z) < 5) continue;
+        const dx = player.x - npc.x;
+        const dz = player.z - npc.z;
+        const d = dx * dx + dz * dz;
+        if (d < bestD) {
+            bestD = d;
+            best = player;
+        }
+    }
+    return best;
+}
+
 function nearestPlayer(npc, range) {
     let best = null;
     let bestD = range * range;
@@ -2047,7 +2067,8 @@ function tickNpcs() {
                 continue;
             }
         }
-        const target = nearestPlayer(npc, AGGRO_RANGE);
+        const target = npc.dungeonId ? dungeonThreat(npc) : nearestPlayer(npc, AGGRO_RANGE);
+        if (npc.dungeonId && !target) npc.aggroId = null;
         let tx = npc.wanderX;
         let tz = npc.wanderZ;
         let speed = 1.7;
