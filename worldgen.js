@@ -897,7 +897,7 @@ export function listDesignedZones() {
 }
 
 const DUNGEON_SHIFT = 90000;
-const DUNGEON_HALF = 2.15;
+export const DUNGEON_HALF = 3.6;
 let designedDungeons = [];
 
 function loadDungeons(config) {

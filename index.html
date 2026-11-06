@@ -486,7 +486,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, listRoads, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset, campYaw, campSpot, roadAt, listDungeons, dungeonById, dungeonWorld, dungeonLocal, dungeonClamp, dungeonBlocked } from './worldgen.js';
+        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, listRoads, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset, campYaw, campSpot, roadAt, listDungeons, dungeonById, dungeonWorld, dungeonLocal, dungeonClamp, dungeonBlocked, DUNGEON_HALF } from './worldgen.js';
 
         const loadingLabel = document.getElementById('loadingLabel');
         if (loadingLabel) loadingLabel.textContent = 'Loading the world';
@@ -2241,10 +2241,10 @@
                     return [world.x, world.z];
                 });
                 dungeonRoot = new THREE.Group();
-                const floor = new THREE.Mesh(ribbonGeo(pts, 2.15, 0, 0), new THREE.MeshLambertMaterial({ color: 0x3d342c, side: THREE.DoubleSide }));
-                const ceiling = new THREE.Mesh(ribbonGeo(pts, 2.15, 3.15, 0), new THREE.MeshLambertMaterial({ color: 0x17141c, side: THREE.DoubleSide }));
-                const left = new THREE.Mesh(ribbonGeo(pts, 2.15, 3.15, -1), new THREE.MeshLambertMaterial({ color: 0x2a2432, side: THREE.DoubleSide }));
-                const right = new THREE.Mesh(ribbonGeo(pts, 2.15, 3.15, 1), new THREE.MeshLambertMaterial({ color: 0x241f2c, side: THREE.DoubleSide }));
+                const floor = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, 0, 0), new THREE.MeshLambertMaterial({ color: 0x3d342c, side: THREE.DoubleSide }));
+                const ceiling = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, 3.15, 0), new THREE.MeshLambertMaterial({ color: 0x17141c, side: THREE.DoubleSide }));
+                const left = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, 3.15, -1), new THREE.MeshLambertMaterial({ color: 0x2a2432, side: THREE.DoubleSide }));
+                const right = new THREE.Mesh(ribbonGeo(pts, DUNGEON_HALF, 3.15, 1), new THREE.MeshLambertMaterial({ color: 0x241f2c, side: THREE.DoubleSide }));
                 floor.receiveShadow = true;
                 dungeonRoot.add(floor, ceiling, left, right);
                 dungeonRayMeshes.push(left, right, floor, ceiling);

@@ -139,7 +139,7 @@
         </div>
     </div>
     <script type="module">
-        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve, polygonIntersection, downsampleRing } from './worldgen.js';
+        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve, polygonIntersection, downsampleRing, DUNGEON_HALF } from './worldgen.js';
 
         const MOBS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
         const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes'];
@@ -1236,8 +1236,8 @@
             remember();
             dungeon.props.push({
                 type: routeTool,
-                x: Math.round((hit.x + hit.nx * side * 2.05) * 10) / 10,
-                z: Math.round((hit.z + hit.nz * side * 2.05) * 10) / 10
+                x: Math.round((hit.x + hit.nx * side * (DUNGEON_HALF - 0.15)) * 10) / 10,
+                z: Math.round((hit.z + hit.nz * side * (DUNGEON_HALF - 0.15)) * 10) / 10
             });
             if (dungeon.props.length > 80) dungeon.props.length = 80;
             draw();

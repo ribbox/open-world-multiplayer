@@ -534,12 +534,7 @@ function spotNear(x, z, index) {
 
 function respawnPinned(npc) {
     if (npc.dungeonId) {
-        npc.alive = true;
-        npc.hp = npc.maxHp;
-        npc.x = npc.homeX;
-        npc.z = npc.homeZ;
-        npc.aggroId = null;
-        pickWander(npc);
+        dropQuestMob(npc);
         return;
     }
     const quest = QUESTS[npc.questId];
@@ -944,6 +939,7 @@ function tickAreaSpawns(area, now) {
 function downNpc(npc) {
     npc.hp = 0;
     npc.alive = false;
+    if (npc.dungeonId) return;
     if (npc.herd || npc.pinned || npc.questId) npc.respawnAt = Date.now() + 8000;
     else npc.ambientGone = true;
 }
