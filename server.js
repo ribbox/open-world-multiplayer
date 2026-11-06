@@ -1394,7 +1394,9 @@ function publicCraft() {
             weapon: recipe.weapon || '',
             magic: !!recipe.magic,
             cost: recipe.cost,
-            loot: !!recipe.loot
+            loot: !!recipe.loot,
+            stats: craftedStats(recipe).stats,
+            reqLevel: craftedStats(recipe).reqLevel
         };
     }
     return { sets: CRAFT_SETS, recipes };
@@ -1599,11 +1601,12 @@ function learnPattern(player, index) {
 function craftedStats(recipe) {
     if (!recipe || (recipe.kind !== 'armor' && recipe.kind !== 'weapon')) return { stats: {}, reqLevel: 1 };
     const intellect = recipe.style === 'cloth' || recipe.weapon === 'staff';
-    let amount = Math.min(3, Math.max(1, recipe.armor || 1));
-    if (recipe.magic) amount += 1;
+    let amount = recipe.kind === 'weapon' ? 2 : Math.max(1, recipe.armor || 1);
+    if (recipe.magic) amount += 2;
     if (recipe.loot) amount += 1;
     const stats = { [intellect ? 'intellect' : 'strength']: amount };
-    if (recipe.style === 'plate' || recipe.loot) stats.stamina = 1;
+    if (recipe.style === 'plate' || recipe.set === 'plate') stats.stamina = Math.max(1, Math.ceil(amount / 2));
+    else if (recipe.loot || (recipe.armor || 0) >= 3) stats.stamina = 1;
     let reqLevel = 1;
     if (recipe.style === 'plate' || recipe.set === 'plate') reqLevel = 6;
     if (recipe.loot) reqLevel = 8;

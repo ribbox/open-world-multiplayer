@@ -128,9 +128,50 @@
         #targetHp { height: 8px; background: #3a1a1a; border-radius: 4px; overflow: hidden; }
         #targetStats { font-size: 11px; color: #f0d090; margin-top: 4px; }
         #targetStats[hidden] { display: none; }
+        #hurtVeil {
+            position: fixed; inset: 0; pointer-events: none; z-index: 6;
+            background: radial-gradient(ellipse at center, rgba(80,0,0,0) 36%, rgba(150,0,0,0.92) 100%);
+            opacity: 0; transition: opacity 0.22s linear;
+        }
         #hurtFlash {
-            position: fixed; inset: 0; pointer-events: none; z-index: 8;
-            box-shadow: inset 0 0 0 rgba(160, 0, 0, 0);
+            position: fixed; inset: 0; pointer-events: none; z-index: 7; opacity: 0;
+            background: radial-gradient(ellipse at center, rgba(255,60,60,0.08) 10%, rgba(170,0,0,0.72) 100%);
+        }
+        #hurtFlash.hit { animation: hurtFlash 0.42s ease-out; }
+        @keyframes hurtFlash {
+            0% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        #hudVitals { display: flex; align-items: flex-end; justify-content: center; gap: 12px; }
+        #hudCenter { display: flex; flex-direction: column; align-items: center; }
+        .globe {
+            position: relative; width: 72px; height: 72px; border-radius: 50%; overflow: hidden;
+            border: 3px solid rgba(255,255,255,0.62); background: #140404; flex: 0 0 auto;
+            box-shadow: 0 0 0 2px rgba(0,0,0,0.7), inset 0 -8px 12px rgba(0,0,0,0.35);
+        }
+        .globe.mp { background: #041018; }
+        .globe-fill {
+            position: absolute; left: 0; right: 0; bottom: 0; height: 100%;
+            background: linear-gradient(180deg, #ff8a78 0%, #d64535 42%, #6e120c 100%);
+            transition: height 0.16s ease-out;
+        }
+        .globe.mp .globe-fill { background: linear-gradient(180deg, #9ad7ff 0%, #2e86c7 46%, #0a3358 100%); }
+        .globe-shine {
+            position: absolute; inset: 0; pointer-events: none;
+            background: radial-gradient(circle at 32% 26%, rgba(255,255,255,0.5), transparent 36%),
+                linear-gradient(180deg, rgba(255,255,255,0.16), transparent 42%);
+        }
+        .globe-num {
+            position: absolute; inset: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; color: white; font-weight: bold;
+            font-size: 13px; line-height: 1.05; text-shadow: 0 1px 2px #000;
+        }
+        .globe-num small { font-size: 10px; font-weight: normal; opacity: 0.9; }
+        .globe.low { animation: globePulse 0.7s ease-in-out infinite; border-color: #ffd0d0; }
+        .globe.hit .globe-fill { filter: brightness(1.7); }
+        @keyframes globePulse {
+            0%, 100% { box-shadow: 0 0 0 2px rgba(0,0,0,0.7), 0 0 8px rgba(255,40,40,0.25); }
+            50% { box-shadow: 0 0 0 2px rgba(0,0,0,0.7), 0 0 18px rgba(255,30,30,0.95); }
         }
         #ghostBanner {
             position: absolute; top: 64px; left: 50%; transform: translateX(-50%);
@@ -395,6 +436,8 @@
         P: Invite the targeted player. A party holds up to 5<br>
         C: Character sheet. Reset character is on that page and returns you to level 1<br>
         Strength raises melee hits, Intellect raises spells and mana, Stamina raises health<br>
+        The red globe is health and the blue globe is mana. The screen reddens as health falls<br>
+        Crafted armor and weapons add stats. Cloth and staves favor Intellect, swords and leather favor Strength<br>
         Character sheet Craft tab makes gear. A shop assistant has Buy and Sell tabs<br>
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
@@ -425,7 +468,16 @@
         <span id="playerColor" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;vertical-align:middle;"></span>
         <input id="playerName" maxlength="16" placeholder="Name">
     </div>
+    <div id="hurtVeil"></div>
+    <div id="hurtFlash"></div>
     <div id="actionbar">
+        <div id="hudVitals">
+            <div class="globe hp" id="hpGlobe" title="Health">
+                <div class="globe-fill" id="hpGlobeFill"></div>
+                <div class="globe-shine"></div>
+                <div class="globe-num"><span id="hpGlobeNum">20</span><small id="hpGlobeMax">/20</small></div>
+            </div>
+            <div id="hudCenter">
         <div id="status">
             <span id="toolName">Sword</span>
             &nbsp; Lv <span id="levelCount">1</span>
@@ -447,6 +499,13 @@
             <button type="button" id="questButton" class="bar-nav" title="Quest log (L)" aria-label="Quest log">L</button>
         </div>
         <div id="pageLabel">Page 1 / 3</div>
+            </div>
+            <div class="globe mp" id="mpGlobe" title="Mana">
+                <div class="globe-fill" id="mpGlobeFill"></div>
+                <div class="globe-shine"></div>
+                <div class="globe-num"><span id="mpGlobeNum">10</span><small id="mpGlobeMax">/10</small></div>
+            </div>
+        </div>
     </div>
     <div id="sheet"></div>
     <div id="questlog"></div>
@@ -993,6 +1052,28 @@
                 document.getElementById('strCount').textContent = stats.strength;
                 document.getElementById('staCount').textContent = stats.stamina;
                 document.getElementById('intCount').textContent = stats.intellect;
+                const hpPct = stats.maxHp ? Math.max(0, Math.min(1, stats.hp / stats.maxHp)) : 1;
+                const mpPct = stats.maxMana ? Math.max(0, Math.min(1, stats.mana / stats.maxMana)) : 1;
+                const hpFill = document.getElementById('hpGlobeFill');
+                const mpFill = document.getElementById('mpGlobeFill');
+                if (hpFill) hpFill.style.height = (hpPct * 100) + '%';
+                if (mpFill) mpFill.style.height = (mpPct * 100) + '%';
+                const hpNum = document.getElementById('hpGlobeNum');
+                const mpNum = document.getElementById('mpGlobeNum');
+                const hpMax = document.getElementById('hpGlobeMax');
+                const mpMax = document.getElementById('mpGlobeMax');
+                if (hpNum) hpNum.textContent = String(stats.hp);
+                if (mpNum) mpNum.textContent = String(stats.mana);
+                if (hpMax) hpMax.textContent = '/' + stats.maxHp;
+                if (mpMax) mpMax.textContent = '/' + stats.maxMana;
+                const hpGlobe = document.getElementById('hpGlobe');
+                if (hpGlobe) hpGlobe.classList.toggle('low', hpPct > 0 && hpPct <= 0.35 && !ghost);
+                const veil = document.getElementById('hurtVeil');
+                if (veil) {
+                    const missing = 1 - hpPct;
+                    const tint = ghost ? 0.18 : (missing <= 0 ? 0 : Math.pow(missing, 1.15) * 0.92);
+                    veil.style.opacity = String(tint);
+                }
             }
             function applyStats(data) {
                 if (data.level != null) stats.level = data.level;
@@ -1057,6 +1138,15 @@
             };
             const SLOT_NAMES = { head: 'Head', neck: 'Neck', shoulders: 'Shoulders', cloak: 'Cloak', chest: 'Chest', hands: 'Hands', waist: 'Waist', legs: 'Legs', feet: 'Feet', weapon: 'Weapon', offhand: 'Off hand' };
             const STYLE_NAMES = { cloth: 'Cloth', leather: 'Leather', plate: 'Plate' };
+            function statBits(item) {
+                const bonus = (item && item.stats) || {};
+                const bits = [];
+                if (bonus.strength) bits.push('+' + bonus.strength + ' Str');
+                if (bonus.stamina) bits.push('+' + bonus.stamina + ' Sta');
+                if (bonus.intellect) bits.push('+' + bonus.intellect + ' Int');
+                if (item && (item.reqLevel || 1) > 1) bits.push('Lv ' + item.reqLevel);
+                return bits;
+            }
             function itemTipLines(item) {
                 const lines = [];
                 if (!item) return lines;
@@ -3491,9 +3581,18 @@
 
             function showHurt() {
                 const veil = document.getElementById('hurtFlash');
-                veil.classList.add('on');
+                if (veil) {
+                    veil.classList.remove('hit');
+                    void veil.offsetWidth;
+                    veil.classList.add('hit');
+                }
+                const globe = document.getElementById('hpGlobe');
+                if (!globe) return;
+                globe.classList.remove('hit');
+                void globe.offsetWidth;
+                globe.classList.add('hit');
                 clearTimeout(showHurt.timer);
-                showHurt.timer = setTimeout(() => veil.classList.remove('on'), 180);
+                showHurt.timer = setTimeout(() => globe.classList.remove('hit'), 280);
             }
 
             function setNpcLabel(entry, state) {
@@ -4982,7 +5081,9 @@
                         const label = document.createElement('div');
                         const cost = Object.entries(recipe.cost || {}).map(([kind, qty]) => qty + ' ' + kind).join(', ');
                         const ready = Object.entries(recipe.cost || {}).every(([kind, qty]) => haveKind(kind) >= qty);
-                        label.textContent = recipe.name + (recipe.armor ? ' · armor ' + recipe.armor : '') + ' · ' + cost;
+                        const bits = statBits(recipe);
+                        label.textContent = recipe.name + (bits.length ? ' · ' + bits.join(' ') : '') + (recipe.armor ? ' · armor ' + recipe.armor : '') + ' · ' + cost;
+                        bindItemTip(line, recipe, ['Click Craft']);
                         line.appendChild(label);
                         const button = document.createElement('button');
                         button.type = 'button';
@@ -5006,13 +5107,7 @@
                     line.className = 'spell-row';
                     line.appendChild(itemCanvas(slot));
                     const label = document.createElement('div');
-                    const bonus = slot.stats || {};
-                    const bits = [];
-                    if (bonus.strength) bits.push('+' + bonus.strength + ' Str');
-                    if (bonus.stamina) bits.push('+' + bonus.stamina + ' Sta');
-                    if (bonus.intellect) bits.push('+' + bonus.intellect + ' Int');
-                    if ((slot.reqLevel || 1) > 1) bits.push('Lv ' + slot.reqLevel);
-                    label.textContent = slot.name + (bits.length ? ' · ' + bits.join(' ') : '');
+                    label.textContent = slot.name + (statBits(slot).length ? ' · ' + statBits(slot).join(' ') : '');
                     bindItemTip(line, slot, ['Click Equip']);
                     line.appendChild(label);
                     const button = document.createElement('button');
