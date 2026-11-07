@@ -1131,6 +1131,8 @@ function becomeGhost(player, now) {
     player.corpse = corpse;
     const home = player.spawn || mapSpawn();
     player.hp = 0;
+    player.absorb = 0;
+    player.absorbUntil = 0;
     player.x = home.x;
     player.y = 0;
     player.z = home.z;
@@ -1226,6 +1228,7 @@ function statsOf(player) {
         maxHp: player.maxHp,
         mana: Math.floor(player.mana),
         maxMana: player.maxMana,
+        absorb: Date.now() < (player.absorbUntil || 0) ? Math.floor(player.absorb || 0) : 0,
         armor: player.armor,
         stats: player.stats || { strength: 0, stamina: 0, intellect: 0 }
     };
@@ -1365,20 +1368,32 @@ function syncPartyVitals() {
 const ABILITIES = {
     sword: { weapon: 'sword', mana: 0, range: 2.6, damage: (level) => 4 + level },
     'power-strike': { weapon: 'sword', mana: 6, range: 2.6, damage: (level) => 8 + level * 2 },
-    cleave: { weapon: 'sword', mana: 5, range: 2.6, damage: (level) => 6 + level },
-    staff: { weapon: 'staff', mana: 5, range: 8, damage: (level) => 4 + level },
-    'arcane-bolt': { weapon: 'staff', mana: 8, range: 8, damage: (level) => 6 + level },
-    'arcane-surge': { weapon: 'staff', mana: 14, range: 8, damage: (level) => 12 + level * 2 },
-    mend: { weapon: 'staff', mana: 8, range: 0, heal: (level) => 8 + level * 2 }
+    hamstring: { weapon: 'sword', mana: 4, range: 2.6, slow: 5000, damage: (level) => 2 + level },
+    execute: { weapon: 'sword', mana: 8, range: 2.6, execute: 2, damage: (level) => 6 + level * 2 },
+    cleave: { weapon: 'sword', mana: 5, range: 2.6, aoe: 2.6, damage: (level) => 6 + level },
+    whirlwind: { weapon: 'sword', mana: 10, range: 3.2, aoe: 3.2, aoeSelf: true, damage: (level) => 5 + level },
+    staff: { weapon: 'staff', mana: 5, range: 8, bolt: true, damage: (level) => 4 + level },
+    'arcane-bolt': { weapon: 'staff', mana: 8, range: 8, bolt: true, damage: (level) => 6 + level },
+    'frost-bolt': { weapon: 'staff', mana: 7, range: 8, bolt: true, slow: 4000, damage: (level) => 5 + level },
+    'arcane-surge': { weapon: 'staff', mana: 14, range: 8, bolt: true, damage: (level) => 12 + level * 2 },
+    mend: { weapon: 'staff', mana: 8, range: 0, heal: (level) => 8 + level * 2 },
+    barrier: { weapon: 'staff', mana: 12, range: 0, absorb: (level) => 6 + level * 2 },
+    'frost-nova': { weapon: 'staff', mana: 12, range: 4.2, aoe: 4.2, aoeSelf: true, slow: 3500, damage: (level) => 4 + level }
 };
 const ABILITY_COOLDOWN = {
     sword: 1200,
     'power-strike': 6000,
+    hamstring: 8000,
+    execute: 8000,
     cleave: 8000,
+    whirlwind: 12000,
     staff: 1200,
     'arcane-bolt': 1800,
+    'frost-bolt': 2200,
     'arcane-surge': 8000,
-    mend: 5000
+    mend: 5000,
+    barrier: 18000,
+    'frost-nova': 14000
 };
 const POTION_COOLDOWN = 12000;
 const BOMB_COOLDOWN = 4000;
@@ -1395,7 +1410,7 @@ function startCooldown(player, key, ms, now) {
 
 const BAR_PAGES = 3;
 const BAR_SLOTS = 8;
-const ACTION_IDS = new Set(['sword', 'power-strike', 'cleave', 'staff', 'arcane-bolt', 'arcane-surge', 'mend', 'gather', 'health', 'mana', 'bomb']);
+const ACTION_IDS = new Set(['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind', 'staff', 'arcane-bolt', 'frost-bolt', 'arcane-surge', 'mend', 'barrier', 'frost-nova', 'gather', 'health', 'mana', 'bomb']);
 
 function defaultActionBar() {
     return [
@@ -1432,10 +1447,16 @@ const CLASS_KITS = {
 const SPELLS = {
     sword: { class: 'warrior', name: 'Sword', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 0, manaRank: 2 },
     'power-strike': { class: 'warrior', name: 'Power Strike', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 6, manaRank: 3 },
+    hamstring: { class: 'warrior', name: 'Hamstring', level: 2, cost: 12, maxRank: 5, rankCost: 10, mana: 4, manaRank: 2 },
+    execute: { class: 'warrior', name: 'Execute', level: 6, cost: 30, maxRank: 5, rankCost: 16, mana: 8, manaRank: 4 },
     cleave: { class: 'warrior', name: 'Cleave', level: 4, cost: 20, maxRank: 5, rankCost: 16, mana: 5, manaRank: 3, talent: 'cleave' },
+    whirlwind: { class: 'warrior', name: 'Whirlwind', level: 8, cost: 40, maxRank: 5, rankCost: 18, mana: 10, manaRank: 4 },
     staff: { class: 'mage', name: 'Staff', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 5, manaRank: 3 },
     'arcane-bolt': { class: 'mage', name: 'Arcane Missile', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4 },
+    'frost-bolt': { class: 'mage', name: 'Frost Bolt', level: 3, cost: 15, maxRank: 5, rankCost: 12, mana: 7, manaRank: 3 },
     mend: { class: 'mage', name: 'Mend', level: 2, cost: 15, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4 },
+    barrier: { class: 'mage', name: 'Barrier', level: 6, cost: 28, maxRank: 5, rankCost: 16, mana: 12, manaRank: 4 },
+    'frost-nova': { class: 'mage', name: 'Frost Nova', level: 8, cost: 36, maxRank: 5, rankCost: 18, mana: 12, manaRank: 5 },
     'arcane-surge': { class: 'mage', name: 'Arcane Surge', level: 4, cost: 25, maxRank: 5, rankCost: 18, mana: 14, manaRank: 6, talent: 'surge' }
 };
 const TALENTS = {
@@ -2477,6 +2498,7 @@ function tickNpcs() {
             tx = npc.wanderX;
             tz = npc.wanderZ;
         }
+        if ((npc.slowUntil || 0) > now) speed *= 0.4;
         const dx = tx - npc.x;
         const dz = tz - npc.z;
         const dist = Math.hypot(dx, dz) || 0;
@@ -2487,10 +2509,16 @@ function tickNpcs() {
                 const block = npc.stats || mobStatBlock(npc.level, npc.kind);
                 const primary = mobBias(npc.kind) === 'intellect' ? (block.intellect || npc.level) : (block.strength || npc.level);
                 const raw = 1 + primary;
-                const damage = Math.max(1, Math.round(raw * (npc.elite ? 1.8 : 1)) - target.armor);
-                target.hp = Math.max(0, target.hp - damage);
+                let damage = Math.max(1, Math.round(raw * (npc.elite ? 1.8 : 1)) - target.armor);
+                let absorbed = 0;
+                if ((target.absorbUntil || 0) > now && target.absorb > 0) {
+                    absorbed = Math.min(target.absorb, damage);
+                    target.absorb -= absorbed;
+                    damage -= absorbed;
+                }
+                if (damage > 0) target.hp = Math.max(0, target.hp - damage);
                 enterCombat(target, now);
-                send(target.ws, { type: 'hurt', damage, attackerId: npc.id, attacker: npc.level, ...statsOf(target) });
+                send(target.ws, { type: 'hurt', damage, absorbed, attackerId: npc.id, attacker: npc.level, ...statsOf(target) });
                 if (target.hp <= 0) becomeGhost(target, now);
             }
             continue;
@@ -2525,11 +2553,14 @@ function tickNpcs() {
                 player.hp = Math.min(player.maxHp, player.hp + dt * player.maxHp * 0.04);
             }
         }
+        if ((player.absorbUntil || 0) <= now) player.absorb = 0;
         const shownMana = Math.floor(player.mana);
         const shownHp = Math.floor(player.hp);
-        if ((shownMana !== player.manaShown || shownHp !== player.hpShown) && now - player.manaSent > 800) {
+        const shownAbsorb = Math.floor(player.absorb || 0);
+        if ((shownMana !== player.manaShown || shownHp !== player.hpShown || shownAbsorb !== player.absorbShown) && now - player.manaSent > 800) {
             player.manaShown = shownMana;
             player.hpShown = shownHp;
+            player.absorbShown = shownAbsorb;
             player.manaSent = now;
             send(player.ws, { type: 'stats', ...statsOf(player) });
         }
@@ -2627,6 +2658,9 @@ wss.on('connection', (ws) => {
                 mana: maxManaFor({ level: prof.level, talents: prof.talents }),
                 manaShown: -1,
                 hpShown: -1,
+                absorb: 0,
+                absorbUntil: 0,
+                absorbShown: -1,
                 manaSent: 0,
                 armor: 0,
                 legacyArmor: prof.legacyArmor || 0,
@@ -2962,6 +2996,27 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'attackResult', ok: true, ability: abilityId, cd: cdMax, cdMax, spent: cost, heal: healed, targetId: subject.persistentId, ...statsOf(player) });
                 return;
             }
+            if (spec.absorb) {
+                const amount = Math.round((spec.absorb(player.level) + ((player.stats && player.stats.intellect) || 0)) * rankPower(rank));
+                const current = now < (player.absorbUntil || 0) ? (player.absorb || 0) : 0;
+                player.absorb = Math.max(current, amount);
+                player.absorbUntil = now + 15000;
+                startCooldown(player, abilityId, cdMax, now);
+                noteMana(player);
+                broadcast({
+                    type: 'cast',
+                    casterId: sessionId,
+                    ability: abilityId,
+                    bolts: 1,
+                    travel: 280,
+                    x: player.x,
+                    z: player.z,
+                    tx: player.x,
+                    tz: player.z
+                });
+                send(ws, { type: 'attackResult', ok: true, ability: abilityId, cd: cdMax, cdMax, spent: cost, shield: player.absorb, ...statsOf(player) });
+                return;
+            }
             const ally = players.get(data.targetId);
             if (ally) {
                 player.mana += cost;
@@ -2990,27 +3045,41 @@ wss.on('connection', (ws) => {
                 ? ((player.stats && player.stats.strength) || 0)
                 : ((player.stats && player.stats.intellect) || 0);
             const per = (spec.damage(player.level) + statBonus + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0)) * rankPower(rank);
-            const projectile = abilityId === 'staff' || abilityId === 'arcane-bolt' || abilityId === 'arcane-surge';
+            const projectile = !!spec.bolt;
             const travel = projectile ? Math.min(900, Math.max(220, Math.round(dist * 140))) : 0;
+            const victims = [npc];
+            if (spec.aoe && !projectile) {
+                const ox = spec.aoeSelf ? player.x : npc.x;
+                const oz = spec.aoeSelf ? player.z : npc.z;
+                for (const other of npcs.values()) {
+                    if (other === npc || !other.alive) continue;
+                    if ((other.dungeonId || '') !== (player.dungeonId || '')) continue;
+                    if (Math.hypot(other.x - ox, other.z - oz) > spec.aoe) continue;
+                    victims.push(other);
+                    if (victims.length >= 6) break;
+                }
+            }
             broadcast({
                 type: 'cast',
                 casterId: sessionId,
                 ability: abilityId,
                 npcId: npc.id,
-                bolts,
+                bolts: spec.aoe ? victims.length : bolts,
                 travel,
                 x: player.x,
                 z: player.z,
                 tx: npc.x,
                 tz: npc.z
             });
-            const finish = (dealt, killed, gained, leveled, chest) => {
+            const finish = (dealt, killed, gained, leveled, chest, executed) => {
                 if (ws.readyState !== 1) return;
+                const note = executed ? 'Execute' : spec.slow ? 'Slowed' : 'Hit';
                 send(ws, {
                     type: 'attackResult',
                     ok: true,
                     damage: dealt,
                     bolts,
+                    note,
                     npcId: npc.id,
                     killed,
                     gained,
@@ -3028,53 +3097,76 @@ wss.on('connection', (ws) => {
                 player.questDirty = false;
                 player.questNote = '';
             };
-            const land = () => {
-                if (!npc.alive) return { dealt: 0, killed: false, gained: 0, leveled: false, chest: null };
-                const dealtNow = Math.max(1, Math.round(per * damageScale(player.level, npc.level)));
-                npc.hp -= dealtNow;
-                npc.aggroId = player.persistentId;
+            const hitVictim = (victim) => {
+                if (!victim.alive) return { dealt: 0, killed: false, gained: 0, leveled: false, chest: null, executed: false };
+                let scale = 1;
+                let executed = false;
+                if (spec.execute && victim.maxHp > 0 && victim.hp / victim.maxHp <= 0.35) {
+                    scale = spec.execute;
+                    executed = true;
+                }
+                const dealtNow = Math.max(1, Math.round(per * scale * damageScale(player.level, victim.level)));
+                victim.hp -= dealtNow;
+                victim.aggroId = player.persistentId;
+                if (spec.slow) victim.slowUntil = Math.max(victim.slowUntil || 0, Date.now() + spec.slow);
                 let gained = 0;
                 let leveled = false;
                 let chest = null;
-                if (npc.hp <= 0) {
-                    downNpc(npc);
-                    const award = awardKill(player, npc);
+                if (victim.hp <= 0) {
+                    downNpc(victim);
+                    const award = awardKill(player, victim);
                     gained = award.gained;
                     leveled = award.leveled;
-                    chest = spawnChest(npc, award.members);
+                    chest = spawnChest(victim, award.members);
                 }
                 broadcast({
                     type: 'npcHit',
-                    id: npc.id,
-                    hp: npc.hp,
-                    maxHp: npc.maxHp,
-                    alive: npc.alive,
-                    x: npc.x,
-                    z: npc.z,
-                    level: npc.level,
-                    name: npc.name,
-                    tint: npc.tint
+                    id: victim.id,
+                    hp: victim.hp,
+                    maxHp: victim.maxHp,
+                    alive: victim.alive,
+                    x: victim.x,
+                    z: victim.z,
+                    level: victim.level,
+                    name: victim.name,
+                    tint: victim.tint
                 });
-                if (npc.ambientGone) npcs.delete(npc.id);
-                return { dealt: dealtNow, killed: !npc.alive, gained, leveled, chest };
+                if (victim.ambientGone) npcs.delete(victim.id);
+                return { dealt: dealtNow, killed: !victim.alive, gained, leveled, chest, executed };
             };
             if (!projectile) {
-                const hit = land();
-                finish(hit.dealt * bolts, hit.killed, hit.gained, hit.leveled, hit.chest);
+                let dealt = 0;
+                let killed = false;
+                let gained = 0;
+                let leveled = false;
+                let chest = null;
+                let executed = false;
+                for (const victim of victims) {
+                    const hit = hitVictim(victim);
+                    dealt += hit.dealt;
+                    killed = killed || hit.killed;
+                    gained += hit.gained;
+                    leveled = leveled || hit.leveled;
+                    chest = hit.chest || chest;
+                    executed = executed || hit.executed;
+                }
+                finish(dealt, killed, gained, leveled, chest, executed);
                 return;
             }
             let landed = 0;
             let dealt = 0;
             let reported = false;
+            let executed = false;
             const report = (hit) => {
                 if (reported) return;
                 reported = true;
-                finish(dealt, hit ? hit.killed : false, hit ? hit.gained : 0, hit ? hit.leveled : false, hit ? hit.chest : null);
+                finish(dealt, hit ? hit.killed : false, hit ? hit.gained : 0, hit ? hit.leveled : false, hit ? hit.chest : null, executed);
             };
             for (let i = 0; i < bolts; i++) {
                 setTimeout(() => {
-                    const hit = land();
+                    const hit = hitVictim(npc);
                     dealt += hit.dealt;
+                    executed = executed || hit.executed;
                     landed += 1;
                     if (hit.killed || landed >= bolts) report(hit);
                 }, travel + i * 90);

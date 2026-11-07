@@ -486,6 +486,7 @@
         Strength raises melee hits, Intellect raises spells and mana, Stamina raises health<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
         Spells train to rank 5. A higher rank hits harder and spends more mana. The next rank is every 2 levels<br>
+        Hamstring and Frost Bolt slow. Execute doubles damage under 35% health. Cleave and Whirlwind hit nearby foes. Barrier soaks hits. Frost Nova does both<br>
         The bar is your level and experience. Armor and stats are on the character sheet<br>
         Camps are safe. Creatures walk out, and you cannot attack while you are inside. The camp name appears when you enter<br>
         Tracked quests mark the zone, the dungeon portal, or the turn-in on the minimap<br>
@@ -1071,11 +1072,17 @@
             const ACTIONS = {
                 sword: { name: 'Sword', short: 'Swd', kind: 'weapon', weapon: 'sword', hint: 'A higher rank hits harder. 1.2s.' },
                 'power-strike': { name: 'Power Strike', short: 'Pwr', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Heavy hit. 6s.' },
-                cleave: { name: 'Cleave', short: 'Clv', kind: 'spell', weapon: 'sword', hint: 'Warrior talent spell. 8s.' },
+                hamstring: { name: 'Hamstring', short: 'Ham', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. A cut that slows. 8s.' },
+                execute: { name: 'Execute', short: 'Exe', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Double damage under 35% health. 8s.' },
+                cleave: { name: 'Cleave', short: 'Clv', kind: 'spell', weapon: 'sword', hint: 'Warrior talent spell. Hits the target and anyone beside them. 8s.' },
+                whirlwind: { name: 'Whirlwind', short: 'Spin', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Hits every hostile around you. 12s.' },
                 staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'A magic bolt from an equipped staff. 1.2s.' },
                 'arcane-bolt': { name: 'Arcane Missile', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Ranks 3 and 5 fire extra bolts. 1.8s.' },
+                'frost-bolt': { name: 'Frost Bolt', short: 'Frost', kind: 'spell', weapon: 'staff', hint: 'Mage spell. A bolt that slows. 2.2s.' },
                 'arcane-surge': { name: 'Arcane Surge', short: 'Srg', kind: 'spell', weapon: 'staff', hint: 'Mage talent spell. 8s.' },
                 mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Restore health. 5s.' },
+                barrier: { name: 'Barrier', short: 'Bar', kind: 'spell', weapon: 'staff', hint: 'Mage spell. A shield that soaks the next hits. 18s.' },
+                'frost-nova': { name: 'Frost Nova', short: 'Nova', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Frost and a slow around you. 14s.' },
                 gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.' },
                 health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion. Shares a 12s wait with mana potions.' },
                 mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion. Shares a 12s wait with health potions.' },
@@ -1109,7 +1116,7 @@
             }
             updateToolUI();
 
-            const stats = { level: 1, xp: 0, xpToNext: 50, hp: 20, maxHp: 20, mana: 10, maxMana: 10, armor: 0, strength: 0, stamina: 0, intellect: 0 };
+            const stats = { level: 1, xp: 0, xpToNext: 50, hp: 20, maxHp: 20, mana: 10, maxMana: 10, absorb: 0, armor: 0, strength: 0, stamina: 0, intellect: 0 };
             function updateStatsUI() {
                 document.getElementById('levelCount').textContent = stats.level;
                 document.getElementById('xpCount').textContent = stats.xp;
@@ -1148,7 +1155,10 @@
                 if (hpMax) hpMax.textContent = '/' + stats.maxHp;
                 if (mpMax) mpMax.textContent = '/' + stats.maxMana;
                 const hpGlobe = document.getElementById('hpGlobe');
-                if (hpGlobe) hpGlobe.classList.toggle('low', hpPct > 0 && hpPct <= 0.35 && !ghost);
+                if (hpGlobe) {
+                    hpGlobe.classList.toggle('low', hpPct > 0 && hpPct <= 0.35 && !ghost);
+                    hpGlobe.title = stats.absorb ? 'Barrier ' + stats.absorb : 'Health';
+                }
                 const veil = document.getElementById('hurtVeil');
                 if (veil) {
                     const missing = 1 - hpPct;
@@ -1165,6 +1175,7 @@
                 if (data.mana != null) stats.mana = data.mana;
                 if (data.maxMana != null) stats.maxMana = data.maxMana;
                 if (data.armor != null) stats.armor = data.armor;
+                if (data.absorb != null) stats.absorb = data.absorb;
                 if (data.stats) {
                     stats.strength = data.stats.strength || 0;
                     stats.stamina = data.stats.stamina || 0;
@@ -1181,11 +1192,17 @@
             const SHEET_ICONS = {
                 sword: 81,
                 'power-strike': 48,
+                hamstring: 50,
+                execute: 58,
                 cleave: 49,
+                whirlwind: 94,
                 staff: 104,
                 'arcane-bolt': 8,
+                'frost-bolt': 206,
                 'arcane-surge': 336,
                 mend: 53,
+                barrier: 56,
+                'frost-nova': 57,
                 gather: 70,
                 health: 144,
                 mana: 145,
@@ -3120,13 +3137,30 @@
             }
 
             function launchCast(cast) {
-                const color = cast.ability === 'arcane-surge' ? 0xd980ff : cast.ability === 'mend' ? 0x3ddc84 : 0x7ecbff;
-                const selfMend = cast.ability === 'mend' && Math.hypot((cast.tx || 0) - cast.x, (cast.tz || 0) - cast.z) < 0.4;
-                if (selfMend) {
+                const color = cast.ability === 'arcane-surge' ? 0xd980ff
+                    : cast.ability === 'mend' ? 0x3ddc84
+                    : cast.ability === 'barrier' ? 0x9ad4ff
+                    : (cast.ability === 'frost-bolt' || cast.ability === 'frost-nova') ? 0xb8f0ff
+                    : cast.ability === 'whirlwind' ? 0xffd27a
+                    : 0x7ecbff;
+                if (cast.ability === 'frost-nova' || cast.ability === 'whirlwind') {
+                    const n = cast.ability === 'frost-nova' ? 8 : 6;
+                    for (let i = 0; i < n; i++) {
+                        const ang = (i / n) * Math.PI * 2;
+                        launchShot(
+                            { x: cast.x, y: 1, z: cast.z },
+                            { x: cast.x + Math.sin(ang) * 2.4, y: 0.55, z: cast.z + Math.cos(ang) * 2.4 },
+                            color, 0, 0.28
+                        );
+                    }
+                    return;
+                }
+                const selfPulse = (cast.ability === 'mend' || cast.ability === 'barrier') && Math.hypot((cast.tx || 0) - cast.x, (cast.tz || 0) - cast.z) < 0.4;
+                if (selfPulse) {
                     launchShot({ x: cast.x, y: 1.1, z: cast.z }, { x: cast.x, y: 2.5, z: cast.z }, color, 0, 0.45);
                     return;
                 }
-                if (cast.ability !== 'staff' && cast.ability !== 'arcane-bolt' && cast.ability !== 'arcane-surge' && cast.ability !== 'mend') return;
+                if (cast.ability !== 'staff' && cast.ability !== 'arcane-bolt' && cast.ability !== 'arcane-surge' && cast.ability !== 'frost-bolt' && cast.ability !== 'mend') return;
                 const n = cast.bolts || 1;
                 const duration = (cast.travel || 400) / 1000;
                 const angle = Math.atan2((cast.tx || 0) - cast.x, (cast.tz || 0) - cast.z);
@@ -4041,8 +4075,8 @@
 
             const picker = document.getElementById('actionPicker');
             const PICKER_GROUPS = [
-                ['Warrior', ['sword', 'power-strike', 'cleave']],
-                ['Mage', ['staff', 'arcane-bolt', 'mend', 'arcane-surge']],
+                ['Warrior', ['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind']],
+                ['Mage', ['staff', 'arcane-bolt', 'frost-bolt', 'mend', 'barrier', 'frost-nova', 'arcane-surge']],
                 ['Field', ['gather']],
                 ['Potions', ['health', 'mana']],
                 ['Explosives', ['bomb']]
@@ -6235,8 +6269,13 @@
                     } else if (data.type === 'hurt') {
                         applyStats(data);
                         showHurt();
-                        floatText(characterGroup.position.x, 1.8, characterGroup.position.z, '-' + data.damage, '#ff5a5a');
-                        showMessage('-' + data.damage + ' HP');
+                        if (data.absorbed && !data.damage) {
+                            floatText(characterGroup.position.x, 1.8, characterGroup.position.z, 'Blocked', '#9ad4ff');
+                            showMessage('Blocked ' + data.absorbed);
+                        } else {
+                            floatText(characterGroup.position.x, 1.8, characterGroup.position.z, '-' + data.damage, '#ff5a5a');
+                            showMessage('-' + data.damage + ' HP' + (data.absorbed ? ' · blocked ' + data.absorbed : ''));
+                        }
                         if (data.attackerId) selectNpc(data.attackerId);
                     } else if (data.type === 'spawn') {
                         if (!data.ok) showMessage(data.reason || 'Cannot set spawn');
@@ -6302,6 +6341,7 @@
                             const cost = data.spent > 0 ? ' · -' + data.spent + ' mana' : '';
                             if (data.leveled) showLevel(data.level);
                             if (data.questNote) showMessage(data.questNote);
+                            else if (data.shield) showMessage('Barrier ' + data.shield + cost);
                             else if (data.heal) showMessage('+' + data.heal + ' HP' + cost);
                             else if (data.killed) {
                                 const xp = data.gained > 0
@@ -6310,7 +6350,7 @@
                                 showMessage((ready ? xp + ' · ' + ready : xp) + cost);
                                 if (data.chest) addChest(data.chest);
                             } else if (ready) showMessage(ready + cost);
-                            else if (data.damage) showMessage('Hit ' + data.damage + cost);
+                            else if (data.damage) showMessage((data.note || 'Hit') + ' ' + data.damage + cost);
                             else if (cost) showMessage(cost.slice(3));
                         }
                     } else if (data.type === 'partyAward') {
