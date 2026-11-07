@@ -484,7 +484,8 @@
         P: Invite the targeted player. A party holds up to 5. A nearby member shares kill experience and quest credit<br>
         C: Character sheet. Reset character is on that page and returns you to level 1<br>
         Strength raises melee hits, Intellect raises spells and mana, Stamina raises health<br>
-        The red globe is health and the blue globe is mana. A spell spends mana as you cast it. The screen reddens as health falls<br>
+        The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
+        Spells train to rank 5. A higher rank hits harder and spends more mana. The next rank is every 2 levels<br>
         The bar is your level and experience. Armor and stats are on the character sheet<br>
         Camps are safe. Creatures walk out, and you cannot attack while you are inside. The camp name appears when you enter<br>
         Tracked quests mark the zone, the dungeon portal, or the turn-in on the minimap<br>
@@ -493,7 +494,7 @@
         Character sheet Craft tab makes gear. A shop sells health and mana potions, and has Buy and Sell tabs<br>
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
-        Train spells only while standing at a trainer. Gather herbs by hand and sulfur with a pickaxe<br>
+        Train spells only while standing at a trainer. Improve a spell there to raise its rank. Gather herbs by hand and sulfur with a pickaxe<br>
         M: World map. Scroll or +/− to zoom. Right-click a spot to mark it. The minimap points the way<br>
         Active quests stay on the right, with progress<br>
         A gold ? is a quest you can take. Blue means one is underway, green means turn it in. The minimap shows the same ?<br>
@@ -1068,13 +1069,13 @@
             const staff = holdTool('/models/wizards_staff.glb', { length: 1.45, x: 0.2, y: 0.82, z: 0.16, tilt: -0.4 });
 
             const ACTIONS = {
-                sword: { name: 'Sword', short: 'Swd', kind: 'weapon', weapon: 'sword', hint: 'Attack with an equipped sword. 1.2s.' },
-                'power-strike': { name: 'Power Strike', short: 'Pwr', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Heavy hit. 6 mana. 6s.' },
-                cleave: { name: 'Cleave', short: 'Clv', kind: 'spell', weapon: 'sword', hint: 'Warrior talent spell. 5 mana. 8s.' },
-                staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'A magic bolt from an equipped staff. 5 mana. 1.2s.' },
-                'arcane-bolt': { name: 'Arcane Missile', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Each rank fires another bolt. 8 mana. 1.8s.' },
-                'arcane-surge': { name: 'Arcane Surge', short: 'Srg', kind: 'spell', weapon: 'staff', hint: 'Mage talent spell. 14 mana. 8s.' },
-                mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Restore health. 8 mana. 5s.' },
+                sword: { name: 'Sword', short: 'Swd', kind: 'weapon', weapon: 'sword', hint: 'A higher rank hits harder. 1.2s.' },
+                'power-strike': { name: 'Power Strike', short: 'Pwr', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Heavy hit. 6s.' },
+                cleave: { name: 'Cleave', short: 'Clv', kind: 'spell', weapon: 'sword', hint: 'Warrior talent spell. 8s.' },
+                staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'A magic bolt from an equipped staff. 1.2s.' },
+                'arcane-bolt': { name: 'Arcane Missile', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Ranks 3 and 5 fire extra bolts. 1.8s.' },
+                'arcane-surge': { name: 'Arcane Surge', short: 'Srg', kind: 'spell', weapon: 'staff', hint: 'Mage talent spell. 8s.' },
+                mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Restore health. 5s.' },
                 gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.' },
                 health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion. Shares a 12s wait with mana potions.' },
                 mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion. Shares a 12s wait with health potions.' },
@@ -4054,7 +4055,24 @@
 
             function spellBolts(id) {
                 if (id !== 'arcane-bolt') return 1;
-                return (character.spellRanks && character.spellRanks[id]) || 1;
+                const rank = (character.spellRanks && character.spellRanks[id]) || 1;
+                return rank >= 5 ? 3 : rank >= 3 ? 2 : 1;
+            }
+
+            function spellManaAt(id, rank) {
+                const spell = (character.spells || {})[id] || {};
+                return (spell.mana || 0) + Math.max(0, rank - 1) * (spell.manaRank || 0);
+            }
+
+            function actionTitle(id, action) {
+                const spell = (character.spells || {})[id];
+                let extra = '';
+                if (spell && spell.maxRank) {
+                    const rank = Math.max(1, (character.spellRanks && character.spellRanks[id]) || 1);
+                    const mana = spellManaAt(id, rank);
+                    extra = ' Rank ' + rank + (mana ? ', ' + mana + ' mana.' : '.');
+                }
+                return action.name + '.' + extra + ' ' + action.hint + ' Right-click to assign.';
             }
 
             function paintSheetIcon(g, index, x, y, size) {
@@ -4540,7 +4558,7 @@
                     button.dataset.action = id || '';
                     button.className = 'bar-slot' + (action ? ' ' + id : '') + (action && action.kind === 'weapon' && action.weapon === equippedWeapon ? ' armed' : '');
                     button.draggable = true;
-                    button.title = action ? action.name + ' — ' + action.hint + ' Right-click to assign.' : 'Empty. Right-click to assign.';
+                    button.title = action ? actionTitle(id, action) : 'Empty. Right-click to assign.';
                     const key = document.createElement('span');
                     key.className = 'key';
                     key.textContent = String(i + 1);
@@ -5317,7 +5335,21 @@
                     const known = rank > 0 && (!spell.talent || (character.talents[spell.talent] || 0) > 0);
                     line.appendChild(makeIcon(id, id === 'arcane-bolt' ? Math.max(1, rank) : 1));
                     const label = document.createElement('div');
-                    label.textContent = spell.name + (rank === 0 && spell.cost ? ' · ' + spell.cost + ' coins' : '') + (rank > 0 && rank < maxRank ? ' · ' + (spell.rankCost || spell.cost) + ' coins' : '') + (spell.level > 1 && rank === 0 ? ' · level ' + spell.level : '');
+                    const next = rank + 1;
+                    const need = (spell.level || 1) + Math.max(0, next - 1) * 2;
+                    const coins = rank <= 0 ? (spell.cost || 0) : (spell.rankCost || 0) * rank;
+                    const parts = [spell.name];
+                    if (known) parts.push(rank + '/' + maxRank, spellManaAt(id, rank) + ' mana');
+                    else if ((spell.mana || 0) > 0) parts.push(spellManaAt(id, 1) + ' mana');
+                    if (known && rank < maxRank) {
+                        parts.push('next ' + spellManaAt(id, next) + ' mana');
+                        parts.push('level ' + need);
+                        if (coins) parts.push(coins + ' coins');
+                    } else if (!known) {
+                        if (spell.level > 1) parts.push('level ' + spell.level);
+                        if (coins) parts.push(coins + ' coins');
+                    }
+                    label.textContent = parts.join(' · ');
                     line.appendChild(label);
                     const button = document.createElement('button');
                     button.type = 'button';

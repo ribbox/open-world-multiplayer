@@ -1222,7 +1222,7 @@ function statsOf(player) {
         level: player.level,
         xp: player.xp,
         xpToNext: xpToNext(player.level),
-        hp: player.hp,
+        hp: Math.floor(player.hp),
         maxHp: player.maxHp,
         mana: Math.floor(player.mana),
         maxMana: player.maxMana,
@@ -1233,6 +1233,7 @@ function statsOf(player) {
 
 function noteMana(player) {
     player.manaShown = Math.floor(player.mana);
+    player.hpShown = Math.floor(player.hp);
     player.manaSent = Date.now();
     send(player.ws, { type: 'stats', ...statsOf(player) });
 }
@@ -1306,7 +1307,7 @@ function publicParty(party) {
                 id,
                 name: member ? member.name : 'Offline',
                 level: member ? member.level : 1,
-                hp: member ? member.hp : 0,
+                hp: member ? Math.floor(member.hp) : 0,
                 maxHp: member ? member.maxHp : 1,
                 mana: member ? Math.floor(member.mana) : 0,
                 maxMana: member ? member.maxMana : 1,
@@ -1353,7 +1354,7 @@ function syncPartyVitals() {
         const sig = party.members.map(id => {
             const member = players.get(id);
             if (!member) return 'x';
-            return [member.hp, Math.floor(member.mana), member.maxHp, member.maxMana, member.ghost ? 1 : 0, member.name].join(':');
+            return [Math.floor(member.hp), Math.floor(member.mana), member.maxHp, member.maxMana, member.ghost ? 1 : 0, member.name].join(':');
         }).join('|');
         if (sig === party.sig) continue;
         party.sig = sig;
@@ -1429,13 +1430,13 @@ const CLASS_KITS = {
     }
 };
 const SPELLS = {
-    sword: { class: 'warrior', name: 'Sword', level: 1, cost: 0 },
-    'power-strike': { class: 'warrior', name: 'Power Strike', level: 1, cost: 0 },
-    cleave: { class: 'warrior', name: 'Cleave', level: 4, cost: 20, talent: 'cleave' },
-    staff: { class: 'mage', name: 'Staff', level: 1, cost: 0 },
-    'arcane-bolt': { class: 'mage', name: 'Arcane Missile', level: 1, cost: 0, maxRank: 3, rankCost: 12 },
-    mend: { class: 'mage', name: 'Mend', level: 2, cost: 15 },
-    'arcane-surge': { class: 'mage', name: 'Arcane Surge', level: 4, cost: 25, talent: 'surge' }
+    sword: { class: 'warrior', name: 'Sword', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 0, manaRank: 2 },
+    'power-strike': { class: 'warrior', name: 'Power Strike', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 6, manaRank: 3 },
+    cleave: { class: 'warrior', name: 'Cleave', level: 4, cost: 20, maxRank: 5, rankCost: 16, mana: 5, manaRank: 3, talent: 'cleave' },
+    staff: { class: 'mage', name: 'Staff', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 5, manaRank: 3 },
+    'arcane-bolt': { class: 'mage', name: 'Arcane Missile', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4 },
+    mend: { class: 'mage', name: 'Mend', level: 2, cost: 15, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4 },
+    'arcane-surge': { class: 'mage', name: 'Arcane Surge', level: 4, cost: 25, maxRank: 5, rankCost: 18, mana: 14, manaRank: 6, talent: 'surge' }
 };
 const TALENTS = {
     toughness: { class: 'warrior', name: 'Toughness', max: 3, row: 0, requires: null, text: '+1 armor per rank' },
@@ -1445,6 +1446,29 @@ const TALENTS = {
     'arcane-power': { class: 'mage', name: 'Arcane Power', max: 3, row: 1, requires: { meditation: 1 }, text: '+1 spell damage per rank' },
     surge: { class: 'mage', name: 'Surge', max: 1, row: 2, requires: { 'arcane-power': 2 }, text: 'Unlocks Arcane Surge' }
 };
+
+function abilityRank(player, id) {
+    const maxRank = (SPELLS[id] && SPELLS[id].maxRank) || 1;
+    const rank = (player.spellRanks && player.spellRanks[id]) || 1;
+    return Math.max(1, Math.min(maxRank, rank));
+}
+
+function abilityCost(id, rank) {
+    const spell = SPELLS[id];
+    const base = spell && spell.mana != null ? spell.mana : ((ABILITIES[id] && ABILITIES[id].mana) || 0);
+    const step = spell && spell.manaRank != null ? spell.manaRank : 0;
+    return base + Math.max(0, rank - 1) * step;
+}
+
+function rankPower(rank) {
+    return 1 + Math.max(0, rank - 1) * 0.2;
+}
+
+const COMBAT_HOLD = 6000;
+
+function enterCombat(player, now) {
+    player.combatUntil = (now || Date.now()) + COMBAT_HOLD;
+}
 
 const RECIPES = {
     'cloth-hat': { name: 'Cloth Hat', set: 'cloth', slot: 'head', kind: 'armor', style: 'cloth', armor: 1, cost: { cloth: 2 } },
@@ -1847,8 +1871,9 @@ function trainSpell(player, id) {
     const maxRank = spell.maxRank || 1;
     if (rank >= maxRank) return 'Already trained';
     const next = rank + 1;
-    if (player.level < spell.level + next - 1) return 'Requires level ' + (spell.level + next - 1);
-    const cost = rank === 0 ? spell.cost : (spell.rankCost || spell.cost);
+    const need = spell.level + (next - 1) * 2;
+    if (player.level < need) return 'Requires level ' + need;
+    const cost = next === 1 ? (spell.cost || 0) : (spell.rankCost || spell.cost || 0) * (next - 1);
     if (!spendCoins(player, cost)) return 'Not enough coins';
     if (!player.trained.includes(id)) player.trained.push(id);
     player.spellRanks[id] = next;
@@ -2464,6 +2489,7 @@ function tickNpcs() {
                 const raw = 1 + primary;
                 const damage = Math.max(1, Math.round(raw * (npc.elite ? 1.8 : 1)) - target.armor);
                 target.hp = Math.max(0, target.hp - damage);
+                enterCombat(target, now);
                 send(target.ws, { type: 'hurt', damage, attackerId: npc.id, attacker: npc.level, ...statsOf(target) });
                 if (target.hp <= 0) becomeGhost(target, now);
             }
@@ -2488,12 +2514,22 @@ function tickNpcs() {
     }
 
     for (const player of players.values()) {
-        if (player.mana < player.maxMana) {
-            player.mana = Math.min(player.maxMana, player.mana + dt * 1.5);
+        if (!player.ghost) {
+            const intellect = (player.stats && player.stats.intellect) || 0;
+            const stamina = (player.stats && player.stats.stamina) || 0;
+            if (player.mana < player.maxMana) {
+                const rate = 0.8 + intellect * 0.15 + stamina * 0.05;
+                player.mana = Math.min(player.maxMana, player.mana + dt * rate);
+            }
+            if (now >= (player.combatUntil || 0) && player.hp > 0 && player.hp < player.maxHp) {
+                player.hp = Math.min(player.maxHp, player.hp + dt * player.maxHp * 0.04);
+            }
         }
-        const shown = Math.floor(player.mana);
-        if (shown !== player.manaShown && now - player.manaSent > 1000) {
-            player.manaShown = shown;
+        const shownMana = Math.floor(player.mana);
+        const shownHp = Math.floor(player.hp);
+        if ((shownMana !== player.manaShown || shownHp !== player.hpShown) && now - player.manaSent > 800) {
+            player.manaShown = shownMana;
+            player.hpShown = shownHp;
             player.manaSent = now;
             send(player.ws, { type: 'stats', ...statsOf(player) });
         }
@@ -2590,6 +2626,7 @@ wss.on('connection', (ws) => {
                 maxMana: maxManaFor({ level: prof.level, talents: prof.talents }),
                 mana: maxManaFor({ level: prof.level, talents: prof.talents }),
                 manaShown: -1,
+                hpShown: -1,
                 manaSent: 0,
                 armor: 0,
                 legacyArmor: prof.legacyArmor || 0,
@@ -2606,6 +2643,7 @@ wss.on('connection', (ws) => {
                 slots: prof.slots.map(copySlot),
                 actionbar: prof.actionbar,
                 invulnUntil: 0,
+                combatUntil: 0,
                 lastGather: 0,
                 lastAttack: 0,
                 ghost: false,
@@ -2874,37 +2912,39 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'attackResult', ok: false, reason: 'This camp is safe' });
                 return;
             }
-            if (player.mana < spec.mana) {
+            const rank = abilityRank(player, abilityId);
+            const cost = abilityCost(abilityId, rank);
+            if (player.mana < cost) {
                 send(ws, { type: 'attackResult', ok: false, reason: 'Not enough mana', ability: data.ability || 'sword', ...statsOf(player) });
                 return;
             }
-            player.mana -= spec.mana;
-            if (spec.mana > 0) noteMana(player);
+            player.mana -= cost;
+            if (cost > 0) noteMana(player);
             if (spec.heal) {
                 let subject = player;
                 if (data.targetId && data.targetId !== player.persistentId) {
                     const ally = players.get(data.targetId);
                     if (!ally) {
-                        player.mana += spec.mana;
+                        player.mana += cost;
                         noteMana(player);
                         send(ws, { type: 'attackResult', ok: false, reason: npcs.has(data.targetId) ? 'Select a player to heal' : 'No target', ...statsOf(player) });
                         return;
                     }
                     if (ally.ghost) {
-                        player.mana += spec.mana;
+                        player.mana += cost;
                         noteMana(player);
                         send(ws, { type: 'attackResult', ok: false, reason: 'Cannot heal a ghost', ...statsOf(player) });
                         return;
                     }
                     if (Math.hypot(ally.x - player.x, ally.z - player.z) > 8) {
-                        player.mana += spec.mana;
+                        player.mana += cost;
                         noteMana(player);
                         send(ws, { type: 'attackResult', ok: false, reason: 'Out of range', ...statsOf(player) });
                         return;
                     }
                     subject = ally;
                 }
-                const healed = spec.heal(player.level) + ((player.stats && player.stats.intellect) || 0);
+                const healed = Math.round((spec.heal(player.level) + ((player.stats && player.stats.intellect) || 0)) * rankPower(rank));
                 subject.hp = Math.min(subject.maxHp, subject.hp + healed);
                 startCooldown(player, abilityId, cdMax, now);
                 broadcast({
@@ -2919,37 +2959,37 @@ wss.on('connection', (ws) => {
                     tz: subject.z
                 });
                 if (subject !== player) send(subject.ws, { type: 'healed', amount: healed, from: player.name, ...statsOf(subject) });
-                send(ws, { type: 'attackResult', ok: true, ability: abilityId, cd: cdMax, cdMax, spent: spec.mana, heal: healed, targetId: subject.persistentId, ...statsOf(player) });
+                send(ws, { type: 'attackResult', ok: true, ability: abilityId, cd: cdMax, cdMax, spent: cost, heal: healed, targetId: subject.persistentId, ...statsOf(player) });
                 return;
             }
             const ally = players.get(data.targetId);
             if (ally) {
-                player.mana += spec.mana;
+                player.mana += cost;
                 noteMana(player);
                 send(ws, { type: 'attackResult', ok: false, reason: 'Cannot attack a player', ...statsOf(player) });
                 return;
             }
             const npc = npcs.get(data.targetId);
             if (!npc || !npc.alive) {
-                player.mana += spec.mana;
+                player.mana += cost;
                 noteMana(player);
                 send(ws, { type: 'attackResult', ok: false, reason: 'No target', ...statsOf(player) });
                 return;
             }
             const dist = Math.hypot(npc.x - player.x, npc.z - player.z);
             if (dist > spec.range) {
-                player.mana += spec.mana;
+                player.mana += cost;
                 noteMana(player);
                 send(ws, { type: 'attackResult', ok: false, reason: 'Out of range', ...statsOf(player) });
                 return;
             }
             startCooldown(player, abilityId, cdMax, now);
-            const rank = (player.spellRanks && player.spellRanks[abilityId]) || 1;
-            const bolts = abilityId === 'arcane-bolt' ? rank : 1;
+            enterCombat(player, now);
+            const bolts = abilityId === 'arcane-bolt' ? Math.min(3, rank) : 1;
             const statBonus = spec.weapon === 'sword'
                 ? ((player.stats && player.stats.strength) || 0)
                 : ((player.stats && player.stats.intellect) || 0);
-            const per = spec.damage(player.level) + statBonus + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0);
+            const per = (spec.damage(player.level) + statBonus + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0)) * rankPower(rank);
             const projectile = abilityId === 'staff' || abilityId === 'arcane-bolt' || abilityId === 'arcane-surge';
             const travel = projectile ? Math.min(900, Math.max(220, Math.round(dist * 140))) : 0;
             broadcast({
@@ -2978,7 +3018,7 @@ wss.on('connection', (ws) => {
                     ability: abilityId,
                     cd: cdMax,
                     cdMax,
-                    spent: spec.mana,
+                    spent: cost,
                     chest: chest ? publicChest(chest) : null,
                     quests: player.quests,
                     inventory: player.questDirty ? inventoryOf(player) : undefined,
@@ -3320,6 +3360,7 @@ wss.on('connection', (ws) => {
                     return;
                 }
                 const damage = slot.amount || 10;
+                enterCombat(player, now);
                 npc.hp -= damage;
                 let gained = 0;
                 let leveled = false;
