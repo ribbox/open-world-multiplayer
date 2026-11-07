@@ -3853,7 +3853,8 @@ function sanitizeWorld(input) {
         bounds: sanitizeBounds(src.bounds),
         dungeons: sanitizeDungeons(src.dungeons),
         quests: sanitizeQuests(src.quests),
-        items: sanitizeItems(src.items)
+        items: sanitizeItems(src.items),
+        sheetUrl: cleanSheetUrl(src.sheetUrl)
     };
 }
 
@@ -3943,8 +3944,19 @@ app.get('/api/world', (req, res) => {
     res.json(publicWorld());
 });
 
+function cleanSheetUrl(value) {
+    const text = String(value || '').trim();
+    if (!text || text.length > 400) return '';
+    let url;
+    try { url = new URL(text); } catch { return ''; }
+    if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== 'docs.google.com') return '';
+    const id = url.pathname.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]{20,})/);
+    if (!id) return '';
+    return 'https://docs.google.com/spreadsheets/d/' + id[1] + '/edit';
+}
+
 function setupPayload() {
-    return { ...publicWorld(), loot: lootTables, locked: !!process.env.ADMIN_PASSWORD, sheetPath: '/sheet/' + ensureSheetToken() + '.xlsx' };
+    return { ...publicWorld(), loot: lootTables, locked: !!process.env.ADMIN_PASSWORD, sheetUrl: (worldConfig && worldConfig.sheetUrl) || '' };
 }
 
 function ensureSheetToken() {

@@ -116,7 +116,7 @@
                 <button type="button" id="addRow">Add drop</button>
             </div>
             <div id="panelQuests" hidden>
-                <p>Select a zone, then create the quest. The giver is an NPC from that zone. Kill and gather quests use the zone's mob. A gather item can be one placed in the zone. Paste a Google Sheet link to import. The export link opens the current items and quests. Name comes first. Game id is last.</p>
+                <p>Select a zone, then create the quest. The giver is an NPC from that zone. Kill and gather quests use the zone's mob. A gather item can be one placed in the zone. Paste a Google Sheet link. That same link is the export link. Share the sheet as anyone with the link, edit it in Google Sheets, then import from the link.</p>
                 <label>Zone</label>
                 <select id="questZone"></select>
                 <button type="button" id="addQuest">New quest</button>
@@ -141,9 +141,9 @@
             <label for="sheetUrl">Google Sheet link</label>
             <input id="sheetUrl" type="url" inputmode="url" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off">
             <button type="button" id="importSheetUrl">Import from link</button>
-            <label for="exportSheetUrl">Export link</label>
+            <label for="exportSheetUrl">Google Sheet</label>
             <input id="exportSheetUrl" type="text" readonly>
-            <button type="button" id="exportSheet">Copy export link</button>
+            <button type="button" id="exportSheet">Copy Google Sheet link</button>
             <button type="button" id="importSheetBtn">Import a file</button>
             <input id="importSheet" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
         </div>
@@ -1758,6 +1758,7 @@
         });
         document.getElementById('save').addEventListener('click', async () => {
             readFields();
+            if (config) config.sheetUrl = googleSheetUrl();
             try {
                 const saved = await api('/api/setup/config', { method: 'PUT', body: JSON.stringify(config) });
                 config = saved.config;
@@ -1795,11 +1796,18 @@
             URL.revokeObjectURL(link.href);
             note('World exported, including zones, camps, roads, dungeons, nodes, loot, quests, and items');
         });
+        function googleSheetUrl() {
+            const raw = (document.getElementById('sheetUrl').value || '').trim() || (config && config.sheetUrl) || '';
+            const match = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]{20,})/);
+            if (match) return 'https://docs.google.com/spreadsheets/d/' + match[1] + '/edit';
+            return raw;
+        }
         function showSheetLink() {
-            const field = document.getElementById('exportSheetUrl');
-            if (config && config.sheetPath) field.value = location.origin + config.sheetPath;
             const input = document.getElementById('sheetUrl');
-            if (input && !input.value) input.value = sessionStorage.getItem('ow-sheet-url') || '';
+            if (input && !input.value) input.value = (config && config.sheetUrl) || sessionStorage.getItem('ow-sheet-url') || '';
+            const url = googleSheetUrl();
+            document.getElementById('exportSheetUrl').value = url;
+            if (config && url) config.sheetUrl = url;
         }
         async function importParsed(parsed) {
             const parts = [];
@@ -1821,20 +1829,25 @@
             if (!document.getElementById('panelQuests').hidden) renderQuests();
             note('Imported ' + parts.join(' and '));
         }
+        document.getElementById('sheetUrl').addEventListener('input', showSheetLink);
         document.getElementById('exportSheet').addEventListener('click', async () => {
-            const field = document.getElementById('exportSheetUrl');
-            const url = field.value;
-            if (!url) {
-                note('Open setup again so the export link can be made');
+            const url = googleSheetUrl();
+            if (!url || url.indexOf('docs.google.com/spreadsheets') < 0) {
+                note('Paste the Google Sheet link. The export link is that sheet, not this computer.');
                 return;
             }
+            document.getElementById('sheetUrl').value = url;
+            document.getElementById('exportSheetUrl').value = url;
+            if (config) config.sheetUrl = url;
+            sessionStorage.setItem('ow-sheet-url', url);
+            const field = document.getElementById('exportSheetUrl');
             field.focus();
             field.select();
             try {
                 await navigator.clipboard.writeText(url);
-                note('Export link copied. Open it to get the sheet. Share a Google Sheet as anyone with the link to import it back.');
+                note('Google Sheet link copied. Open that link, edit it, then import from the same link.');
             } catch {
-                note('Export link selected. Copy it, then open it.');
+                note('Google Sheet link selected. Copy it, then open it.');
             }
         });
         document.getElementById('importSheetUrl').addEventListener('click', async () => {
