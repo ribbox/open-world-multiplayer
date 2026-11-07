@@ -4032,6 +4032,18 @@ function blockedHost(host) {
     return false;
 }
 
+app.get('/api/setup/sheet.xlsx', requireAdmin, (req, res) => {
+    try {
+        const bytes = workbookBytes();
+        res.set('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.set('content-disposition', 'attachment; filename="quests-and-items.xlsx"');
+        res.set('cache-control', 'no-store');
+        res.send(Buffer.from(bytes));
+    } catch (err) {
+        res.status(500).json({ error: 'The spreadsheet could not be built' });
+    }
+});
+
 app.get('/sheet/:token', (req, res) => {
     const token = String(req.params.token || '');
     if (!/^[a-f0-9]{32}$/.test(token) || !worldConfig || token !== worldConfig.sheetToken) {

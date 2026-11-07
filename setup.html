@@ -141,6 +141,7 @@
             <label for="sheetUrl">Google Sheet link</label>
             <input id="sheetUrl" type="url" inputmode="url" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off">
             <button type="button" id="importSheetUrl">Import from link</button>
+            <button type="button" id="downloadSheet">Download spreadsheet</button>
             <label for="exportSheetUrl">Google Sheet</label>
             <input id="exportSheetUrl" type="text" readonly>
             <button type="button" id="exportSheet">Copy Google Sheet link</button>
@@ -1849,6 +1850,26 @@
             } catch {
                 note('Google Sheet link selected. Copy it, then open it.');
             }
+        });
+        document.getElementById('downloadSheet').addEventListener('click', async () => {
+            const response = await fetch('/api/setup/sheet.xlsx', { headers: token ? { authorization: 'Bearer ' + token } : {} });
+            if (response.status === 401) {
+                token = '';
+                sessionStorage.removeItem('ow-setup');
+                showLogin('Login again');
+                return;
+            }
+            if (!response.ok) {
+                note('The spreadsheet could not be built');
+                return;
+            }
+            const blob = await response.blob();
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'quests-and-items.xlsx';
+            link.click();
+            URL.revokeObjectURL(link.href);
+            note('Downloaded. In Google Sheets use File, Import, Upload, and replace the current sheet.');
         });
         document.getElementById('importSheetUrl').addEventListener('click', async () => {
             const url = document.getElementById('sheetUrl').value.trim();

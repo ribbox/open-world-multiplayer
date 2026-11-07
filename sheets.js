@@ -352,7 +352,7 @@ function columnRows(columns) {
 }
 
 const HOW_NOTES = [
-    'In setup, paste the Google Sheet link. That link is the export link. Share the sheet as anyone with the link, edit it in Google Sheets, then import from the same link.',
+    'Download this file from setup. In Google Sheets use File, Import, Upload, and replace the current sheet. Share it as anyone with the link, edit it, then import that same link.',
     'Do not rename the blue header row. The game reads those column names.',
     'Read Name first. What it is explains the row in plain language. The game ignores that column when you import.',
     'Game id is the internal id. Leave it alone on a row that already exists. On a new row, leave it blank and the game makes one from the name.',
