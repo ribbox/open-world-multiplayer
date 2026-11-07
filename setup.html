@@ -142,6 +142,8 @@
             <input id="sheetUrl" type="url" inputmode="url" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off">
             <button type="button" id="importSheetUrl">Import from link</button>
             <button type="button" id="downloadSheet">Download spreadsheet</button>
+            <button type="button" id="copyItems">Copy items</button>
+            <button type="button" id="copyQuests">Copy quests</button>
             <label for="exportSheetUrl">Google Sheet</label>
             <input id="exportSheetUrl" type="text" readonly>
             <button type="button" id="exportSheet">Copy Google Sheet link</button>
@@ -1871,6 +1873,36 @@
             URL.revokeObjectURL(link.href);
             note('Downloaded. In Google Sheets use File, Import, Upload, and replace the current sheet.');
         });
+        async function copyRows(which) {
+            try {
+                const data = await api('/api/setup/rows');
+                const text = data && data[which];
+                if (!text) {
+                    note('Nothing to copy');
+                    return;
+                }
+                if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
+                else {
+                    const area = document.createElement('textarea');
+                    area.value = text;
+                    area.setAttribute('readonly', '');
+                    area.style.position = 'fixed';
+                    area.style.left = '-9999px';
+                    document.body.appendChild(area);
+                    area.select();
+                    const ok = document.execCommand('copy');
+                    area.remove();
+                    if (!ok) throw new Error('Could not copy');
+                }
+                note(which === 'quests'
+                    ? 'Quests copied. On the Quests tab, click cell A1 and paste.'
+                    : 'Items copied. On the Items tab, click cell A1 and paste.');
+            } catch (err) {
+                note(err && err.message ? err.message : 'Could not copy. Use Download spreadsheet instead.');
+            }
+        }
+        document.getElementById('copyItems').addEventListener('click', () => copyRows('items'));
+        document.getElementById('copyQuests').addEventListener('click', () => copyRows('quests'));
         document.getElementById('importSheetUrl').addEventListener('click', async () => {
             const url = document.getElementById('sheetUrl').value.trim();
             if (!url) {

@@ -363,6 +363,24 @@ const HOW_NOTES = [
     'A spreadsheet exported before this layout still imports.'
 ];
 
+function clipboardTable(headers, rows) {
+    const lines = [headers, ...rows].map(row => row.map(cell => {
+        const text = cell == null ? '' : String(cell);
+        if (/[\t\r\n"]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
+        return text;
+    }).join('\t'));
+    return lines.join('\n');
+}
+
+export function clipboardSheets({ items, quests, zones, dungeons }) {
+    const zoneChoices = placeChoices(zones);
+    const dungeonChoices = placeChoices(dungeons);
+    return {
+        items: clipboardTable(ITEM_HEADERS, (items || []).map(itemRow)),
+        quests: clipboardTable(QUEST_HEADERS, (quests || []).map(quest => questRow(quest, zoneChoices, dungeonChoices)))
+    };
+}
+
 export function buildWorkbook({ items, quests, zones, dungeons, lists }) {
     lists = lists || {};
     const zoneChoices = placeChoices(zones);

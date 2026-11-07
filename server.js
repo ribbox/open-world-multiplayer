@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked, dungeonTravel } from './worldgen.js';
 import { defaultIconName, iconKeyFromChoice } from './icons.js';
-import { buildWorkbook, readWorkbook, spreadsheetUrl } from './sheets.js';
+import { buildWorkbook, readWorkbook, spreadsheetUrl, clipboardSheets } from './sheets.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -236,13 +236,30 @@ function rememberSettlements() {
 }
 
 function inSettlement(x, z) {
+    return !!settlementAt(x, z);
+}
+
+function settlementAt(x, z) {
+    let best = null;
     const reach = SETTLEMENT_RADIUS * SETTLEMENT_RADIUS;
     for (const site of settlementSites) {
         const dx = x - site.x;
         const dz = z - site.z;
-        if (dx * dx + dz * dz <= reach) return true;
+        const d = dx * dx + dz * dz;
+        if (d <= reach && (!best || d < best.d)) best = { x: site.x, z: site.z, d };
     }
-    return false;
+    return best;
+}
+
+function outsideSettlement(x, z) {
+    const site = settlementAt(x, z);
+    if (!site) return { x, z };
+    const dist = Math.sqrt(site.d) || 1;
+    let dx = (x - site.x) / dist;
+    let dz = (z - site.z) / dist;
+    if (!dx && !dz) { dx = 1; dz = 0; }
+    const reach = SETTLEMENT_RADIUS + 2;
+    return { x: site.x + dx * reach, z: site.z + dz * reach };
 }
 
 rebuildCivilians();
@@ -893,6 +910,12 @@ function placeNpc(npc, spot) {
         npc.level = drawn.level;
         applyElite(npc, drawn.elite, drawn.hp);
     } else applyElite(npc, false, 0);
+    if (!npc.dungeonId && inSettlement(npc.x, npc.z)) {
+        const out = outsideSettlement(npc.x, npc.z);
+        const shifted = clampToZone(npc, out.x, out.z);
+        npc.x = shifted.x;
+        npc.z = shifted.z;
+    }
     npc.alive = true;
     npc.aggroId = null;
     npc.homeX = npc.x;
@@ -913,8 +936,9 @@ function pickWander(npc) {
     const angle = Math.random() * Math.PI * 2;
     const dist = 4 + Math.random() * 14;
     const next = clampToZone(npc, npc.homeX + Math.cos(angle) * dist, npc.homeZ + Math.sin(angle) * dist);
-    npc.wanderX = next.x;
-    npc.wanderZ = next.z;
+    const clear = inSettlement(next.x, next.z) ? outsideSettlement(next.x, next.z) : next;
+    npc.wanderX = clear.x;
+    npc.wanderZ = clear.z;
     npc.wanderUntil = Date.now() + 3000 + Math.random() * 4000;
 }
 
@@ -2393,6 +2417,18 @@ function tickNpcs() {
                 continue;
             }
         }
+        if (!npc.dungeonId && !npc.guardId && inSettlement(npc.x, npc.z)) {
+            const out = outsideSettlement(npc.x, npc.z);
+            const dx = out.x - npc.x;
+            const dz = out.z - npc.z;
+            const dist = Math.hypot(dx, dz) || 1;
+            const step = Math.min(3.6 * dt, dist);
+            npc.x += (dx / dist) * step;
+            npc.z += (dz / dist) * step;
+            npc.rotY = Math.atan2(dx, dz);
+            npc.aggroId = null;
+            continue;
+        }
         const target = npc.dungeonId ? dungeonThreat(npc) : nearestPlayer(npc, AGGRO_RANGE);
         if (npc.dungeonId && !target) npc.aggroId = null;
         let tx = npc.wanderX;
@@ -2826,6 +2862,10 @@ wss.on('connection', (ws) => {
                     return;
                 }
             }
+            if (!spec.heal && inSettlement(player.x, player.z)) {
+                send(ws, { type: 'attackResult', ok: false, reason: 'This camp is safe' });
+                return;
+            }
             if (player.mana < spec.mana) {
                 send(ws, { type: 'attackResult', ok: false, reason: 'Not enough mana', ability: data.ability || 'sword', ...statsOf(player) });
                 return;
@@ -3250,6 +3290,10 @@ wss.on('connection', (ws) => {
             } else if (slot.kind === 'mana') {
                 player.mana = Math.min(player.maxMana, player.mana + (slot.amount || 8));
             } else if (slot.kind === 'bomb') {
+                if (inSettlement(player.x, player.z)) {
+                    send(ws, { type: 'useResult', ok: false, reason: 'This camp is safe' });
+                    return;
+                }
                 const npc = npcs.get(data.targetId);
                 if (!npc || !npc.alive) {
                     send(ws, { type: 'useResult', ok: false, reason: 'Select a hostile target' });
@@ -4124,10 +4168,14 @@ function ensureSheetToken() {
 }
 
 function workbookBytes() {
+    return buildWorkbook(workbookSource());
+}
+
+function workbookSource() {
     const items = itemRecords();
     const sets = new Set(['cloth', 'leather', 'plate', 'weapon', 'magic', 'alchemy', 'explosive']);
     for (const item of items) if (item.set) sets.add(String(item.set));
-    return buildWorkbook({
+    return {
         items,
         quests: (worldConfig && worldConfig.quests) || [],
         zones: listDesignedZones(),
@@ -4144,7 +4192,7 @@ function workbookBytes() {
             reward: ['junk', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor'],
             role: ['inn', 'shop', 'trainer', 'quest']
         }
-    });
+    };
 }
 
 async function fetchSpreadsheet(start) {
@@ -4197,6 +4245,15 @@ app.get('/api/setup/sheet.xlsx', requireAdmin, (req, res) => {
         res.send(Buffer.from(bytes));
     } catch (err) {
         res.status(500).json({ error: 'The spreadsheet could not be built' });
+    }
+});
+
+app.get('/api/setup/rows', requireAdmin, (req, res) => {
+    try {
+        res.set('cache-control', 'no-store');
+        res.json(clipboardSheets(workbookSource()));
+    } catch (err) {
+        res.status(500).json({ error: 'The rows could not be built' });
     }
 });
 

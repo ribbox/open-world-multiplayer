@@ -286,6 +286,12 @@
             color: #ffe58a; text-shadow: 0 2px 8px #000; opacity: 0;
         }
         #levelBanner.show { animation: levelPop 1.8s ease-out; }
+        #placeBanner {
+            position: absolute; top: 28%; left: 50%; transform: translateX(-50%);
+            z-index: 16; pointer-events: none; font-size: 26px; font-weight: bold;
+            color: #e8ffe8; text-shadow: 0 2px 8px #000; opacity: 0;
+        }
+        #placeBanner.show { animation: levelPop 1.8s ease-out; }
         @keyframes levelPop {
             0% { opacity: 0; transform: translateX(-50%) translateY(10px); }
             12% { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -480,9 +486,10 @@
         Strength raises melee hits, Intellect raises spells and mana, Stamina raises health<br>
         The red globe is health and the blue globe is mana. The screen reddens as health falls<br>
         The bar is your level and experience. Armor and stats are on the character sheet<br>
-        Camps are safe. Creatures will not attack you while you are in a settlement<br>
+        Camps are safe. Creatures walk out, and you cannot attack while you are inside. The camp name appears when you enter<br>
+        Tracked quests mark the zone, the dungeon portal, or the turn-in on the minimap<br>
         Crafted armor and weapons add stats. Cloth and staves favor Intellect, swords and leather favor Strength<br>
-        Setup downloads quests and items. Import that file into Google Sheets, then import the link<br>
+        Setup downloads quests and items, or copies them so you can paste into cell A1<br>
         Character sheet Craft tab makes gear. A shop sells health and mana potions, and has Buy and Sell tabs<br>
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
@@ -597,6 +604,7 @@
     </div>
     <div id="message"></div>
     <div id="levelBanner"></div>
+    <div id="placeBanner"></div>
     <div id="log"></div>
     <div id="error"></div>
     <script type="module">
@@ -658,6 +666,15 @@
             const banner = document.getElementById('levelBanner');
             if (!banner || !level) return;
             banner.textContent = 'Level ' + level;
+            banner.classList.remove('show');
+            void banner.offsetWidth;
+            banner.classList.add('show');
+        }
+
+        function showPlace(name) {
+            const banner = document.getElementById('placeBanner');
+            if (!banner || !name) return;
+            banner.textContent = name;
             banner.classList.remove('show');
             void banner.offsetWidth;
             banner.classList.add('show');
@@ -1502,7 +1519,84 @@
                 return '#8dff9a';
             }
 
+            let campBannerId = '';
+            function updateCampBanner() {
+                if (activeCave || !lastCamps) {
+                    if (activeCave) campBannerId = '';
+                    return;
+                }
+                const x = characterGroup.position.x;
+                const z = characterGroup.position.z;
+                let best = null;
+                for (const site of lastCamps) {
+                    const d = (site.x - x) ** 2 + (site.z - z) ** 2;
+                    if (d > 28 * 28) continue;
+                    if (!best || d < best.d) best = { site, d };
+                }
+                const id = best ? best.site.id : '';
+                if (id === campBannerId) return;
+                campBannerId = id;
+                if (!id) return;
+                const zone = designedZoneAt(best.site.x, best.site.z);
+                const name = (zone && zone.name) || zoneAt(best.site.x, best.site.z).name;
+                showPlace(name);
+            }
+
+            function findQuestGiver(def) {
+                if (!def || !def.giver || !pendingCivilians) return null;
+                const wanted = String(def.giver).toLowerCase();
+                const named = pendingCivilians.filter(civ => String(civ.name || '').toLowerCase() === wanted);
+                if (def.zoneId) {
+                    const inZone = named.find(civ => String(civ.id || '').includes('-' + def.zoneId + '-'));
+                    if (inZone) return inZone;
+                }
+                return named[0] || null;
+            }
+
+            function zoneCenter(zoneId) {
+                const zone = listDesignedZones().find(entry => entry.id === zoneId);
+                if (!zone || !zone.points || !zone.points.length) return null;
+                let x = 0;
+                let z = 0;
+                for (const point of zone.points) {
+                    x += point[0];
+                    z += point[1];
+                }
+                return { x: x / zone.points.length, z: z / zone.points.length };
+            }
+
+            function trackedQuestMarks() {
+                const marks = [];
+                for (const id of trackedQuests) {
+                    const row = quests[id];
+                    const def = questDefs[id];
+                    if (!row || row.state !== 'active' || !def) continue;
+                    const need = def.count || 1;
+                    const turnIn = row.failed || row.count >= need;
+                    let spot = null;
+                    if (turnIn) {
+                        const giver = findQuestGiver(def);
+                        if (giver) spot = { x: giver.x, z: giver.z, kind: 'turnin' };
+                    }
+                    if (!spot && !turnIn && def.dungeonId) {
+                        const cave = dungeonById(def.dungeonId);
+                        if (cave && cave.portal) spot = { x: cave.portal.x, z: cave.portal.z, kind: 'dungeon' };
+                    }
+                    if (!spot && !turnIn && def.zoneId) {
+                        const center = zoneCenter(def.zoneId);
+                        if (center) spot = { x: center.x, z: center.z, kind: 'zone' };
+                    }
+                    if (!spot) {
+                        const giver = findQuestGiver(def);
+                        if (giver) spot = { x: giver.x, z: giver.z, kind: turnIn ? 'turnin' : 'giver' };
+                    }
+                    if (spot) marks.push(spot);
+                }
+                return marks;
+            }
+
             function drawMinimap() {
+                updateCampBanner();
                 if (!activeCave) revealHere(characterGroup.position.x, characterGroup.position.z);
                 const ctx = minimapCtx;
                 ctx.clearRect(0, 0, mapSize, mapSize);
@@ -1782,6 +1876,12 @@
                 }
                 if (ghost && myCorpse) aimMarker(myCorpse.x, myCorpse.z, '#9ecbff');
                 if (waypoint) aimMarker(waypoint.x, waypoint.z, '#ffe14a');
+                if (!activeCave) {
+                    for (const mark of trackedQuestMarks()) {
+                        const fill = mark.kind === 'turnin' ? '#2ecc71' : mark.kind === 'dungeon' ? '#c39bff' : mark.kind === 'giver' ? '#5dade2' : '#f1c40f';
+                        aimMarker(mark.x, mark.z, fill);
+                    }
+                }
                 if (!document.getElementById('worldmap').classList.contains('open')) return;
                 drawWorldMap();
             }
