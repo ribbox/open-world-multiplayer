@@ -352,14 +352,14 @@ function columnRows(columns) {
 }
 
 const HOW_NOTES = [
-    'Open this file in Google Sheets with File, then Import, then Upload.',
+    'In setup, paste the Google Sheet link and import from it. Share the sheet as anyone with the link. Setup also shows an export link you can open instead of downloading.',
     'Do not rename the blue header row. The game reads those column names.',
     'Read Name first. What it is explains the row in plain language. The game ignores that column when you import.',
     'Game id is the internal id. Leave it alone on a row that already exists. On a new row, leave it blank and the game makes one from the name.',
     'Zone and Dungeon are dropdowns of names from this world. If two places share a name, the choice includes the id. On import, a matching name is used instead of the id column.',
     'Icon is a dropdown of picture names, such as Plate helm or Sword. You can also type a cell number. The picture grid is 16 across, starting at 0. A typed number is kept even though it is not in the list.',
     'Materials are written as cloth:2, ore:1. Yes and no columns are dropdowns.',
-    'Edit Items, Quests, or both, then import the file on the setup page. If a sheet is missing, that part of the game is left alone.',
+    'Edit Items, Quests, or both, then import that link on the setup page. If a sheet is missing, that part of the game is left alone.',
     'A spreadsheet exported before this layout still imports.'
 ];
 
@@ -804,3 +804,39 @@ export async function readWorkbook(buffer) {
 }
 
 export { listColumn };
+
+function blockedSpreadsheetHost(host) {
+    const name = String(host || '').toLowerCase().replace(/^\[|\]$/g, '');
+    if (!name || name === 'localhost' || name.endsWith('.localhost') || name.endsWith('.local') || name === 'metadata.google.internal' || name === '::1') return true;
+    const parts = name.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (!parts) return false;
+    const n = parts.slice(1).map(Number);
+    if (n[0] === 0 || n[0] === 10 || n[0] === 127) return true;
+    if (n[0] === 169 && n[1] === 254) return true;
+    if (n[0] === 172 && n[1] >= 16 && n[1] <= 31) return true;
+    if (n[0] === 192 && n[1] === 168) return true;
+    if (n[0] === 100 && n[1] >= 64 && n[1] <= 127) return true;
+    return false;
+}
+
+export function spreadsheetUrl(input) {
+    const text = String(input || '').trim();
+    if (!text || text.length > 2000) throw new Error('Paste a Google Sheet link');
+    let url;
+    try { url = new URL(text); } catch { throw new Error('That is not a spreadsheet link'); }
+    if (url.protocol !== 'https:' || url.username || url.password) throw new Error('The link has to start with https');
+    if (blockedSpreadsheetHost(url.hostname)) throw new Error('That link cannot be used');
+    if (url.hostname.toLowerCase() !== 'docs.google.com') return url;
+    const published = url.pathname.match(/\/spreadsheets\/d\/e\/([a-zA-Z0-9_-]{10,})/);
+    if (published) {
+        if (url.pathname.includes('/pub')) url.searchParams.set('output', 'xlsx');
+        return url;
+    }
+    const id = url.pathname.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]{20,})(?:\/|$)/);
+    if (!id) throw new Error('Paste the Google Sheet link from the address bar');
+    const out = new URL('https://docs.google.com/spreadsheets/d/' + id[1] + '/export');
+    out.searchParams.set('format', 'xlsx');
+    const resource = url.searchParams.get('resourcekey');
+    if (resource) out.searchParams.set('resourcekey', resource);
+    return out;
+}

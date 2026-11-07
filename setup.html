@@ -25,6 +25,8 @@
         .zone.on { outline: 2px solid #f1c40f; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         td { padding: 3px 2px; vertical-align: top; }
+        #side input, #side button { width: 100%; box-sizing: border-box; }
+        #side button { margin-top: 6px; }
         #note { min-height: 1.2em; color: #9cf; }
         .camp { border-top: 1px solid #333; margin-top: 10px; padding-top: 6px; }
         .camp label { display: flex; gap: 6px; align-items: center; }
@@ -114,7 +116,7 @@
                 <button type="button" id="addRow">Add drop</button>
             </div>
             <div id="panelQuests" hidden>
-                <p>Select a zone, then create the quest. The giver is an NPC from that zone. Kill and gather quests use the zone's mob. A gather item can be one placed in the zone. Export quests and items, then open the file in Google Sheets with File, Import, Upload. Name and a short description come first. Game id is the last column.</p>
+                <p>Select a zone, then create the quest. The giver is an NPC from that zone. Kill and gather quests use the zone's mob. A gather item can be one placed in the zone. Paste a Google Sheet link to import. The export link opens the current items and quests. Name comes first. Game id is last.</p>
                 <label>Zone</label>
                 <select id="questZone"></select>
                 <button type="button" id="addQuest">New quest</button>
@@ -136,14 +138,19 @@
             <button type="button" id="exportMap">Export world</button>
             <button type="button" id="importMapBtn">Import world</button>
             <input id="importMap" type="file" accept="application/json,.json" hidden>
-            <button type="button" id="exportSheet">Export quests and items</button>
-            <button type="button" id="importSheetBtn">Import quests and items</button>
+            <label for="sheetUrl">Google Sheet link</label>
+            <input id="sheetUrl" type="url" inputmode="url" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off">
+            <button type="button" id="importSheetUrl">Import from link</button>
+            <label for="exportSheetUrl">Export link</label>
+            <input id="exportSheetUrl" type="text" readonly>
+            <button type="button" id="exportSheet">Copy export link</button>
+            <button type="button" id="importSheetBtn">Import a file</button>
             <input id="importSheet" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
         </div>
     </div>
     <script type="module">
         import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve, polygonIntersection, downsampleRing, DUNGEON_HALF } from './worldgen.js';
-        import { buildWorkbook, readWorkbook, applyQuestPlaces } from './sheets.js';
+        import { readWorkbook, applyQuestPlaces } from './sheets.js';
 
         const MOBS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
         const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes'];
@@ -1754,6 +1761,7 @@
             try {
                 const saved = await api('/api/setup/config', { method: 'PUT', body: JSON.stringify(config) });
                 config = saved.config;
+                showSheetLink();
                 note('Saved. Players already in the game receive it.');
                 renderZones();
                 renderFields();
@@ -1787,51 +1795,13 @@
             URL.revokeObjectURL(link.href);
             note('World exported, including zones, camps, roads, dungeons, nodes, loot, quests, and items');
         });
-        function sheetLists() {
-            const sets = new Set(['cloth', 'leather', 'plate', 'weapon', 'magic', 'alchemy', 'explosive']);
-            for (const item of config.items || []) if (item.set) sets.add(String(item.set));
-            return {
-                kind: ['armor', 'weapon', 'health', 'mana', 'bomb', 'junk'],
-                slot: ['head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'waist', 'legs', 'feet', 'weapon', 'offhand'],
-                style: ['cloth', 'leather', 'plate'],
-                weapon: ['sword', 'staff'],
-                set: [...sets],
-                yes: ['yes', 'no'],
-                type: ['kill', 'gather', 'named', 'protect'],
-                mob: MOBS.slice(),
-                reward: KINDS.filter(kind => kind !== 'coins'),
-                role: ['inn', 'shop', 'trainer', 'quest']
-            };
+        function showSheetLink() {
+            const field = document.getElementById('exportSheetUrl');
+            if (config && config.sheetPath) field.value = location.origin + config.sheetPath;
+            const input = document.getElementById('sheetUrl');
+            if (input && !input.value) input.value = sessionStorage.getItem('ow-sheet-url') || '';
         }
-        document.getElementById('exportSheet').addEventListener('click', () => {
-            readFields();
-            const bytes = buildWorkbook({
-                items: config.items || [],
-                quests: config.quests || [],
-                zones: config.zones || [],
-                dungeons: config.dungeons || [],
-                lists: sheetLists()
-            });
-            const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = 'quests-and-items.xlsx';
-            link.click();
-            URL.revokeObjectURL(link.href);
-            note('Spreadsheet exported. In Google Sheets use File, Import, Upload. Name comes first. Game id is the last column.');
-        });
-        document.getElementById('importSheetBtn').addEventListener('click', () => document.getElementById('importSheet').click());
-        document.getElementById('importSheet').addEventListener('change', async (event) => {
-            const file = event.target.files && event.target.files[0];
-            event.target.value = '';
-            if (!file) return;
-            let parsed;
-            try {
-                parsed = await readWorkbook(await file.arrayBuffer());
-            } catch (err) {
-                note(err.message || 'That spreadsheet could not be read');
-                return;
-            }
+        async function importParsed(parsed) {
             const parts = [];
             if (parsed.items) parts.push(parsed.items.length + ' items');
             if (parsed.quests) parts.push(parsed.quests.length + ' quests');
@@ -1842,16 +1812,54 @@
             if (!confirm('Replace ' + parts.join(' and ') + ' with this spreadsheet?')) return;
             if (parsed.items) config.items = parsed.items;
             if (parsed.quests) config.quests = applyQuestPlaces(parsed.quests, config.zones || [], config.dungeons || []);
+            const saved = await api('/api/setup/config', { method: 'PUT', body: JSON.stringify(config) });
+            config = saved.config;
+            if (!Array.isArray(config.quests)) config.quests = [];
+            if (!Array.isArray(config.items)) config.items = [];
+            questPick = -1;
+            showSheetLink();
+            if (!document.getElementById('panelQuests').hidden) renderQuests();
+            note('Imported ' + parts.join(' and '));
+        }
+        document.getElementById('exportSheet').addEventListener('click', async () => {
+            const field = document.getElementById('exportSheetUrl');
+            const url = field.value;
+            if (!url) {
+                note('Open setup again so the export link can be made');
+                return;
+            }
+            field.focus();
+            field.select();
             try {
-                const saved = await api('/api/setup/config', { method: 'PUT', body: JSON.stringify(config) });
-                config = saved.config;
-                if (!Array.isArray(config.quests)) config.quests = [];
-                if (!Array.isArray(config.items)) config.items = [];
-                questPick = -1;
-                if (!document.getElementById('panelQuests').hidden) renderQuests();
-                note('Imported ' + parts.join(' and '));
+                await navigator.clipboard.writeText(url);
+                note('Export link copied. Open it to get the sheet. Share a Google Sheet as anyone with the link to import it back.');
+            } catch {
+                note('Export link selected. Copy it, then open it.');
+            }
+        });
+        document.getElementById('importSheetUrl').addEventListener('click', async () => {
+            const url = document.getElementById('sheetUrl').value.trim();
+            if (!url) {
+                note('Paste a Google Sheet link first. Share it as anyone with the link.');
+                return;
+            }
+            sessionStorage.setItem('ow-sheet-url', url);
+            try {
+                const parsed = await api('/api/setup/sheet', { method: 'POST', body: JSON.stringify({ url }) });
+                await importParsed(parsed);
             } catch (err) {
-                note(err.message);
+                note(err.message || 'That spreadsheet could not be read');
+            }
+        });
+        document.getElementById('importSheetBtn').addEventListener('click', () => document.getElementById('importSheet').click());
+        document.getElementById('importSheet').addEventListener('change', async (event) => {
+            const file = event.target.files && event.target.files[0];
+            event.target.value = '';
+            if (!file) return;
+            try {
+                await importParsed(await readWorkbook(await file.arrayBuffer()));
+            } catch (err) {
+                note(err.message || 'That spreadsheet could not be read');
             }
         });
         document.getElementById('importMapBtn').addEventListener('click', () => document.getElementById('importMap').click());
@@ -1874,6 +1882,7 @@
             try {
                 const saved = await api('/api/setup/config', { method: 'PUT', body: JSON.stringify(parsed) });
                 config = saved.config;
+                showSheetLink();
                 if (!Array.isArray(config.quests)) config.quests = [];
                 if (!Array.isArray(config.roads)) config.roads = [];
                 if (!Array.isArray(config.dungeons)) config.dungeons = [];
@@ -1929,6 +1938,7 @@
             try {
                 config = await api('/api/setup/config');
                 showApp();
+                showSheetLink();
                 fillRules();
                 if (!Array.isArray(config.roads)) config.roads = [];
                 if (!Array.isArray(config.dungeons)) config.dungeons = [];

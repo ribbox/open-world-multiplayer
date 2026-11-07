@@ -4,8 +4,10 @@ import { WebSocketServer } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked, dungeonTravel } from './worldgen.js';
-import { defaultIconName } from './icons.js';
+import { defaultIconName, iconKeyFromChoice } from './icons.js';
+import { buildWorkbook, readWorkbook, spreadsheetUrl } from './sheets.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -3904,6 +3906,7 @@ function loadWorldFile() {
     } catch { /* first run */ }
     const next = sanitizeWorld(parsed || {});
     if (parsed && typeof parsed.adminPassword === 'string') next.adminPassword = parsed.adminPassword.slice(0, 64);
+    if (parsed && typeof parsed.sheetToken === 'string' && /^[a-f0-9]{32}$/.test(parsed.sheetToken)) next.sheetToken = parsed.sheetToken;
     applyLoaded(next);
 }
 
@@ -3940,13 +3943,108 @@ app.get('/api/world', (req, res) => {
     res.json(publicWorld());
 });
 
+function setupPayload() {
+    return { ...publicWorld(), loot: lootTables, locked: !!process.env.ADMIN_PASSWORD, sheetPath: '/sheet/' + ensureSheetToken() + '.xlsx' };
+}
+
+function ensureSheetToken() {
+    const current = worldConfig && worldConfig.sheetToken;
+    if (typeof current === 'string' && /^[a-f0-9]{32}$/.test(current)) return current;
+    worldConfig.sheetToken = crypto.randomBytes(16).toString('hex');
+    saveWorldFile();
+    return worldConfig.sheetToken;
+}
+
+function workbookBytes() {
+    const items = itemRecords();
+    const sets = new Set(['cloth', 'leather', 'plate', 'weapon', 'magic', 'alchemy', 'explosive']);
+    for (const item of items) if (item.set) sets.add(String(item.set));
+    return buildWorkbook({
+        items,
+        quests: (worldConfig && worldConfig.quests) || [],
+        zones: listDesignedZones(),
+        dungeons: listDungeons(),
+        lists: {
+            kind: ['armor', 'weapon', 'health', 'mana', 'bomb', 'junk'],
+            slot: ['head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'waist', 'legs', 'feet', 'weapon', 'offhand'],
+            style: ['cloth', 'leather', 'plate'],
+            weapon: ['sword', 'staff'],
+            set: [...sets],
+            yes: ['yes', 'no'],
+            type: ['kill', 'gather', 'named', 'protect'],
+            mob: ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'],
+            reward: ['junk', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor'],
+            role: ['inn', 'shop', 'trainer', 'quest']
+        }
+    });
+}
+
+async function fetchSpreadsheet(start) {
+    let current = start;
+    for (let hop = 0; hop < 5; hop++) {
+        if (current.protocol !== 'https:' || blockedHost(current.hostname)) throw new Error('That link cannot be used');
+        const response = await fetch(current, {
+            redirect: 'manual',
+            headers: { 'user-agent': 'Mozilla/5.0' },
+            signal: AbortSignal.timeout(20000)
+        });
+        if (response.status >= 300 && response.status < 400) {
+            if (response.body && response.body.cancel) await response.body.cancel();
+            const loc = response.headers.get('location');
+            if (!loc) throw new Error('The spreadsheet link did not open');
+            current = new URL(loc, current);
+            continue;
+        }
+        if (!response.ok) throw new Error('The spreadsheet link could not be opened');
+        const len = Number(response.headers.get('content-length') || 0);
+        if (len > 8 * 1024 * 1024) throw new Error('That spreadsheet is too large');
+        const buf = new Uint8Array(await response.arrayBuffer());
+        if (buf.length > 8 * 1024 * 1024) throw new Error('That spreadsheet is too large');
+        if (buf.length < 4 || buf[0] !== 0x50 || buf[1] !== 0x4b) throw new Error('That link did not return a spreadsheet. Share the Google Sheet as anyone with the link.');
+        return buf;
+    }
+    throw new Error('The spreadsheet link redirected too many times');
+}
+
+function blockedHost(host) {
+    const name = String(host || '').toLowerCase().replace(/^\[|\]$/g, '');
+    if (!name || name === 'localhost' || name.endsWith('.localhost') || name.endsWith('.local') || name === 'metadata.google.internal' || name === '::1') return true;
+    const parts = name.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (!parts) return false;
+    const n = parts.slice(1).map(Number);
+    if (n[0] === 0 || n[0] === 10 || n[0] === 127) return true;
+    if (n[0] === 169 && n[1] === 254) return true;
+    if (n[0] === 172 && n[1] >= 16 && n[1] <= 31) return true;
+    if (n[0] === 192 && n[1] === 168) return true;
+    if (n[0] === 100 && n[1] >= 64 && n[1] <= 127) return true;
+    return false;
+}
+
+app.get('/sheet/:token', (req, res) => {
+    const token = String(req.params.token || '');
+    if (!/^[a-f0-9]{32}$/.test(token) || !worldConfig || token !== worldConfig.sheetToken) {
+        res.status(404).type('text/plain').send('Not found');
+        return;
+    }
+    try {
+        const bytes = workbookBytes();
+        res.set('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.set('content-disposition', 'attachment; filename="quests-and-items.xlsx"');
+        res.set('cache-control', 'no-store');
+        res.send(Buffer.from(bytes));
+    } catch (err) {
+        res.status(500).json({ error: 'The spreadsheet could not be built' });
+    }
+});
+
 app.get('/api/setup/config', requireAdmin, (req, res) => {
-    res.json({ ...publicWorld(), loot: lootTables, locked: !!process.env.ADMIN_PASSWORD });
+    res.json(setupPayload());
 });
 
 app.put('/api/setup/config', requireAdmin, (req, res) => {
     const next = sanitizeWorld(req.body || {});
     next.adminPassword = worldConfig.adminPassword || '';
+    next.sheetToken = worldConfig.sheetToken || '';
     applyLoaded(next);
     saveWorldFile();
     broadcast({
@@ -3958,7 +4056,19 @@ app.put('/api/setup/config', requireAdmin, (req, res) => {
         questDefs: publicQuests(),
         craft: publicCraft()
     });
-    res.json({ ok: true, config: { ...publicWorld(), loot: lootTables } });
+    res.json({ ok: true, config: setupPayload() });
+});
+
+app.post('/api/setup/sheet', requireAdmin, async (req, res) => {
+    try {
+        const target = spreadsheetUrl(req.body && req.body.url);
+        const bytes = await fetchSpreadsheet(target);
+        const parsed = await readWorkbook(bytes);
+        res.json({ items: parsed.items, quests: parsed.quests });
+    } catch (err) {
+        const timedOut = err && (err.name === 'TimeoutError' || err.name === 'AbortError');
+        res.status(400).json({ error: timedOut ? 'The spreadsheet link timed out' : (err.message || 'That spreadsheet could not be read') });
+    }
 });
 
 app.post('/api/setup/password', requireAdmin, (req, res) => {
