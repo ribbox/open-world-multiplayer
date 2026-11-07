@@ -96,6 +96,7 @@ const npcs = new Map();
 const AGGRO_RANGE = 9;
 const ATTACK_RANGE = 2.6;
 const NPC_HIT_RANGE = 1.55;
+const SETTLEMENT_RADIUS = 28;
 
 const NPC_KINDS = {
     boar: { id: 'boar', name: 'Wild Boar', tint: '#8d6a3a', loot: 'hide' },
@@ -202,6 +203,7 @@ function rebuildCivilians() {
             dungeonId: dungeon.id
         });
     }
+    rememberSettlements();
 }
 
 function campSites() {
@@ -226,6 +228,21 @@ function campSites() {
         });
     }
     return sites;
+}
+
+let settlementSites = [];
+function rememberSettlements() {
+    settlementSites = campSites().map(site => ({ x: site.x, z: site.z }));
+}
+
+function inSettlement(x, z) {
+    const reach = SETTLEMENT_RADIUS * SETTLEMENT_RADIUS;
+    for (const site of settlementSites) {
+        const dx = x - site.x;
+        const dz = z - site.z;
+        if (dx * dx + dz * dz <= reach) return true;
+    }
+    return false;
 }
 
 rebuildCivilians();
@@ -1125,7 +1142,8 @@ function nearestPlayer(npc, range) {
     let best = null;
     let bestD = range * range;
     for (const player of players.values()) {
-        if (player.hp <= 0 || player.ghost) continue;
+        if (player.hp <= 0 || player.ghost || player.dungeonId) continue;
+        if (inSettlement(player.x, player.z)) continue;
         const dx = player.x - npc.x;
         const dz = player.z - npc.z;
         const d = dx * dx + dz * dz;
