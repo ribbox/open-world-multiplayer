@@ -438,6 +438,7 @@
         Strength raises melee hits, Intellect raises spells and mana, Stamina raises health<br>
         The red globe is health and the blue globe is mana. The screen reddens as health falls<br>
         Crafted armor and weapons add stats. Cloth and staves favor Intellect, swords and leather favor Strength<br>
+        Setup can export quests and items as a spreadsheet. The Icon column picks the picture<br>
         Character sheet Craft tab makes gear. A shop assistant has Buy and Sell tabs<br>
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
@@ -563,6 +564,7 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
         import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, listRoads, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset, campYaw, campSpot, roadAt, listDungeons, dungeonById, dungeonWorld, dungeonLocal, dungeonClamp, dungeonBlocked, dungeonTravel, DUNGEON_HALF } from './worldgen.js';
+        import { iconIndex } from './icons.js';
 
         const loadingLabel = document.getElementById('loadingLabel');
         if (loadingLabel) loadingLabel.textContent = 'Loading the world';
@@ -4027,9 +4029,10 @@
                 const g = canvas.getContext('2d');
                 const kind = item.kind;
                 const slot = item.slot || 'chest';
-                let index = SHEET_ICONS[kind];
-                if (kind === 'weapon') index = item.weapon === 'staff' ? SHEET_ICONS.staff : SHEET_ICONS.sword;
-                else if (kind === 'armor' || index == null) {
+                let index = iconIndex(item.icon);
+                if (index == null && kind === 'weapon') index = item.weapon === 'staff' ? SHEET_ICONS.staff : SHEET_ICONS.sword;
+                if (index == null) index = SHEET_ICONS[kind];
+                if (index == null) {
                     const row = GEAR_ICONS[slot] || GEAR_ICONS.chest;
                     index = row[item.style] || row.plate || row.leather || row.cloth;
                 }
@@ -6033,6 +6036,10 @@
                         bootWorld = data.world || bootWorld;
                         if (data.world && data.world.grayLevels) grayLevels = data.world.grayLevels;
                         if (data.questDefs) questDefs = data.questDefs;
+                        if (data.craft) {
+                            character.craft = data.craft;
+                            if (document.getElementById('sheet').classList.contains('open')) renderSheet();
+                        }
                         renderQuestTracker();
                         reloadChunks();
                         rebuildOverworldPortals();

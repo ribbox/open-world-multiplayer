@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked, dungeonTravel } from './worldgen.js';
+import { defaultIconName } from './icons.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -1379,11 +1380,43 @@ const CRAFT_SETS = {
 const MAX_CRAFT_SKILLS = 2;
 
 const MATERIAL_NAMES = { cloth: 'Cloth', leather: 'Leather', ore: 'Ore', gem: 'Gem', wood: 'Wood', stone: 'Stone', herb: 'Herb', powder: 'Powder' };
-const LOOT_RECIPE_IDS = Object.keys(RECIPES).filter(id => RECIPES[id].loot);
+
+function lootRecipeIds() {
+    return Object.keys(RECIPES).filter(id => RECIPES[id].loot);
+}
+
+function statsForRecipe(recipe) {
+    if (recipe && recipe.statsSet) {
+        return { stats: cleanStats(recipe.stats), reqLevel: Math.max(1, Math.round(Number(recipe.reqLevel) || 1)) };
+    }
+    return craftedStats(recipe);
+}
+
+function rewardFromCatalog(quest) {
+    const name = quest.rewardName || quest.rewardKind;
+    const found = Object.values(RECIPES).find(recipe => recipe.name === name && (!quest.rewardKind || recipe.kind === quest.rewardKind));
+    if (!found) return { kind: quest.rewardKind, name, qty: quest.rewardQty || 1 };
+    const made = statsForRecipe(found);
+    return {
+        kind: found.kind,
+        name: found.name,
+        qty: quest.rewardQty || 1,
+        armor: found.armor || 0,
+        weapon: found.weapon || '',
+        slot: found.slot || '',
+        style: found.style || '',
+        magic: !!found.magic,
+        amount: found.amount || 0,
+        icon: found.icon || defaultIconName(found),
+        stats: made.stats,
+        reqLevel: made.reqLevel
+    };
+}
 
 function publicCraft() {
     const recipes = {};
     for (const [id, recipe] of Object.entries(RECIPES)) {
+        const made = statsForRecipe(recipe);
         recipes[id] = {
             name: recipe.name,
             set: recipe.set,
@@ -1395,8 +1428,9 @@ function publicCraft() {
             magic: !!recipe.magic,
             cost: recipe.cost,
             loot: !!recipe.loot,
-            stats: craftedStats(recipe).stats,
-            reqLevel: craftedStats(recipe).reqLevel
+            icon: recipe.icon || defaultIconName(recipe),
+            stats: made.stats,
+            reqLevel: made.reqLevel
         };
     }
     return { sets: CRAFT_SETS, recipes };
@@ -1623,7 +1657,7 @@ function craftItem(player, id) {
     normalizeSlots(player);
     if (!player.slots.some(slot => !slot)) return 'Inventory full';
     for (const [kind, qty] of Object.entries(recipe.cost)) takeKind(player, kind, qty);
-    const made = craftedStats(recipe);
+    const made = statsForRecipe(recipe);
     const rest = addToSlots(player, {
         kind: recipe.kind,
         name: recipe.name,
@@ -1634,6 +1668,7 @@ function craftItem(player, id) {
         style: recipe.style || '',
         magic: !!recipe.magic,
         amount: recipe.amount || 0,
+        icon: recipe.icon || defaultIconName(recipe),
         stats: made.stats,
         reqLevel: made.reqLevel
     });
@@ -1757,6 +1792,7 @@ function sameStack(a, b) {
     if ((a.amount || 0) !== (b.amount || 0) || (a.armor || 0) !== (b.armor || 0)) return false;
     if ((a.slot || '') !== (b.slot || '') || (a.weapon || '') !== (b.weapon || '')) return false;
     if ((a.reqLevel || 1) !== (b.reqLevel || 1)) return false;
+    if (String(a.icon || '') !== String(b.icon || '')) return false;
     const as = a.stats || {};
     const bs = b.stats || {};
     return (as.strength || 0) === (bs.strength || 0) && (as.stamina || 0) === (bs.stamina || 0) && (as.intellect || 0) === (bs.intellect || 0);
@@ -1812,18 +1848,19 @@ function addToSlots(player, source) {
             style: source.style || '',
             magic: !!source.magic,
             recipe: source.recipe || '',
+            icon: source.icon ? String(source.icon).slice(0, 32) : '',
             stats: cleanStats(source.stats),
             reqLevel: Math.max(1, Math.round(Number(source.reqLevel) || 1))
         };
         qty -= take;
         if (qty <= 0) return null;
     }
-    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0, weapon: source.weapon || '', slot: source.slot || '', style: source.style || '', magic: !!source.magic, recipe: source.recipe || '', stats: cleanStats(source.stats), reqLevel: Math.max(1, Math.round(Number(source.reqLevel) || 1)) };
+    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0, weapon: source.weapon || '', slot: source.slot || '', style: source.style || '', magic: !!source.magic, recipe: source.recipe || '', icon: source.icon ? String(source.icon).slice(0, 32) : '', stats: cleanStats(source.stats), reqLevel: Math.max(1, Math.round(Number(source.reqLevel) || 1)) };
 }
 
 function copySlot(slot) {
     if (!slot) return null;
-    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0, weapon: slot.weapon || '', slot: slot.slot || '', style: slot.style || '', magic: !!slot.magic, recipe: slot.recipe || '', stats: cleanStats(slot.stats), reqLevel: Math.max(1, Math.round(Number(slot.reqLevel) || 1)) };
+    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0, weapon: slot.weapon || '', slot: slot.slot || '', style: slot.style || '', magic: !!slot.magic, recipe: slot.recipe || '', icon: slot.icon ? String(slot.icon).slice(0, 32) : '', stats: cleanStats(slot.stats), reqLevel: Math.max(1, Math.round(Number(slot.reqLevel) || 1)) };
 }
 
 function absorbWallet(player) {
@@ -1996,9 +2033,9 @@ function lootItem(row, level, tableId) {
         return { kind, name: MATERIAL_NAMES[kind], qty: kind === 'gem' ? 1 : 1 + Math.floor(level / 2) };
     }
     if (kind === 'recipe') {
-        let ids = LOOT_RECIPE_IDS;
+        let ids = lootRecipeIds();
         if (row.sets) ids = ids.filter(id => row.sets.includes(RECIPES[id].set));
-        if (!ids.length) ids = LOOT_RECIPE_IDS;
+        if (!ids.length) ids = lootRecipeIds();
         const id = ids[Math.floor(Math.random() * ids.length)];
         return { kind: 'recipe', name: 'Pattern: ' + RECIPES[id].name, qty: 1, recipe: id };
     }
@@ -2956,7 +2993,8 @@ wss.on('connection', (ws) => {
                 return;
             }
             if (quest.rewardKind && quest.rewardKind !== 'coins') {
-                const leftover = addToSlots(player, { kind: quest.rewardKind, name: quest.rewardName || quest.rewardKind, qty: quest.rewardQty || 1 });
+                const reward = rewardFromCatalog(quest);
+                const leftover = addToSlots(player, reward);
                 if (leftover) {
                     send(ws, { type: 'quests', ok: false, reason: 'Inventory full', quests: player.quests });
                     return;
@@ -3457,7 +3495,7 @@ function sanitizeQuests(input) {
     const list = Array.isArray(input) ? input : [];
     const out = [];
     const seen = new Set();
-    for (const raw of list.slice(0, 40)) {
+    for (const raw of list.slice(0, 80)) {
         if (!raw || typeof raw !== 'object') continue;
         let id = String(raw.id || '').slice(0, 24);
         if (!/^[a-z0-9-]{2,24}$/i.test(id)) id = 'q' + Math.random().toString(36).slice(2, 8);
@@ -3481,8 +3519,8 @@ function sanitizeQuests(input) {
             count: type === 'named' ? 1 : clampNum(raw.count, 3, 1, 40),
             item: String(raw.item || '').trim().slice(0, 24),
             named: String(raw.named || '').trim().slice(0, 24),
-            elite: type === 'named' && !!raw.elite,
-            custom: !!raw.custom,
+            elite: type === 'named' && sheetFlag(raw.elite),
+            custom: sheetFlag(raw.custom),
             text: String(raw.text || '').slice(0, 180),
             coins: clampNum(raw.coins, 10, 0, 500),
             xp: clampNum(raw.xp, 40, 0, 2000),
@@ -3653,6 +3691,150 @@ function routeRemain(samples, index) {
     return left;
 }
 
+function parseCost(value) {
+    const cost = {};
+    const write = (kind, qty) => {
+        const name = String(kind || '').trim().toLowerCase();
+        const n = Math.round(Number(qty) || 0);
+        if (!/^[a-z]{2,16}$/.test(name) || n <= 0) return;
+        cost[name] = Math.min(99, n);
+    };
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const [kind, qty] of Object.entries(value)) write(kind, qty);
+        return cost;
+    }
+    for (const part of String(value || '').split(',')) {
+        const bit = part.trim();
+        if (!bit) continue;
+        if (bit.includes(':')) {
+            const [kind, qty] = bit.split(':');
+            write(kind, qty);
+            continue;
+        }
+        const leading = bit.match(/^(\d+)\s+([a-z]+)$/i);
+        const trailing = bit.match(/^([a-z]+)\s+(\d+)$/i);
+        if (leading) write(leading[2], leading[1]);
+        else if (trailing) write(trailing[1], trailing[2]);
+    }
+    return cost;
+}
+
+function sheetFlag(value) {
+    if (value === true || value === 1) return true;
+    const text = String(value || '').trim().toLowerCase();
+    return text === 'yes' || text === 'true' || text === '1' || text === 'y';
+}
+
+const ITEM_KINDS = ['armor', 'weapon', 'health', 'mana', 'bomb', 'junk'];
+const ITEM_SLOTS = ['', 'head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'waist', 'legs', 'feet', 'weapon', 'offhand'];
+const ITEM_STYLES = ['', 'cloth', 'leather', 'plate'];
+
+function sanitizeItems(input) {
+    if (!Array.isArray(input)) return null;
+    const out = [];
+    const seen = new Set();
+    for (const raw of input.slice(0, 200)) {
+        if (!raw || typeof raw !== 'object') continue;
+        let id = String(raw.id || '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 32);
+        if (!/^[a-z0-9-]{2,32}$/.test(id)) {
+            id = String(raw.name || 'item').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'item';
+        }
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const kind = ITEM_KINDS.includes(raw.kind) ? raw.kind : 'armor';
+        let slot = ITEM_SLOTS.includes(raw.slot) ? raw.slot : '';
+        if (!slot && kind === 'weapon') slot = 'weapon';
+        const style = ITEM_STYLES.includes(raw.style) ? raw.style : '';
+        const weapon = raw.weapon === 'staff' || raw.weapon === 'sword' ? raw.weapon : (kind === 'weapon' ? 'sword' : '');
+        let set = String(raw.set || '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '').slice(0, 24);
+        if (!set) set = kind === 'health' || kind === 'mana' ? 'alchemy' : kind === 'bomb' ? 'explosive' : kind === 'weapon' ? 'weapon' : 'cloth';
+        out.push({
+            id,
+            name: String(raw.name || id).slice(0, 32),
+            set,
+            kind,
+            slot,
+            style,
+            weapon,
+            armor: clampNum(raw.armor, 0, 0, 40),
+            amount: clampNum(raw.amount, 0, 0, 200),
+            magic: sheetFlag(raw.magic),
+            loot: sheetFlag(raw.loot),
+            cost: parseCost(raw.cost),
+            icon: String(raw.icon || '').trim().slice(0, 32),
+            stats: cleanStats({
+                strength: raw.strength != null && raw.strength !== '' ? raw.strength : (raw.stats && raw.stats.strength),
+                stamina: raw.stamina != null && raw.stamina !== '' ? raw.stamina : (raw.stats && raw.stats.stamina),
+                intellect: raw.intellect != null && raw.intellect !== '' ? raw.intellect : (raw.stats && raw.stats.intellect)
+            }),
+            reqLevel: clampNum(raw.reqLevel, 1, 1, 30),
+            statsSet: true
+        });
+    }
+    return out;
+}
+
+function installItems(list) {
+    for (const key of Object.keys(RECIPES)) delete RECIPES[key];
+    for (const row of list) {
+        RECIPES[row.id] = {
+            name: row.name,
+            set: row.set,
+            slot: row.slot,
+            kind: row.kind,
+            style: row.style,
+            armor: row.armor,
+            weapon: row.weapon,
+            magic: row.magic,
+            loot: row.loot,
+            amount: row.amount,
+            cost: row.cost,
+            icon: row.icon,
+            stats: row.stats,
+            reqLevel: row.reqLevel,
+            statsSet: true
+        };
+        if (!CRAFT_SETS[row.set]) {
+            CRAFT_SETS[row.set] = {
+                name: row.set.charAt(0).toUpperCase() + row.set.slice(1),
+                cost: 20,
+                rarity: 2,
+                text: 'Added from the item sheet.'
+            };
+        }
+    }
+}
+
+function costText(cost) {
+    if (!cost || typeof cost !== 'object') return '';
+    return Object.entries(cost).filter(([, qty]) => qty > 0).map(([kind, qty]) => kind + ':' + qty).join(', ');
+}
+
+function itemRecords() {
+    return Object.entries(RECIPES).map(([id, recipe]) => {
+        const made = statsForRecipe(recipe);
+        return {
+            id,
+            name: recipe.name,
+            set: recipe.set,
+            kind: recipe.kind,
+            slot: recipe.slot || '',
+            style: recipe.style || '',
+            weapon: recipe.weapon || '',
+            armor: recipe.armor || 0,
+            amount: recipe.amount || 0,
+            magic: !!recipe.magic,
+            loot: !!recipe.loot,
+            cost: costText(recipe.cost),
+            strength: made.stats.strength || 0,
+            stamina: made.stats.stamina || 0,
+            intellect: made.stats.intellect || 0,
+            reqLevel: made.reqLevel || 1,
+            icon: recipe.icon || defaultIconName(recipe)
+        };
+    });
+}
+
 function sanitizeWorld(input) {
     const src = input && typeof input === 'object' ? input : {};
     return {
@@ -3668,7 +3850,8 @@ function sanitizeWorld(input) {
         roads: sanitizeRoads(src.roads),
         bounds: sanitizeBounds(src.bounds),
         dungeons: sanitizeDungeons(src.dungeons),
-        quests: sanitizeQuests(src.quests)
+        quests: sanitizeQuests(src.quests),
+        items: sanitizeItems(src.items)
     };
 }
 
@@ -3690,7 +3873,8 @@ function publicWorld() {
         zones: listDesignedZones(),
         roads: listRoads(),
         dungeons: listDungeons(),
-        quests: (worldConfig && worldConfig.quests) || []
+        quests: (worldConfig && worldConfig.quests) || [],
+        items: itemRecords()
     };
 }
 
@@ -3703,7 +3887,8 @@ function applyLoaded(config) {
     worldRules.spawnCap = config.spawnCap;
     applyWorldConfig(config);
     lootTables = config.loot;
-    worldConfig = { ...config, zones: listDesignedZones(), bounds: worldShape(), loot: lootTables, quests: config.quests || [], dungeons: listDungeons() };
+    if (Array.isArray(config.items) && config.items.length) installItems(config.items);
+    worldConfig = { ...config, zones: listDesignedZones(), bounds: worldShape(), loot: lootTables, quests: config.quests || [], dungeons: listDungeons(), items: itemRecords() };
     rebuildCivilians();
     installQuests(config.quests || []);
     npcs.clear();
@@ -3770,7 +3955,8 @@ app.put('/api/setup/config', requireAdmin, (req, res) => {
         civilians: CIVILIANS.map(publicCivilian),
         camps: campSites(),
         npcs: Array.from(npcs.values()).filter(npc => npc.alive).map(publicNpc),
-        questDefs: publicQuests()
+        questDefs: publicQuests(),
+        craft: publicCraft()
     });
     res.json({ ok: true, config: { ...publicWorld(), loot: lootTables } });
 });
