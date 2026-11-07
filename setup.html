@@ -114,7 +114,7 @@
                 <button type="button" id="addRow">Add drop</button>
             </div>
             <div id="panelQuests" hidden>
-                <p>Select a zone, then create the quest. The giver is an NPC from that zone. Kill and gather quests use the zone's mob. A gather item can be one placed in the zone. Export quests and items for a spreadsheet. The Icon column is a dropdown.</p>
+                <p>Select a zone, then create the quest. The giver is an NPC from that zone. Kill and gather quests use the zone's mob. A gather item can be one placed in the zone. Export quests and items, then open the file in Google Sheets with File, Import, Upload. Name and a short description come first. Game id is the last column.</p>
                 <label>Zone</label>
                 <select id="questZone"></select>
                 <button type="button" id="addQuest">New quest</button>
@@ -143,8 +143,7 @@
     </div>
     <script type="module">
         import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve, polygonIntersection, downsampleRing, DUNGEON_HALF } from './worldgen.js';
-        import { buildWorkbook, readWorkbook } from './sheets.js';
-        import { iconChoices, ICON_INDEX } from './icons.js';
+        import { buildWorkbook, readWorkbook, applyQuestPlaces } from './sheets.js';
 
         const MOBS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
         const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes'];
@@ -1806,15 +1805,20 @@
         }
         document.getElementById('exportSheet').addEventListener('click', () => {
             readFields();
-            const icons = iconChoices().map(name => ({ name, index: Object.prototype.hasOwnProperty.call(ICON_INDEX, name) ? ICON_INDEX[name] : Number(name) }));
-            const bytes = buildWorkbook({ items: config.items || [], quests: config.quests || [], icons, lists: sheetLists() });
+            const bytes = buildWorkbook({
+                items: config.items || [],
+                quests: config.quests || [],
+                zones: config.zones || [],
+                dungeons: config.dungeons || [],
+                lists: sheetLists()
+            });
             const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
             link.download = 'quests-and-items.xlsx';
             link.click();
             URL.revokeObjectURL(link.href);
-            note('Spreadsheet exported. The Icon column is a dropdown.');
+            note('Spreadsheet exported. In Google Sheets use File, Import, Upload. Name comes first. Game id is the last column.');
         });
         document.getElementById('importSheetBtn').addEventListener('click', () => document.getElementById('importSheet').click());
         document.getElementById('importSheet').addEventListener('change', async (event) => {
@@ -1837,7 +1841,7 @@
             }
             if (!confirm('Replace ' + parts.join(' and ') + ' with this spreadsheet?')) return;
             if (parsed.items) config.items = parsed.items;
-            if (parsed.quests) config.quests = parsed.quests;
+            if (parsed.quests) config.quests = applyQuestPlaces(parsed.quests, config.zones || [], config.dungeons || []);
             try {
                 const saved = await api('/api/setup/config', { method: 'PUT', body: JSON.stringify(config) });
                 config = saved.config;

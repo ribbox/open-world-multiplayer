@@ -60,16 +60,10 @@ export const ICON_INDEX = {
 };
 
 export function iconIndex(value) {
-    if (value == null || value === '') return null;
-    const text = String(value).trim();
-    if (/^\d+$/.test(text)) {
-        const n = Number(text);
-        return n >= 0 && n < ICON_COUNT ? n : null;
-    }
-    if (Object.prototype.hasOwnProperty.call(ICON_INDEX, text)) return ICON_INDEX[text];
-    const loose = text.toLowerCase().replace(/[\s_]+/g, '-');
-    if (Object.prototype.hasOwnProperty.call(ICON_INDEX, loose)) return ICON_INDEX[loose];
-    return null;
+    const key = canonicalIconKey(value);
+    if (!key) return null;
+    if (/^\d+$/.test(key)) return Number(key);
+    return Object.prototype.hasOwnProperty.call(ICON_INDEX, key) ? ICON_INDEX[key] : null;
 }
 
 export function defaultIconName(item) {
@@ -83,6 +77,107 @@ export function defaultIconName(item) {
     }
     if (ICON_INDEX[item.kind] != null) return item.kind;
     return '';
+}
+
+const ICON_LABEL = {
+    sword: 'Sword',
+    'power-strike': 'Power strike',
+    cleave: 'Cleave',
+    staff: 'Staff',
+    'arcane-bolt': 'Arcane missile',
+    'arcane-surge': 'Arcane surge',
+    mend: 'Mend',
+    gather: 'Gather',
+    health: 'Health potion',
+    mana: 'Mana potion',
+    bomb: 'Bomb',
+    bag: 'Bag',
+    character: 'Character',
+    wood: 'Wood',
+    stone: 'Stone',
+    cloth: 'Cloth',
+    leather: 'Leather',
+    ore: 'Ore',
+    gem: 'Gem',
+    herb: 'Herb',
+    powder: 'Powder',
+    coins: 'Coins',
+    junk: 'Junk',
+    recipe: 'Pattern',
+    quest: 'Quest scroll',
+    'head-cloth': 'Cloth hat',
+    'head-leather': 'Leather cap',
+    'head-plate': 'Plate helm',
+    'neck-cloth': 'Cloth necklace',
+    'neck-leather': 'Leather necklace',
+    'neck-plate': 'Plate necklace',
+    'shoulders-cloth': 'Cloth shoulders',
+    'shoulders-leather': 'Leather shoulders',
+    'shoulders-plate': 'Plate shoulders',
+    'cloak-cloth': 'Cloth cloak',
+    'cloak-leather': 'Leather cloak',
+    'cloak-plate': 'Plate cloak',
+    'chest-cloth': 'Cloth robe',
+    'chest-leather': 'Leather chest',
+    'chest-plate': 'Plate chest',
+    'hands-cloth': 'Cloth gloves',
+    'hands-leather': 'Leather gloves',
+    'hands-plate': 'Plate gauntlets',
+    'waist-cloth': 'Cloth belt',
+    'waist-leather': 'Leather belt',
+    'waist-plate': 'Plate belt',
+    'legs-cloth': 'Cloth pants',
+    'legs-leather': 'Leather pants',
+    'legs-plate': 'Plate pants',
+    'feet-cloth': 'Cloth shoes',
+    'feet-leather': 'Leather boots',
+    'feet-plate': 'Plate boots',
+    'offhand-cloth': 'Spell focus',
+    'offhand-leather': 'Leather buckler',
+    'offhand-plate': 'Iron buckler'
+};
+
+const LABEL_TO_KEY = new Map(Object.entries(ICON_LABEL).map(([key, label]) => [label.toLowerCase(), key]));
+
+function canonicalIconKey(value) {
+    if (value == null || value === '') return '';
+    const text = String(value).trim();
+    if (!text) return '';
+    if (Object.prototype.hasOwnProperty.call(ICON_INDEX, text)) return text;
+    const loose = text.toLowerCase().replace(/[\s_]+/g, '-');
+    if (Object.prototype.hasOwnProperty.call(ICON_INDEX, loose)) return loose;
+    const fromLabel = LABEL_TO_KEY.get(text.toLowerCase());
+    if (fromLabel) return fromLabel;
+    const iconWord = text.match(/^(?:icon|cell|picture)\s+(\d+)$/i);
+    const numeric = iconWord ? iconWord[1] : (/^\d+$/.test(text) ? text : '');
+    if (!numeric) return '';
+    const n = Number(numeric);
+    if (!(n >= 0 && n < ICON_COUNT)) return '';
+    const owners = Object.keys(ICON_INDEX).filter(key => ICON_INDEX[key] === n);
+    return owners.length === 1 ? owners[0] : String(n);
+}
+
+export function iconKeyFromChoice(value) {
+    const key = canonicalIconKey(value);
+    if (key) return key;
+    return String(value ?? '').trim().slice(0, 32);
+}
+
+export function iconChoice(value) {
+    const key = canonicalIconKey(value);
+    if (!key) return '';
+    if (ICON_LABEL[key]) return ICON_LABEL[key];
+    if (/^\d+$/.test(key)) return 'Icon ' + key;
+    return key;
+}
+
+export function iconCatalog() {
+    return Object.keys(ICON_INDEX).map(key => ({
+        key,
+        label: ICON_LABEL[key] || key,
+        index: ICON_INDEX[key],
+        means: (ICON_LABEL[key] || key) + '. Cell ' + ICON_INDEX[key] + ' on the icon image, 16 across.'
+    })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
 export function iconChoices() {

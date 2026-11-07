@@ -3761,7 +3761,7 @@ function sanitizeItems(input) {
             magic: sheetFlag(raw.magic),
             loot: sheetFlag(raw.loot),
             cost: parseCost(raw.cost),
-            icon: String(raw.icon || '').trim().slice(0, 32),
+            icon: iconKeyFromChoice(raw.icon).slice(0, 32),
             stats: cleanStats({
                 strength: raw.strength != null && raw.strength !== '' ? raw.strength : (raw.stats && raw.stats.strength),
                 stamina: raw.stamina != null && raw.stamina !== '' ? raw.stamina : (raw.stats && raw.stats.stamina),
