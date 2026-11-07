@@ -113,7 +113,7 @@ const GLADE_INN = campSpot('hamlet', 'inn', 0, 6);
 const DEFAULT_SPAWN = { x: GLADE_INN.x, z: GLADE_INN.z, name: 'Holt' };
 
 const CIVILIANS = [
-    { id: 'mira', name: 'Mira', role: 'shop', title: 'Shop assistant', tint: '#f1c40f', x: 10, z: 4, text: 'I buy what you carry and sell crafting skills. Bring coins.' },
+    { id: 'mira', name: 'Mira', role: 'shop', title: 'Shop assistant', tint: '#f1c40f', x: 10, z: 4, text: 'I buy what you carry and sell potions and crafting skills. Bring coins.' },
     { id: 'bram', name: 'Bram', role: 'trainer', title: 'Trainer', tint: '#5dade2', x: -10, z: 4, text: 'Choose a class, then train your spells with me.' },
     { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' },
     { id: 'holt', name: 'Holt', role: 'inn', title: 'Innkeeper', tint: '#e67e22', x: GLADE_INN.x, z: GLADE_INN.z, text: 'I keep the inn. You can set your spawn here.' }
@@ -1218,6 +1218,54 @@ function partyOf(player) {
     return parties.get(player.partyId) || null;
 }
 
+function partyMembersNear(player) {
+    const party = partyOf(player);
+    const ids = party ? party.members : [player.persistentId];
+    const near = [];
+    for (const id of ids) {
+        const member = id === player.persistentId ? player : players.get(id);
+        if (!member || member.ghost || member.hp <= 0) continue;
+        if ((member.dungeonId || '') !== (player.dungeonId || '')) continue;
+        if (Math.hypot(member.x - player.x, member.z - player.z) > PARTY_RANGE) continue;
+        near.push(member);
+    }
+    if (!near.includes(player)) near.unshift(player);
+    return near;
+}
+
+function awardKill(killer, npc) {
+    const members = partyMembersNear(killer);
+    const earning = members.filter(member => xpForKill(member, npc) > 0);
+    const count = earning.length;
+    let killerGain = 0;
+    let killerLevel = false;
+    for (const member of members) {
+        const full = xpForKill(member, npc);
+        const share = count > 1 && full > 0 ? Math.floor(full / count) + (member === earning[0] ? full % count : 0) : full;
+        const gained = share > 0 ? share : 0;
+        const leveled = gained > 0 ? grantXp(member, gained) : false;
+        noteKill(member, npc);
+        if (member === killer) {
+            killerGain = gained;
+            killerLevel = leveled;
+            continue;
+        }
+        send(member.ws, {
+            type: 'partyAward',
+            gained,
+            leveled,
+            name: npc.name,
+            quests: member.quests,
+            inventory: member.questDirty ? inventoryOf(member) : undefined,
+            questNote: member.questNote || '',
+            ...statsOf(member)
+        });
+        member.questDirty = false;
+        member.questNote = '';
+    }
+    return { gained: killerGain, leveled: killerLevel, members };
+}
+
 function publicParty(party) {
     return {
         id: party.id,
@@ -1291,6 +1339,26 @@ const ABILITIES = {
     'arcane-surge': { weapon: 'staff', mana: 8, range: 8, damage: (level) => 12 + level * 2 },
     mend: { weapon: 'staff', mana: 4, range: 0, heal: (level) => 8 + level * 2 }
 };
+const ABILITY_COOLDOWN = {
+    sword: 1200,
+    'power-strike': 6000,
+    cleave: 8000,
+    'arcane-bolt': 1800,
+    'arcane-surge': 8000,
+    mend: 5000
+};
+const POTION_COOLDOWN = 12000;
+const BOMB_COOLDOWN = 4000;
+
+function cooldownLeft(player, key, now) {
+    const until = player.cds && player.cds[key];
+    return until ? Math.max(0, until - now) : 0;
+}
+
+function startCooldown(player, key, ms, now) {
+    if (!player.cds) player.cds = {};
+    player.cds[key] = now + ms;
+}
 
 const BAR_PAGES = 3;
 const BAR_SLOTS = 8;
@@ -1396,6 +1464,11 @@ const CRAFT_SETS = {
     alchemy: { name: 'Alchemy', cost: 18, rarity: 2, text: 'Health and mana potions from herbs.' },
     explosive: { name: 'Explosives', cost: 22, rarity: 2, text: 'Bombs from powder and stone.' }
 };
+
+const SHOP_GOODS = [
+    { id: 'health', name: 'Health potions', kind: 'health', itemName: 'Health potion', amount: 18, qty: 5, cost: 20 },
+    { id: 'mana', name: 'Mana potions', kind: 'mana', itemName: 'Mana potion', amount: 14, qty: 5, cost: 20 }
+];
 
 const MAX_CRAFT_SKILLS = 2;
 
@@ -1632,6 +1705,21 @@ function learnSet(player, setId) {
     if (ids.every(id => player.recipes.includes(id))) return 'Already learned';
     if (!spendCoins(player, set.cost)) return 'Not enough coins';
     for (const id of ids) if (!player.recipes.includes(id)) player.recipes.push(id);
+    savePlayer(player);
+    return null;
+}
+
+function buySupply(player, id) {
+    const good = SHOP_GOODS.find(row => row.id === id);
+    if (!good) return 'Not for sale';
+    if (!spendCoins(player, good.cost)) return 'Not enough coins';
+    const leftover = addToSlots(player, { kind: good.kind, name: good.itemName, qty: good.qty, amount: good.amount });
+    const left = leftover ? leftover.qty : 0;
+    if (left >= good.qty) {
+        player.coins += good.cost;
+        return 'Bag full';
+    }
+    if (left > 0) player.coins += Math.round(good.cost * left / good.qty);
     savePlayer(player);
     return null;
 }
@@ -2160,9 +2248,19 @@ function publicChest(chest) {
     return { id: chest.id, x: chest.x, z: chest.z, level: chest.level, items: chest.items };
 }
 
-function spawnChest(npc, player) {
+function spawnChest(npc, owners) {
     const items = rollLoot(npc.level, npc.loot);
-    for (const drop of questChestDrops(player, npc)) items.push(drop);
+    const list = Array.isArray(owners) ? owners : [owners];
+    const seen = new Set();
+    for (const owner of list) {
+        if (!owner) continue;
+        for (const drop of questChestDrops(owner, npc)) {
+            const key = (drop.questId || '') + '\n' + drop.name;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            items.push(drop);
+        }
+    }
     const chest = {
         id: 'c' + (chestSeq++),
         x: npc.x,
@@ -2705,13 +2803,17 @@ wss.on('connection', (ws) => {
                 return;
             }
             const now = Date.now();
-            if (now - player.lastAttack < 500) return;
-            player.lastAttack = now;
+            const abilityId = ABILITIES[data.ability] ? data.ability : 'sword';
+            const spec = ABILITIES[abilityId];
+            const cdMax = ABILITY_COOLDOWN[abilityId] || 1200;
+            const left = cooldownLeft(player, abilityId, now);
+            if (left > 0) {
+                send(ws, { type: 'attackResult', ok: false, reason: 'Not ready', ability: abilityId, cd: left, cdMax });
+                return;
+            }
             if (typeof data.x === 'number') player.x = data.x;
             if (typeof data.z === 'number') player.z = data.z;
             if (typeof data.rotY === 'number') player.rotY = data.rotY;
-            if (data.tool === 'sword' || data.tool === 'staff') player.tool = data.tool;
-            const spec = ABILITIES[data.ability] || ABILITIES.sword;
             player.tool = spec.weapon;
             if (player.class) {
                 const worn = player.equipment.weapon && player.equipment.weapon.weapon;
@@ -2719,7 +2821,7 @@ wss.on('connection', (ws) => {
                     send(ws, { type: 'attackResult', ok: false, reason: 'Equip a ' + spec.weapon });
                     return;
                 }
-                if (!knownSpells(player).includes(data.ability || 'sword')) {
+                if (!knownSpells(player).includes(abilityId)) {
                     send(ws, { type: 'attackResult', ok: false, reason: 'Spell not trained' });
                     return;
                 }
@@ -2752,11 +2854,11 @@ wss.on('connection', (ws) => {
                 }
                 const healed = spec.heal(player.level) + ((player.stats && player.stats.intellect) || 0);
                 subject.hp = Math.min(subject.maxHp, subject.hp + healed);
-                player.lastAttack = now;
+                startCooldown(player, abilityId, cdMax, now);
                 broadcast({
                     type: 'cast',
                     casterId: sessionId,
-                    ability: data.ability,
+                    ability: abilityId,
                     bolts: 1,
                     travel: 280,
                     x: player.x,
@@ -2765,7 +2867,7 @@ wss.on('connection', (ws) => {
                     tz: subject.z
                 });
                 if (subject !== player) send(subject.ws, { type: 'healed', amount: healed, from: player.name, ...statsOf(subject) });
-                send(ws, { type: 'attackResult', ok: true, ability: data.ability, heal: healed, targetId: subject.persistentId, ...statsOf(player) });
+                send(ws, { type: 'attackResult', ok: true, ability: abilityId, cd: cdMax, cdMax, heal: healed, targetId: subject.persistentId, ...statsOf(player) });
                 return;
             }
             const ally = players.get(data.targetId);
@@ -2786,19 +2888,19 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'attackResult', ok: false, reason: 'Out of range', ...statsOf(player) });
                 return;
             }
-            player.lastAttack = now;
-            const rank = (player.spellRanks && player.spellRanks[data.ability || 'sword']) || 1;
-            const bolts = (data.ability === 'arcane-bolt') ? rank : 1;
+            startCooldown(player, abilityId, cdMax, now);
+            const rank = (player.spellRanks && player.spellRanks[abilityId]) || 1;
+            const bolts = abilityId === 'arcane-bolt' ? rank : 1;
             const statBonus = spec.weapon === 'sword'
                 ? ((player.stats && player.stats.strength) || 0)
                 : ((player.stats && player.stats.intellect) || 0);
             const per = spec.damage(player.level) + statBonus + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0);
-            const projectile = data.ability === 'arcane-bolt' || data.ability === 'arcane-surge';
+            const projectile = abilityId === 'arcane-bolt' || abilityId === 'arcane-surge';
             const travel = projectile ? Math.min(900, Math.max(220, Math.round(dist * 140))) : 0;
             broadcast({
                 type: 'cast',
                 casterId: sessionId,
-                ability: data.ability || 'sword',
+                ability: abilityId,
                 npcId: npc.id,
                 bolts,
                 travel,
@@ -2818,7 +2920,9 @@ wss.on('connection', (ws) => {
                     killed,
                     gained,
                     leveled,
-                    ability: data.ability || 'sword',
+                    ability: abilityId,
+                    cd: cdMax,
+                    cdMax,
                     chest: chest ? publicChest(chest) : null,
                     quests: player.quests,
                     inventory: player.questDirty ? inventoryOf(player) : undefined,
@@ -2838,10 +2942,10 @@ wss.on('connection', (ws) => {
                 let chest = null;
                 if (npc.hp <= 0) {
                     downNpc(npc);
-                    gained = xpForKill(player, npc);
-                    leveled = grantXp(player, gained);
-                    chest = spawnChest(npc, player);
-                    noteKill(player, npc);
+                    const award = awardKill(player, npc);
+                    gained = award.gained;
+                    leveled = award.leveled;
+                    chest = spawnChest(npc, award.members);
                 }
                 broadcast({
                     type: 'npcHit',
@@ -3131,6 +3235,16 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'useResult', ok: false, reason: 'Nothing to use' });
                 return;
             }
+            const now = Date.now();
+            const cdKey = slot.kind === 'bomb' ? 'bomb' : (slot.kind === 'health' || slot.kind === 'mana' ? 'potion' : '');
+            const cdMax = cdKey === 'bomb' ? BOMB_COOLDOWN : POTION_COOLDOWN;
+            if (cdKey) {
+                const left = cooldownLeft(player, cdKey, now);
+                if (left > 0) {
+                    send(ws, { type: 'useResult', ok: false, reason: 'Not ready', item: slot.kind, cd: left, cdMax, cdKey });
+                    return;
+                }
+            }
             if (slot.kind === 'health') {
                 player.hp = Math.min(player.maxHp, player.hp + (slot.amount || 10));
             } else if (slot.kind === 'mana') {
@@ -3152,10 +3266,10 @@ wss.on('connection', (ws) => {
                 let chest = null;
                 if (npc.hp <= 0) {
                     downNpc(npc);
-                    gained = xpForKill(player, npc);
-                    leveled = grantXp(player, gained);
-                    chest = spawnChest(npc, player);
-                    noteKill(player, npc);
+                    const award = awardKill(player, npc);
+                    gained = award.gained;
+                    leveled = award.leveled;
+                    chest = spawnChest(npc, award.members);
                 }
                 broadcast({
                     type: 'npcHit',
@@ -3172,11 +3286,15 @@ wss.on('connection', (ws) => {
                 if (npc.ambientGone) npcs.delete(npc.id);
                 slot.qty -= 1;
                 if (slot.qty <= 0) player.slots[index] = null;
+                startCooldown(player, 'bomb', BOMB_COOLDOWN, now);
                 savePlayer(player);
                 send(ws, {
                     type: 'useResult',
                     ok: true,
                     item: 'bomb',
+                    cd: BOMB_COOLDOWN,
+                    cdMax: BOMB_COOLDOWN,
+                    cdKey: 'bomb',
                     damage,
                     killed: !npc.alive,
                     gained,
@@ -3196,8 +3314,9 @@ wss.on('connection', (ws) => {
             }
             slot.qty -= 1;
             if (slot.qty <= 0) player.slots[index] = null;
+            startCooldown(player, 'potion', POTION_COOLDOWN, now);
             savePlayer(player);
-            send(ws, { type: 'useResult', ok: true, item: slot.kind, inventory: inventoryOf(player), ...statsOf(player) });
+            send(ws, { type: 'useResult', ok: true, item: slot.kind, cd: POTION_COOLDOWN, cdMax: POTION_COOLDOWN, cdKey: 'potion', inventory: inventoryOf(player), ...statsOf(player) });
             return;
         }
 
@@ -3297,6 +3416,25 @@ wss.on('connection', (ws) => {
             const error = learnSet(player, data.set);
             const set = CRAFT_SETS[data.set];
             send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : (set ? set.name + ' learned' : ''), character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'buy') {
+            placePlayer(player, data);
+            if (!nearRole(player, 'shop')) {
+                send(ws, { type: 'buyResult', ok: false, reason: 'See a shop assistant' });
+                return;
+            }
+            const error = buySupply(player, data.id);
+            const good = SHOP_GOODS.find(row => row.id === data.id);
+            send(ws, {
+                type: 'buyResult',
+                ok: !error,
+                reason: error || '',
+                name: good ? good.name : '',
+                inventory: inventoryOf(player),
+                ...statsOf(player)
+            });
             return;
         }
 
