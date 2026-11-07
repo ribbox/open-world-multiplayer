@@ -1231,6 +1231,12 @@ function statsOf(player) {
     };
 }
 
+function noteMana(player) {
+    player.manaShown = Math.floor(player.mana);
+    player.manaSent = Date.now();
+    send(player.ws, { type: 'stats', ...statsOf(player) });
+}
+
 const parties = new Map();
 const partyInvites = new Map();
 let partySeq = 1;
@@ -1356,17 +1362,19 @@ function syncPartyVitals() {
 }
 
 const ABILITIES = {
-    sword: { weapon: 'sword', mana: 2, range: 2.6, damage: (level) => 4 + level },
+    sword: { weapon: 'sword', mana: 0, range: 2.6, damage: (level) => 4 + level },
     'power-strike': { weapon: 'sword', mana: 6, range: 2.6, damage: (level) => 8 + level * 2 },
     cleave: { weapon: 'sword', mana: 5, range: 2.6, damage: (level) => 6 + level },
-    'arcane-bolt': { weapon: 'staff', mana: 5, range: 8, damage: (level) => 6 + level },
-    'arcane-surge': { weapon: 'staff', mana: 8, range: 8, damage: (level) => 12 + level * 2 },
-    mend: { weapon: 'staff', mana: 4, range: 0, heal: (level) => 8 + level * 2 }
+    staff: { weapon: 'staff', mana: 5, range: 8, damage: (level) => 4 + level },
+    'arcane-bolt': { weapon: 'staff', mana: 8, range: 8, damage: (level) => 6 + level },
+    'arcane-surge': { weapon: 'staff', mana: 14, range: 8, damage: (level) => 12 + level * 2 },
+    mend: { weapon: 'staff', mana: 8, range: 0, heal: (level) => 8 + level * 2 }
 };
 const ABILITY_COOLDOWN = {
     sword: 1200,
     'power-strike': 6000,
     cleave: 8000,
+    staff: 1200,
     'arcane-bolt': 1800,
     'arcane-surge': 8000,
     mend: 5000
@@ -2871,22 +2879,26 @@ wss.on('connection', (ws) => {
                 return;
             }
             player.mana -= spec.mana;
+            if (spec.mana > 0) noteMana(player);
             if (spec.heal) {
                 let subject = player;
                 if (data.targetId && data.targetId !== player.persistentId) {
                     const ally = players.get(data.targetId);
                     if (!ally) {
                         player.mana += spec.mana;
+                        noteMana(player);
                         send(ws, { type: 'attackResult', ok: false, reason: npcs.has(data.targetId) ? 'Select a player to heal' : 'No target', ...statsOf(player) });
                         return;
                     }
                     if (ally.ghost) {
                         player.mana += spec.mana;
+                        noteMana(player);
                         send(ws, { type: 'attackResult', ok: false, reason: 'Cannot heal a ghost', ...statsOf(player) });
                         return;
                     }
                     if (Math.hypot(ally.x - player.x, ally.z - player.z) > 8) {
                         player.mana += spec.mana;
+                        noteMana(player);
                         send(ws, { type: 'attackResult', ok: false, reason: 'Out of range', ...statsOf(player) });
                         return;
                     }
@@ -2907,24 +2919,27 @@ wss.on('connection', (ws) => {
                     tz: subject.z
                 });
                 if (subject !== player) send(subject.ws, { type: 'healed', amount: healed, from: player.name, ...statsOf(subject) });
-                send(ws, { type: 'attackResult', ok: true, ability: abilityId, cd: cdMax, cdMax, heal: healed, targetId: subject.persistentId, ...statsOf(player) });
+                send(ws, { type: 'attackResult', ok: true, ability: abilityId, cd: cdMax, cdMax, spent: spec.mana, heal: healed, targetId: subject.persistentId, ...statsOf(player) });
                 return;
             }
             const ally = players.get(data.targetId);
             if (ally) {
                 player.mana += spec.mana;
+                noteMana(player);
                 send(ws, { type: 'attackResult', ok: false, reason: 'Cannot attack a player', ...statsOf(player) });
                 return;
             }
             const npc = npcs.get(data.targetId);
             if (!npc || !npc.alive) {
                 player.mana += spec.mana;
+                noteMana(player);
                 send(ws, { type: 'attackResult', ok: false, reason: 'No target', ...statsOf(player) });
                 return;
             }
             const dist = Math.hypot(npc.x - player.x, npc.z - player.z);
             if (dist > spec.range) {
                 player.mana += spec.mana;
+                noteMana(player);
                 send(ws, { type: 'attackResult', ok: false, reason: 'Out of range', ...statsOf(player) });
                 return;
             }
@@ -2935,7 +2950,7 @@ wss.on('connection', (ws) => {
                 ? ((player.stats && player.stats.strength) || 0)
                 : ((player.stats && player.stats.intellect) || 0);
             const per = spec.damage(player.level) + statBonus + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0);
-            const projectile = abilityId === 'arcane-bolt' || abilityId === 'arcane-surge';
+            const projectile = abilityId === 'staff' || abilityId === 'arcane-bolt' || abilityId === 'arcane-surge';
             const travel = projectile ? Math.min(900, Math.max(220, Math.round(dist * 140))) : 0;
             broadcast({
                 type: 'cast',
@@ -2963,6 +2978,7 @@ wss.on('connection', (ws) => {
                     ability: abilityId,
                     cd: cdMax,
                     cdMax,
+                    spent: spec.mana,
                     chest: chest ? publicChest(chest) : null,
                     quests: player.quests,
                     inventory: player.questDirty ? inventoryOf(player) : undefined,

@@ -484,7 +484,7 @@
         P: Invite the targeted player. A party holds up to 5. A nearby member shares kill experience and quest credit<br>
         C: Character sheet. Reset character is on that page and returns you to level 1<br>
         Strength raises melee hits, Intellect raises spells and mana, Stamina raises health<br>
-        The red globe is health and the blue globe is mana. The screen reddens as health falls<br>
+        The red globe is health and the blue globe is mana. A spell spends mana as you cast it. The screen reddens as health falls<br>
         The bar is your level and experience. Armor and stats are on the character sheet<br>
         Camps are safe. Creatures walk out, and you cannot attack while you are inside. The camp name appears when you enter<br>
         Tracked quests mark the zone, the dungeon portal, or the turn-in on the minimap<br>
@@ -1068,13 +1068,13 @@
             const staff = holdTool('/models/wizards_staff.glb', { length: 1.45, x: 0.2, y: 0.82, z: 0.16, tilt: -0.4 });
 
             const ACTIONS = {
-                sword: { name: 'Sword', short: 'Swd', kind: 'weapon', weapon: 'sword', hint: 'Attack with an equipped sword. 2 mana. 1.2s.' },
+                sword: { name: 'Sword', short: 'Swd', kind: 'weapon', weapon: 'sword', hint: 'Attack with an equipped sword. 1.2s.' },
                 'power-strike': { name: 'Power Strike', short: 'Pwr', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Heavy hit. 6 mana. 6s.' },
                 cleave: { name: 'Cleave', short: 'Clv', kind: 'spell', weapon: 'sword', hint: 'Warrior talent spell. 5 mana. 8s.' },
-                staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'Requires an equipped staff.' },
-                'arcane-bolt': { name: 'Arcane Missile', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Each rank fires another bolt. 5 mana. 1.8s.' },
-                'arcane-surge': { name: 'Arcane Surge', short: 'Srg', kind: 'spell', weapon: 'staff', hint: 'Mage talent spell. 8 mana. 8s.' },
-                mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Restore health. 4 mana. 5s.' },
+                staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'A magic bolt from an equipped staff. 5 mana. 1.2s.' },
+                'arcane-bolt': { name: 'Arcane Missile', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Each rank fires another bolt. 8 mana. 1.8s.' },
+                'arcane-surge': { name: 'Arcane Surge', short: 'Srg', kind: 'spell', weapon: 'staff', hint: 'Mage talent spell. 14 mana. 8s.' },
+                mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Restore health. 8 mana. 5s.' },
                 gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.' },
                 health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion. Shares a 12s wait with mana potions.' },
                 mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion. Shares a 12s wait with health potions.' },
@@ -3125,7 +3125,7 @@
                     launchShot({ x: cast.x, y: 1.1, z: cast.z }, { x: cast.x, y: 2.5, z: cast.z }, color, 0, 0.45);
                     return;
                 }
-                if (cast.ability !== 'arcane-bolt' && cast.ability !== 'arcane-surge' && cast.ability !== 'mend') return;
+                if (cast.ability !== 'staff' && cast.ability !== 'arcane-bolt' && cast.ability !== 'arcane-surge' && cast.ability !== 'mend') return;
                 const n = cast.bolts || 1;
                 const duration = (cast.travel || 400) / 1000;
                 const angle = Math.atan2((cast.tx || 0) - cast.x, (cast.tz || 0) - cast.z);
@@ -3197,14 +3197,15 @@
                 }
                 if (!character.class) {
                     if (action.kind === 'weapon') {
-                        if (equippedWeapon === action.weapon && action.weapon === 'sword') tryAttack('sword');
-                        else {
+                        if (equippedWeapon !== action.weapon) {
                             equippedWeapon = action.weapon;
                             currentTool = action.weapon;
                             updateToolUI();
                             renderBar();
                             showMessage(action.name + ' equipped');
+                            return;
                         }
+                        tryAttack(action.weapon === 'staff' ? 'staff' : 'sword');
                         return;
                     }
                     tryAttack(id);
@@ -3216,8 +3217,7 @@
                         showMessage('Equip a ' + action.weapon + ' on your character sheet');
                         return;
                     }
-                    if (action.weapon === 'sword') tryAttack('sword');
-                    else showMessage('Staff equipped');
+                    tryAttack(action.weapon === 'staff' ? 'staff' : 'sword');
                     return;
                 }
                 if (worn !== action.weapon) {
@@ -6258,6 +6258,7 @@
                     } else if (data.type === 'attackResult') {
                         releaseAction(data.ability);
                         if (!data.ok) {
+                            if (data.mana != null || data.hp != null) applyStats(data);
                             if (data.reason === 'Not ready' && data.cd) armCooldown(data.ability, data.cd, data.cdMax);
                             showMessage(data.reason || 'Miss');
                         }
@@ -6266,17 +6267,19 @@
                             applyStats(data);
                             if (data.inventory) applyInventory(data.inventory);
                             const ready = data.quests ? applyQuests(data.quests) : '';
+                            const cost = data.spent > 0 ? ' · -' + data.spent + ' mana' : '';
                             if (data.leveled) showLevel(data.level);
                             if (data.questNote) showMessage(data.questNote);
-                            else if (data.heal) showMessage('+' + data.heal + ' HP');
+                            else if (data.heal) showMessage('+' + data.heal + ' HP' + cost);
                             else if (data.killed) {
                                 const xp = data.gained > 0
                                     ? (data.leveled ? 'Level ' + data.level + '! +' + data.gained + ' XP' : '+' + data.gained + ' XP')
                                     : 'No XP';
-                                showMessage(ready ? xp + ' · ' + ready : xp);
+                                showMessage((ready ? xp + ' · ' + ready : xp) + cost);
                                 if (data.chest) addChest(data.chest);
-                            } else if (ready) showMessage(ready);
-                            else if (data.damage) showMessage('Hit ' + data.damage);
+                            } else if (ready) showMessage(ready + cost);
+                            else if (data.damage) showMessage('Hit ' + data.damage + cost);
+                            else if (cost) showMessage(cost.slice(3));
                         }
                     } else if (data.type === 'partyAward') {
                         applyStats(data);
