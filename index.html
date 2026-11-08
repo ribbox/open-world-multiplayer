@@ -48,7 +48,10 @@
         }
         #itemTip[hidden] { display: none; }
         #itemTip .tip-name { font-weight: bold; font-size: 13px; margin-bottom: 2px; }
-        #coinLine { color: #f1c40f; margin-top: 4px; }
+        #coinLine { margin-top: 4px; }
+        .money-gold { color: #f1c40f; }
+        .money-silver { color: #d7dbe0; }
+        .money-coin { color: #e0a15a; }
         #supplyLabel { margin-top: 8px; font-size: 12px; color: #ddd; }
         #supplySlots { display: grid; grid-template-columns: repeat(4, 40px); gap: 3px; margin-top: 4px; }
         .slot {
@@ -561,6 +564,7 @@
         Crafted armor and weapons add stats. Cloth and staves favor Intellect, swords and leather favor Strength<br>
         Setup downloads quests and items, or copies them so you can paste into cell A1<br>
         Character sheet Craft tab makes gear. A shop sells health and mana potions, and has Buy and Sell tabs<br>
+        100 coins make 1 silver, and 100 silver make 1 gold<br>
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
         Train spells only while standing at a trainer. Improve a spell there to raise its rank. Gather herbs by hand and sulfur with a pickaxe<br>
@@ -1207,7 +1211,7 @@
                 const sheetInt = document.getElementById('sheetInt');
                 if (sheetInt) sheetInt.textContent = String(stats.intellect);
                 const sheetCoins = document.getElementById('sheetCoins');
-                if (sheetCoins) sheetCoins.textContent = String(inventory.coins || 0);
+                if (sheetCoins) fillMoney(sheetCoins, inventory.coins || 0);
                 const hpPct = stats.maxHp ? Math.max(0, Math.min(1, stats.hp / stats.maxHp)) : 1;
                 const mpPct = stats.maxMana ? Math.max(0, Math.min(1, stats.mana / stats.maxMana)) : 1;
                 const hpFill = document.getElementById('hpGlobeFill');
@@ -1385,15 +1389,41 @@
                 el.addEventListener('mousemove', moveItemTip);
                 el.addEventListener('mouseleave', hideItemTip);
             }
+            function moneyParts(amount) {
+                const total = Math.max(0, Math.floor(Number(amount) || 0));
+                const gold = Math.floor(total / 10000);
+                const silver = Math.floor((total % 10000) / 100);
+                const coins = total % 100;
+                const parts = [];
+                if (gold) parts.push({ kind: 'gold', text: gold + ' gold' });
+                if (silver) parts.push({ kind: 'silver', text: silver + ' silver' });
+                if (coins || !parts.length) parts.push({ kind: 'coin', text: coins + (coins === 1 ? ' coin' : ' coins') });
+                return parts;
+            }
+            function formatMoney(amount) {
+                return moneyParts(amount).map(part => part.text).join(' ');
+            }
+            function fillMoney(el, amount) {
+                if (!el) return;
+                el.textContent = '';
+                el.title = '100 coins = 1 silver. 100 silver = 1 gold.';
+                moneyParts(amount).forEach((part, index) => {
+                    if (index) el.appendChild(document.createTextNode('  '));
+                    const span = document.createElement('span');
+                    span.className = 'money-' + part.kind;
+                    span.textContent = part.text;
+                    el.appendChild(span);
+                });
+            }
             function updateInventoryUI() {
                 hideItemTip();
                 const slots = inventory.slots || [];
                 const used = slots.filter(Boolean).length;
                 const extra = inventory.bagSlots ? ' +' + inventory.bagSlots : '';
                 document.getElementById('bagLabel').textContent = 'Bag ' + used + '/' + inventory.capacity + extra;
-                document.getElementById('coinLine').textContent = inventory.coins + ' coins';
+                fillMoney(document.getElementById('coinLine'), inventory.coins);
                 const sheetCoins = document.getElementById('sheetCoins');
-                if (sheetCoins) sheetCoins.textContent = String(inventory.coins || 0);
+                if (sheetCoins) fillMoney(sheetCoins, inventory.coins || 0);
                 const root = document.getElementById('bagSlots');
                 root.textContent = '';
                 slots.forEach((slot, index) => {
@@ -5062,7 +5092,7 @@
                     block.appendChild(line);
                     const reward = document.createElement('p');
                     const bits = [];
-                    if (def.coins) bits.push(def.coins + ' coins');
+                    if (def.coins) bits.push(formatMoney(def.coins));
                     if (def.xp) bits.push(def.xp + ' XP');
                     if (def.rewardName) bits.push((def.rewardQty > 1 ? def.rewardQty + ' ' : '') + def.rewardName);
                     reward.textContent = bits.length ? 'Reward: ' + bits.join(', ') : '';
@@ -5095,7 +5125,7 @@
                 }
                 const coins = haveKind('coins');
                 const note = document.createElement('p');
-                note.textContent = 'Coins ' + coins + '. You can learn 2 crafting skills.';
+                note.textContent = formatMoney(coins) + '. You can learn 2 crafting skills.';
                 parent.appendChild(note);
                 const goods = Array.isArray(craft.shop) && craft.shop.length ? craft.shop : [
                     { id: 'health', name: 'Health potions', amount: 18, qty: 5, cost: 20 },
@@ -5118,7 +5148,7 @@
                         button.textContent = 'Shop';
                         button.disabled = true;
                     } else {
-                        button.textContent = good.cost + ' coins';
+                        button.textContent = formatMoney(good.cost);
                         button.disabled = coins < good.cost;
                         button.addEventListener('click', () => sendCharacter('buy', { id: good.id }));
                     }
@@ -5163,7 +5193,7 @@
                         button.textContent = 'Limit';
                         button.disabled = true;
                     } else {
-                        button.textContent = set.cost + ' gold';
+                        button.textContent = formatMoney(set.cost);
                         button.disabled = coins < set.cost;
                         button.addEventListener('click', () => sendCharacter('learnSet', { set: id }));
                     }
@@ -5184,13 +5214,13 @@
                 (inventory.slots || []).forEach((slot, index) => {
                     if (!slot) return;
                     const group = slot.kind === 'junk' ? 0 : itemRarity(slot);
-                    offers.push({ group, name: slot.name + ' x' + slot.qty + ' · ' + sellPrice(slot) + ' each', send: (all) => sendCharacter('sell', { slot: index, all }) });
+                    offers.push({ group, name: slot.name + ' x' + slot.qty + ' · ' + formatMoney(sellPrice(slot)) + ' each', send: (all) => sendCharacter('sell', { slot: index, all }) });
                 });
                 for (const [kind, name] of SUPPLY_KINDS) {
                     const qty = (inventory.materials && inventory.materials[kind]) || 0;
                     if (!qty) continue;
                     const group = itemRarity({ kind });
-                    offers.push({ group, name: name + ' x' + qty + ' · ' + sellPrice({ kind }) + ' each', send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
+                    offers.push({ group, name: name + ' x' + qty + ' · ' + formatMoney(sellPrice({ kind })) + ' each', send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
                 }
                 offers.sort((a, b) => a.group - b.group || a.name.localeCompare(b.name));
                 if (!offers.length) {
@@ -5326,7 +5356,7 @@
                     ['Strength', 'sheetStr'],
                     ['Stamina', 'sheetSta'],
                     ['Intellect', 'sheetInt'],
-                    ['Coins', 'sheetCoins']
+                    ['Money', 'sheetCoins']
                 ]) {
                     const line = document.createElement('div');
                     line.className = 'stat-line';
@@ -5467,10 +5497,10 @@
                         const nextEffect = spellHitText(id, next);
                         if (nextEffect) parts.push('next ' + nextEffect);
                         parts.push('level ' + need);
-                        if (coins) parts.push(coins + ' coins');
+                        if (coins) parts.push(formatMoney(coins));
                     } else if (!known) {
                         if (spell.level > 1) parts.push('level ' + spell.level);
-                        if (coins) parts.push(coins + ' coins');
+                        if (coins) parts.push(formatMoney(coins));
                     }
                     label.textContent = parts.join(' · ');
                     line.appendChild(label);
