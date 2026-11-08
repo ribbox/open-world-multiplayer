@@ -1246,6 +1246,62 @@ let partySeq = 1;
 const PARTY_MAX = 5;
 const PARTY_RANGE = 30;
 
+function playersNamed(name) {
+    const want = String(name || '').trim().toLowerCase();
+    if (!want) return [];
+    const found = [];
+    for (const other of players.values()) {
+        if ((other.name || '').toLowerCase() === want) found.push(other);
+    }
+    return found;
+}
+
+function handleChat(player, data) {
+    const text = String(data.text || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+    if (!text) return;
+    const now = Date.now();
+    if (player.lastChat && now - player.lastChat < 400) return;
+    player.lastChat = now;
+    const channel = data.channel === 'party' || data.channel === 'whisper' ? data.channel : 'world';
+    if (channel === 'world') {
+        broadcast({ type: 'chat', channel: 'world', from: player.name, text });
+        return;
+    }
+    if (channel === 'party') {
+        const party = partyOf(player);
+        if (!party) {
+            send(player.ws, { type: 'chat', channel: 'party', system: true, text: 'You are not in a party' });
+            return;
+        }
+        const msg = { type: 'chat', channel: 'party', from: player.name, text };
+        for (const id of party.members) {
+            const member = players.get(id);
+            if (member) send(member.ws, msg);
+        }
+        return;
+    }
+    let target = data.toId ? players.get(String(data.toId)) : null;
+    if (!target && data.to) {
+        const named = playersNamed(data.to);
+        if (named.length > 1) {
+            send(player.ws, { type: 'chat', channel: 'whisper', system: true, text: 'More than one ' + data.to + '. Target them and use /t' });
+            return;
+        }
+        target = named[0] || null;
+    }
+    if (!target) {
+        send(player.ws, { type: 'chat', channel: 'whisper', system: true, text: 'No player named ' + (data.to || 'that') });
+        return;
+    }
+    if (target === player) {
+        send(player.ws, { type: 'chat', channel: 'whisper', system: true, text: 'You cannot whisper yourself' });
+        return;
+    }
+    const msg = { type: 'chat', channel: 'whisper', from: player.name, to: target.name, text };
+    send(target.ws, msg);
+    send(player.ws, { ...msg, self: true });
+}
+
 function partyOf(player) {
     if (!player || !player.partyId) return null;
     return parties.get(player.partyId) || null;
@@ -3694,6 +3750,11 @@ wss.on('connection', (ws) => {
         if (data.type === 'unequip') {
             const error = unequipItem(player, data.slot);
             send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'chat') {
+            handleChat(player, data);
             return;
         }
 
