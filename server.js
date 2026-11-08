@@ -853,8 +853,7 @@ function publicNpc(n) {
         kind: n.kind,
         tint: n.tint,
         elite: !!n.elite,
-        dungeonId: n.dungeonId || '',
-        stats: n.stats || { strength: 0, stamina: 0, intellect: 0 }
+        dungeonId: n.dungeonId || ''
     };
 }
 

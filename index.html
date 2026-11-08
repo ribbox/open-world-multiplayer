@@ -2948,7 +2948,7 @@
                 }
                 const npc = worldNpcs.get(selectedNpcId);
                 if (npc && !npc.dying) {
-                    return { kind: 'npc', id: selectedNpcId, group: npc.group, name: npc.name || 'Hostile', level: npc.level, hp: npc.hp, maxHp: npc.maxHp, elite: npc.elite, stats: npc.stats };
+                    return { kind: 'npc', id: selectedNpcId, group: npc.group, name: npc.name || 'Hostile', level: npc.level, hp: npc.hp, maxHp: npc.maxHp, elite: npc.elite };
                 }
                 const remote = remotePlayers.get(selectedNpcId);
                 if (remote) {
@@ -2997,10 +2997,9 @@
                 fill.style.width = (pct * 100) + '%';
                 fill.style.background = aimed.kind === 'player' ? '#3d9eff' : aimed.elite ? '#f1c40f' : '#e74c3c';
                 if (statLine) {
-                    if (aimed.kind === 'npc' && aimed.stats) {
-                        const bonus = aimed.stats;
+                    if (aimed.kind === 'npc') {
                         statLine.hidden = false;
-                        statLine.textContent = 'Str ' + (bonus.strength || 0) + '   Sta ' + (bonus.stamina || 0) + '   Int ' + (bonus.intellect || 0);
+                        statLine.textContent = 'Unknown';
                     } else statLine.hidden = true;
                 }
                 targetRing.material.color.set(aimed.kind === 'player' ? 0x3d9eff : aimed.elite ? 0xf1c40f : 0xff3333);
@@ -3851,18 +3850,17 @@
                     group.userData.bobAmp = state.kind === 'wisp' ? 0.16 : 0.035;
                     group.position.set(state.x, state.dungeonId ? 0.2 : 0, state.z);
                     scene.add(group);
-                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, name: state.name || 'Hostile', level: -1, hp: -1, maxHp: state.maxHp || 1, elite: !!state.elite, dungeonId: state.dungeonId || '', stats: state.stats || null, bob: Math.random() * Math.PI * 2 };
+                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, name: state.name || 'Hostile', level: -1, hp: -1, maxHp: state.maxHp || 1, elite: !!state.elite, dungeonId: state.dungeonId || '', bob: Math.random() * Math.PI * 2 };
                     group.userData.npcId = state.id;
                     worldNpcs.set(state.id, entry);
                 }
                 entry.dungeonId = state.dungeonId || entry.dungeonId || '';
-                if (state.stats) entry.stats = state.stats;
                 entry.tx = state.x;
                 entry.tz = state.z;
                 entry.rotY = state.rotY || 0;
                 if (entry.name !== (state.name || entry.name) || entry.level !== state.level || entry.hp !== state.hp || entry.elite !== !!state.elite) {
                     setNpcLabel(entry, { name: state.name || entry.name, level: state.level, hp: state.hp, maxHp: state.maxHp || entry.maxHp, elite: !!state.elite, id: state.id });
-                } else if (state.stats && selectedNpcId === state.id) refreshTargetFrame();
+                }
             }
 
             function forgetNpc(id) {
