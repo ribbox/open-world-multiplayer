@@ -411,15 +411,34 @@
         .sheet-tab { padding: 4px 10px; margin-right: 4px; }
         .sheet-tab.on { background: #3d4f6f; }
         .slot:hover, .paper-slot.filled:hover { box-shadow: inset 0 0 0 2px var(--q, rgba(232, 206, 150, 0.85)); }
-        .talent-tree { display: flex; gap: 14px; align-items: flex-start; overflow-x: auto; padding-bottom: 6px; }
-        .talent-col { display: flex; flex-direction: column; gap: 8px; }
+        .talent-tree { display: flex; justify-content: center; }
+        .t-wrap { display: flex; flex-direction: column; align-items: center; }
         .talent-node {
-            width: 156px; padding: 6px 8px; font-size: 12px; line-height: 1.3;
-            border: 1px solid rgba(214, 176, 96, 0.35); background: rgba(0, 0, 0, 0.28);
+            width: 100px; min-height: 42px; padding: 4px 6px; font-size: 12px; line-height: 1.2;
+            text-align: center; color: inherit; cursor: pointer;
+            border: 1px solid rgba(214, 176, 96, 0.5); background: rgba(0, 0, 0, 0.35);
         }
-        .talent-node.maxed { border-color: rgba(61, 204, 120, 0.75); }
-        .talent-node.locked { opacity: 0.5; }
-        .talent-node .text-btn { margin-top: 6px; }
+        .talent-node:disabled { cursor: default; }
+        .talent-node .t-rank { color: #e2c48a; font-size: 11px; }
+        .talent-node.maxed { border-color: #3dcc78; }
+        .talent-node.locked { opacity: 0.45; }
+        .talent-node.ready { border-color: #f1c40f; }
+        .t-kids {
+            display: flex; justify-content: center; gap: 10px;
+            position: relative; margin-top: 8px; padding-top: 14px;
+        }
+        .t-kids::before,
+        .t-kids > .t-wrap::before {
+            content: ""; position: absolute; left: 50%; border-left: 1px solid #d6b060;
+        }
+        .t-kids::before { top: -8px; height: 8px; }
+        .t-kids > .t-wrap::before { top: -14px; height: 14px; }
+        .t-kids > .t-wrap::after {
+            content: ""; position: absolute; top: -14px; left: 0; right: 0; border-top: 1px solid #d6b060;
+        }
+        .t-kids > .t-wrap:first-child::after { left: 50%; }
+        .t-kids > .t-wrap:last-child::after { right: 50%; }
+        .t-kids > .t-wrap:only-child::after { display: none; }
         .spell-row, .talent-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(214, 176, 96, 0.16); font-size: 13px; }
         .text-btn { padding: 3px 8px; }
         .text-btn:disabled { opacity: 0.45; cursor: default; }
@@ -1392,6 +1411,23 @@
                 if (y + h > window.innerHeight - 8) y = Math.max(8, e.clientY - h - pad);
                 tip.style.left = x + 'px';
                 tip.style.top = y + 'px';
+            }
+            function showPlainTip(title, lines, e) {
+                const tip = document.getElementById('itemTip');
+                if (!tip) return;
+                tip.textContent = '';
+                tip.style.borderColor = '#d6b060';
+                const head = document.createElement('div');
+                head.className = 'tip-name';
+                head.textContent = title;
+                tip.appendChild(head);
+                for (const line of lines) {
+                    const row = document.createElement('div');
+                    row.textContent = line;
+                    tip.appendChild(row);
+                }
+                tip.hidden = false;
+                moveItemTip(e);
             }
             function showItemTip(item, e, extra) {
                 const tip = document.getElementById('itemTip');
@@ -5512,12 +5548,6 @@
                 if (node.spell) return ((character.spells || {})[node.spell] && character.spells[node.spell].name) || node.spell;
                 return node.name || 'Talent';
             }
-            function treeDepth(id, tree, seen) {
-                const node = tree[id];
-                if (!node || !node.requires || !tree[node.requires] || seen.has(id)) return 0;
-                seen.add(id);
-                return treeDepth(node.requires, tree, seen) + 1;
-            }
             function renderTalentList(body) {
                 if (!character.class) {
                     const note = document.createElement('p');
@@ -5526,66 +5556,68 @@
                     return;
                 }
                 const tree = character.tree || {};
-                const ids = Object.keys(tree).filter(id => tree[id].class === character.class);
                 const note = document.createElement('p');
-                note.textContent = (character.points || 0) + ' talent points. A node stays locked until the one before it is fully trained. A branch does not wait on the other branch.';
+                note.textContent = (character.points || 0) + (character.points === 1 ? ' point' : ' points');
                 body.appendChild(note);
-                const depths = {};
-                let maxDepth = 0;
-                for (const id of ids) {
-                    depths[id] = treeDepth(id, tree, new Set());
-                    if (depths[id] > maxDepth) maxDepth = depths[id];
+                const kidsOf = {};
+                const roots = [];
+                for (const id of Object.keys(tree)) {
+                    const node = tree[id];
+                    if (node.class !== character.class) continue;
+                    if (node.requires && tree[node.requires]) {
+                        if (!kidsOf[node.requires]) kidsOf[node.requires] = [];
+                        kidsOf[node.requires].push(id);
+                    } else roots.push(id);
                 }
-                const wrap = document.createElement('div');
-                wrap.className = 'talent-tree';
-                for (let depth = 0; depth <= maxDepth; depth++) {
-                    const col = document.createElement('div');
-                    col.className = 'talent-col';
-                    const column = ids.filter(id => depths[id] === depth).sort((a, b) => {
-                        const pa = tree[a].requires || '';
-                        const pb = tree[b].requires || '';
-                        if (pa !== pb) return pa.localeCompare(pb);
-                        return treeNodeName(tree[a]).localeCompare(treeNodeName(tree[b]));
-                    });
-                    for (const id of column) {
-                        const node = tree[id];
-                        const rank = treeNodeRank(id, node);
-                        const max = treeNodeMax(node);
-                        const parent = node.requires ? tree[node.requires] : null;
-                        const open = !parent || treeNodeRank(node.requires, parent) >= treeNodeMax(parent);
-                        const card = document.createElement('div');
-                        card.className = 'talent-node' + (rank >= max ? ' maxed' : '') + (open ? '' : ' locked');
-                        const label = document.createElement('div');
-                        const bits = [treeNodeName(node) + '  ' + rank + '/' + max];
-                        if (node.spell) {
-                            const hit = spellHitText(node.spell, Math.max(1, rank));
-                            if (hit) bits.push(hit);
-                        } else if (node.text) bits.push(node.text);
-                        if (!open && parent) bits.push('Needs ' + treeNodeName(parent));
-                        label.textContent = bits.join(' · ');
-                        card.appendChild(label);
-                        const button = document.createElement('button');
-                        button.type = 'button';
-                        button.className = 'text-btn';
-                        if (rank >= max) {
-                            button.textContent = 'Max';
-                            button.disabled = true;
-                        } else if (!open) {
-                            button.textContent = 'Locked';
-                            button.disabled = true;
-                        } else if (!(character.points > 0)) {
-                            button.textContent = 'No points';
-                            button.disabled = true;
-                        } else {
-                            button.textContent = rank > 0 ? 'Improve' : 'Learn';
-                            button.addEventListener('click', () => sendCharacter('talent', { id }));
+                const byName = (a, b) => treeNodeName(tree[a]).localeCompare(treeNodeName(tree[b]));
+                function renderBranch(id) {
+                    const node = tree[id];
+                    const rank = treeNodeRank(id, node);
+                    const max = treeNodeMax(node);
+                    const parent = node.requires ? tree[node.requires] : null;
+                    const open = !parent || treeNodeRank(node.requires, parent) >= treeNodeMax(parent);
+                    const canSpend = open && rank < max && character.points > 0;
+                    const wrap = document.createElement('div');
+                    wrap.className = 't-wrap';
+                    const card = document.createElement('button');
+                    card.type = 'button';
+                    card.className = 'talent-node' + (rank >= max ? ' maxed' : '') + (open ? '' : ' locked') + (canSpend ? ' ready' : '');
+                    card.disabled = !canSpend;
+                    const name = document.createElement('div');
+                    name.textContent = treeNodeName(node);
+                    const rankEl = document.createElement('div');
+                    rankEl.className = 't-rank';
+                    rankEl.textContent = rank + '/' + max;
+                    card.append(name, rankEl);
+                    if (canSpend) card.addEventListener('click', () => sendCharacter('talent', { id }));
+                    const lines = [];
+                    if (node.spell) {
+                        const hit = spellHitText(node.spell, Math.max(1, rank));
+                        if (hit) lines.push(hit);
+                        if (rank < max) {
+                            const next = spellHitText(node.spell, Math.max(1, rank) + (rank > 0 ? 1 : 0));
+                            if (next && next !== hit) lines.push('Next ' + next);
                         }
-                        card.appendChild(button);
-                        col.appendChild(card);
+                    } else if (node.text) lines.push(node.text);
+                    if (rank >= max) lines.push('Fully trained');
+                    else if (canSpend) lines.push(rank > 0 ? 'Click to improve' : 'Click to learn');
+                    wrap.addEventListener('mouseenter', (e) => showPlainTip(treeNodeName(node), lines, e));
+                    wrap.addEventListener('mousemove', moveItemTip);
+                    wrap.addEventListener('mouseleave', hideItemTip);
+                    wrap.appendChild(card);
+                    const kids = (kidsOf[id] || []).sort(byName);
+                    if (kids.length) {
+                        const row = document.createElement('div');
+                        row.className = 't-kids';
+                        for (const kid of kids) row.appendChild(renderBranch(kid));
+                        wrap.appendChild(row);
                     }
-                    if (column.length) wrap.appendChild(col);
+                    return wrap;
                 }
-                body.appendChild(wrap);
+                const holder = document.createElement('div');
+                holder.className = 'talent-tree';
+                for (const id of roots.sort(byName)) holder.appendChild(renderBranch(id));
+                body.appendChild(holder);
             }
 
             function haveKind(kind) {
