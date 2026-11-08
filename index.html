@@ -610,6 +610,7 @@
         Click an NPC or another player, or press Tab, to target them<br>
         P: Invite the targeted player. A party holds up to 5. A nearby member shares kill experience and quest credit<br>
         Enter: Talk. /p speaks to the party, /w Name whispers, /t whispers your target, and anything else is heard by the world<br>
+        Sounds play for combat, gathering, loot, quests, travel, chat, and the other events<br>
         C: Character sheet. Reset character is on that page and returns you to level 1<br>
         Strength raises melee hits, Intellect raises spells and mana, Stamina raises health<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
@@ -841,6 +842,100 @@
             clearTimeout(showMessage.timer);
             showMessage.timer = setTimeout(() => { el.style.display = 'none'; }, 2500);
         }
+        const sfx = (() => {
+            let ctx = null;
+            let out = null;
+            const wake = () => { if (ctx && ctx.state === 'suspended') ctx.resume(); };
+            window.addEventListener('pointerdown', wake);
+            window.addEventListener('keydown', wake);
+            function ac() {
+                if (!ctx) {
+                    const AC = window.AudioContext || window.webkitAudioContext;
+                    if (!AC) return null;
+                    ctx = new AC();
+                    out = ctx.createGain();
+                    out.gain.value = 0.26;
+                    out.connect(ctx.destination);
+                }
+                if (ctx.state === 'suspended') ctx.resume();
+                return ctx;
+            }
+            function envGain(delay, peak, dur) {
+                const c = ac();
+                if (!c) return null;
+                const g = c.createGain();
+                const t = c.currentTime + (delay || 0);
+                g.connect(out);
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(Math.max(0.001, peak), t + 0.01);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.03, dur));
+                return { g, t };
+            }
+            function tone(freq, dur, type, peak, delay, slide) {
+                const c = ac();
+                const made = envGain(delay, peak, dur);
+                if (!c || !made) return;
+                const o = c.createOscillator();
+                o.type = type || 'sine';
+                o.frequency.setValueAtTime(freq, made.t);
+                if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), made.t + dur);
+                o.connect(made.g);
+                o.start(made.t);
+                o.stop(made.t + dur + 0.02);
+            }
+            function noise(dur, peak, freq, delay) {
+                const c = ac();
+                const made = envGain(delay, peak, dur);
+                if (!c || !made) return;
+                const length = Math.max(1, Math.floor(c.sampleRate * dur));
+                const buf = c.createBuffer(1, length, c.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+                const src = c.createBufferSource();
+                src.buffer = buf;
+                const filter = c.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.value = freq || 800;
+                filter.Q.value = 0.6;
+                src.connect(filter);
+                filter.connect(made.g);
+                src.start(made.t);
+            }
+            const bank = {
+                swing() { noise(0.08, 0.16, 480); tone(150, 0.08, 'sine', 0.1, 0, -50); },
+                spell() { tone(520, 0.14, 'sine', 0.09, 0, 260); tone(780, 0.1, 'triangle', 0.04, 0.04); },
+                frost() { tone(880, 0.16, 'sine', 0.07, 0, 160); tone(1320, 0.1, 'triangle', 0.035, 0.03); },
+                heal() { tone(523, 0.14, 'sine', 0.08); tone(659, 0.14, 'sine', 0.05, 0.05); tone(784, 0.16, 'sine', 0.045, 0.1); },
+                shield() { tone(660, 0.08, 'square', 0.035); tone(990, 0.12, 'sine', 0.06, 0.03); },
+                hit() { noise(0.05, 0.14, 280); tone(96, 0.08, 'sine', 0.12, 0, -28); },
+                kill() { tone(196, 0.08, 'square', 0.05); tone(110, 0.18, 'sine', 0.1, 0.05, -40); },
+                hurt() { noise(0.09, 0.18, 220); tone(74, 0.14, 'sine', 0.14, 0, -20); },
+                block() { tone(1680, 0.04, 'square', 0.035); noise(0.04, 0.07, 1800); },
+                death() { tone(196, 0.38, 'sine', 0.1, 0, -140); noise(0.22, 0.07, 180); },
+                revive() { tone(330, 0.12, 'sine', 0.07); tone(494, 0.14, 'sine', 0.06, 0.08); tone(659, 0.18, 'sine', 0.05, 0.15); },
+                level() { [523, 659, 784, 1046].forEach((freq, i) => tone(freq, 0.12, 'triangle', 0.07, i * 0.08)); },
+                quest() { tone(740, 0.09, 'sine', 0.07); tone(880, 0.12, 'sine', 0.06, 0.08); },
+                questDone() { tone(523, 0.09, 'sine', 0.07); tone(659, 0.09, 'sine', 0.06, 0.07); tone(784, 0.16, 'sine', 0.07, 0.14); },
+                loot() { tone(988, 0.05, 'square', 0.03); tone(1318, 0.08, 'sine', 0.05, 0.045); },
+                coin() { tone(1568, 0.045, 'square', 0.03); tone(2093, 0.08, 'sine', 0.045, 0.04); },
+                chop() { noise(0.06, 0.15, 380); tone(170, 0.05, 'sine', 0.07); },
+                mine() { noise(0.045, 0.12, 1700); tone(390, 0.06, 'square', 0.035); },
+                pluck() { tone(620, 0.08, 'triangle', 0.06, 0, -70); },
+                drink() { noise(0.11, 0.07, 560); tone(280, 0.09, 'sine', 0.04, 0.03, 30); },
+                boom() { noise(0.18, 0.2, 160); tone(70, 0.2, 'sine', 0.16, 0, -30); },
+                click() { tone(840, 0.035, 'square', 0.025); },
+                deny() { tone(130, 0.09, 'square', 0.04); tone(98, 0.1, 'sine', 0.05, 0.03); },
+                chat() { tone(620, 0.045, 'sine', 0.035); },
+                whisper() { tone(980, 0.05, 'sine', 0.04); tone(1280, 0.06, 'sine', 0.025, 0.035); },
+                party() { tone(500, 0.05, 'sine', 0.04); tone(760, 0.06, 'sine', 0.03, 0.03); },
+                bell() { tone(880, 0.1, 'sine', 0.06); tone(1320, 0.14, 'triangle', 0.035, 0.02); },
+                jump() { noise(0.07, 0.05, 1100); tone(280, 0.07, 'sine', 0.035, 0, 100); },
+                arrive() { tone(494, 0.1, 'sine', 0.035); tone(740, 0.12, 'sine', 0.025, 0.05); },
+                portal() { tone(180, 0.26, 'sine', 0.07, 0, 360); noise(0.18, 0.05, 640); },
+                drop() { tone(180, 0.07, 'triangle', 0.045, 0, -70); }
+            };
+            return (name) => { try { if (bank[name]) bank[name](); } catch (err) { /* ignore a blocked audio device */ } };
+        })();
         function parseChat(raw) {
             const text = String(raw || '').trim();
             if (!text) return null;
@@ -903,6 +998,7 @@
             banner.classList.remove('show');
             void banner.offsetWidth;
             banner.classList.add('show');
+            sfx('level');
         }
 
         function showPlace(name) {
@@ -912,6 +1008,7 @@
             banner.classList.remove('show');
             void banner.offsetWidth;
             banner.classList.add('show');
+            sfx('arrive');
         }
 
         try {
@@ -3170,6 +3267,7 @@
                     restoreWeapon = true;
                 }
                 if (!playSwing()) return;
+                sfx(closest.type === 'rock' || closest.type === 'sulfur' ? 'mine' : closest.type === 'herb' ? 'pluck' : 'chop');
                 if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
                     showMessage('Not connected');
                     return;
@@ -3219,6 +3317,7 @@
                 updateToolUI();
                 renderBar();
                 if (!playSwing()) return;
+                sfx(ability === 'mend' ? 'heal' : ability === 'barrier' ? 'shield' : (ability === 'frost-bolt' || ability === 'frost-nova') ? 'frost' : action.weapon === 'staff' ? 'spell' : 'swing');
                 if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
                     showMessage('Not connected');
                     return;
@@ -6080,6 +6179,7 @@
                 if (keys.space && onGround) {
                     verticalVelocity = jumpSpeed;
                     onGround = false;
+                    sfx('jump');
                 }
                 if (!onGround) {
                     verticalVelocity -= gravity * delta;
@@ -6521,13 +6621,19 @@
                         paintLoading();
                     } else if (data.type === 'chat') {
                         const channel = data.channel === 'party' || data.channel === 'whisper' ? data.channel : 'world';
-                        if (data.system) addLogLine(channel, data.text, 'system');
-                        else if (channel === 'whisper') {
+                        if (data.system) {
+                            addLogLine(channel, data.text, 'system');
+                            sfx('deny');
+                        } else if (channel === 'whisper') {
                             const mine = data.self || data.from === playerName;
                             const who = mine ? data.to : data.from;
                             if (!mine && data.from) lastTell = data.from;
                             addLogLine('whisper', (mine ? 'To ' : 'From ') + who + ': ' + data.text, 'whisper');
-                        } else addLogLine(channel, data.from + ': ' + data.text, channel);
+                            if (!mine) sfx('whisper');
+                        } else {
+                            addLogLine(channel, data.from + ': ' + data.text, channel);
+                            if (data.from !== playerName) sfx(channel === 'party' ? 'party' : 'chat');
+                        }
                     } else if (data.type === 'join' && data.id !== myId) {
                         ensureRemote(data);
                     } else if (data.type === 'update' && data.id !== myId) {
@@ -6553,11 +6659,17 @@
                     } else if (data.type === 'gatherResult') {
                         if (data.id != null && data.hits != null) applyResourceState(data.id, data.hits);
                         if (data.inventory) applyInventory(data.inventory);
-                        if (!data.ok) showMessage(data.reason || 'Cannot gather');
-                        else if (data.gained === 'wood') showMessage('+1 Wood');
-                        else if (data.gained === 'stone') showMessage('+1 Stone');
-                        else if (data.gained === 'herb') showMessage('+1 Herb');
-                        else if (data.gained === 'powder') showMessage('+1 Powder');
+                        if (!data.ok) {
+                            showMessage(data.reason || 'Cannot gather');
+                            sfx('deny');
+                        } else if (data.gained) {
+                            sfx('loot');
+                            if (data.gained === 'wood') showMessage('+1 Wood');
+                            else if (data.gained === 'stone') showMessage('+1 Stone');
+                            else if (data.gained === 'herb') showMessage('+1 Herb');
+                            else if (data.gained === 'powder') showMessage('+1 Powder');
+                            else showMessage('Hit');
+                        }
                         else showMessage('Hit');
                     } else if (data.type === 'npcs') {
                         syncNpcs(data.npcs || []);
@@ -6579,6 +6691,7 @@
                     } else if (data.type === 'partyInvite') {
                         document.getElementById('partyPromptText').textContent = (data.fromName || 'A player') + ' invites you to a party';
                         document.getElementById('partyPrompt').hidden = false;
+                        sfx('bell');
                     } else if (data.type === 'party') {
                         if (data.reason) showMessage(data.reason);
                         else if (data.note) showMessage(data.note);
@@ -6590,9 +6703,11 @@
                         if (data.absorbed && !data.damage) {
                             floatText(characterGroup.position.x, 1.8, characterGroup.position.z, 'Blocked', '#9ad4ff');
                             showMessage('Blocked ' + data.absorbed);
+                            sfx('block');
                         } else {
                             floatText(characterGroup.position.x, 1.8, characterGroup.position.z, '-' + data.damage, '#ff5a5a');
                             showMessage('-' + data.damage + ' HP' + (data.absorbed ? ' · blocked ' + data.absorbed : ''));
+                            sfx('hurt');
                         }
                         if (data.attackerId) selectNpc(data.attackerId);
                     } else if (data.type === 'spawn') {
@@ -6612,17 +6727,20 @@
                         applyStats(data);
                         enterGhost(data.corpse);
                         showMessage('You are a ghost. Return to your body.');
+                        sfx('death');
                     } else if (data.type === 'reclaim') {
                         if (!data.ok) showMessage(data.reason || 'Cannot return');
                         else {
                             applyStats(data);
                             leaveGhost();
                             showMessage('Returned to your body.');
+                            sfx('revive');
                         }
                     } else if (data.type === 'healed') {
                         applyStats(data);
                         floatText(characterGroup.position.x, 2, characterGroup.position.z, '+' + data.amount, '#7dffb3');
                         showMessage('+' + data.amount + ' HP');
+                        sfx('heal');
                     } else if (data.type === 'ghost') {
                         if (data.id === myId) {
                             if (data.ghost) enterGhost(data.corpse);
@@ -6637,18 +6755,23 @@
                         onGround = true;
                         applyStats(data);
                         showMessage('Defeated. Respawned.');
+                        sfx('death');
                     } else if (data.type === 'quests') {
                         if (data.questDefs) questDefs = data.questDefs;
                         if (data.inventory) applyInventory(data.inventory);
                         applyStats(data);
                         if (data.quests) applyQuests(data.quests);
                         if (data.leveled) showLevel(data.level);
+                        else if (data.ok === false) sfx('deny');
+                        else if (/complete/i.test(data.note || '')) sfx('questDone');
+                        else if (/accept/i.test(data.note || '')) sfx('quest');
                         showMessage(data.ok === false ? (data.reason || 'Cannot do that') : (data.note || 'Quest updated'));
                     } else if (data.type === 'attackResult') {
                         releaseAction(data.ability);
                         if (!data.ok) {
                             if (data.mana != null || data.hp != null) applyStats(data);
                             if (data.reason === 'Not ready' && data.cd) armCooldown(data.ability, data.cd, data.cdMax);
+                            if (data.reason !== 'Not ready') sfx('deny');
                             showMessage(data.reason || 'Miss');
                         }
                         else {
@@ -6657,6 +6780,8 @@
                             if (data.inventory) applyInventory(data.inventory);
                             const ready = data.quests ? applyQuests(data.quests) : '';
                             const cost = data.spent > 0 ? ' · -' + data.spent + ' mana' : '';
+                            if (data.killed) sfx('kill');
+                            else if (data.damage) sfx('hit');
                             if (data.leveled) showLevel(data.level);
                             if (data.questNote) showMessage(data.questNote);
                             else if (data.shield) showMessage('Barrier ' + data.shield + cost);
@@ -6688,25 +6813,30 @@
                     } else if (data.type === 'chestGone') {
                         removeChest(data.id);
                     } else if (data.type === 'lootResult') {
-                        if (!data.ok) showMessage(data.reason || 'Cannot loot');
-                        else {
+                        if (!data.ok) {
+                            showMessage(data.reason || 'Cannot loot');
+                            sfx('deny');
+                        } else {
                             applyInventory(data.inventory);
                             applyStats(data);
                             const ready = data.quests ? applyQuests(data.quests) : '';
                             const names = (data.items || []).map(item => (item.qty > 1 ? item.qty + ' ' : '') + item.name);
                             showMessage((names.join(', ') || 'Empty') + (data.leftover ? ' (bag full)' : '') + (ready ? ' · ' + ready : ''));
+                            sfx(names.length ? 'loot' : 'click');
                         }
                     } else if (data.type === 'discardResult') {
                         if (!data.ok) showMessage(data.reason || 'Cannot destroy');
                         else {
                             applyInventory(data.inventory);
                             showMessage('Destroyed ' + (data.qty > 1 ? data.qty + ' ' : '') + data.name);
+                            sfx('drop');
                         }
                     } else if (data.type === 'sellResult') {
                         if (!data.ok) showMessage(data.reason || 'Cannot sell');
                         else {
                             if (data.inventory) applyInventory(data.inventory);
                             showMessage('Sold ' + data.name + ' for ' + data.price);
+                            sfx('coin');
                             refreshOpenTalk();
                         }
                     } else if (data.type === 'buyResult') {
@@ -6715,12 +6845,14 @@
                             if (data.inventory) applyInventory(data.inventory);
                             applyStats(data);
                             showMessage('Bought ' + (data.name || 'supplies'));
+                            sfx('coin');
                             refreshOpenTalk();
                         }
                     } else if (data.type === 'useResult') {
                         releaseAction(data.cdKey || data.item);
                         if (!data.ok) {
                             if (data.reason === 'Not ready' && data.cd) armCooldown(data.cdKey || data.item, data.cd, data.cdMax);
+                            if (data.reason !== 'Not ready') sfx('deny');
                             showMessage(data.reason || 'Cannot use');
                         }
                         else {
@@ -6731,14 +6863,19 @@
                             if (data.chest) addChest(data.chest);
                             if (data.leveled) showLevel(data.level);
                             if (data.item === 'bomb') {
+                                sfx('boom');
                                 const xp = data.killed && data.gained > 0 ? (data.leveled ? ' · Level ' + data.level + '! +' + data.gained + ' XP' : ' · +' + data.gained + ' XP') : '';
                                 showMessage((data.killed ? 'Bomb killed it' : 'Bomb hit ' + data.damage) + xp);
-                            } else showMessage(data.item === 'health' ? 'Health restored' : 'Mana restored');
+                            } else {
+                                showMessage(data.item === 'health' ? 'Health restored' : 'Mana restored');
+                                sfx('drink');
+                            }
                         }
                     } else if (data.type === 'character') {
                         if (data.inventory) applyInventory(data.inventory);
                         applyStats(data);
                         if (data.character) applyCharacter(data.character);
+                        sfx(data.ok === false ? 'deny' : 'click');
                         showMessage(data.ok === false ? (data.reason || 'Cannot do that') : (data.note || 'Character updated'));
                     } else if (data.type === 'reset') {
                         if (data.inventory) applyInventory(data.inventory);
@@ -6798,23 +6935,28 @@
                         for (const key of data.add || []) rememberFog(key);
                         revealHere(data.x, data.z);
                         showMessage('Teleported');
+                        sfx('portal');
                         }
                     } else if (data.type === 'note') {
                         showMessage(data.text || '');
                     } else if (data.type === 'dungeon') {
-                        if (!data.ok) showMessage(data.reason || 'The portal does not answer');
-                        else if (data.action === 'enter') {
+                        if (!data.ok) {
+                            showMessage(data.reason || 'The portal does not answer');
+                            sfx('deny');
+                        } else if (data.action === 'enter') {
                             enterDungeonView(data.id);
                             characterGroup.position.set(data.x, 0.2, data.z);
                             verticalVelocity = 0;
                             onGround = true;
                             showMessage('You step through the portal');
+                            sfx('portal');
                         } else if (data.action === 'exit') {
                             characterGroup.position.set(data.x, data.y, data.z);
                             leaveDungeonView();
                             verticalVelocity = 0;
                             onGround = true;
                             showMessage('You leave the cavern');
+                            sfx('portal');
                         }
                     } else if (data.type === 'stats') {
                         applyStats(data);
