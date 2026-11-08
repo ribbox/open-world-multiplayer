@@ -367,7 +367,8 @@
             border-bottom: 1px solid rgba(255,255,255,0.08); padding: 2px 0;
         }
         .stat-line span:last-child { color: #f1c40f; }
-        #sheet .row { display: flex; gap: 16px; align-items: flex-start; }
+        #sheet .row { display: flex; gap: 28px; align-items: flex-start; }
+        #sheet .views { display: flex; gap: 6px; margin: 0 0 12px; }
         #doll {
             position: relative;
             display: grid;
@@ -1210,7 +1211,7 @@
             let equippedWeapon = 'sword';
             let currentTool = 'sword';
             let character = { class: null, equipment: {}, trained: [], talents: {}, points: 0, known: null, spells: {}, talentsDef: {} };
-            let sheetTab = 'talents';
+            let sheetTab = 'character';
             let barPage = 0;
             let actionBar = defaultActionBar();
             let restoreWeapon = false;
@@ -1520,7 +1521,7 @@
                             : (slot.kind === 'bomb')
                             ? 'Click to throw at your target'
                             : (slot.kind === 'armor' || slot.kind === 'weapon')
-                            ? 'Equip from the character sheet'
+                            ? 'Click to equip'
                             : '';
                         bindItemTip(cell, slot, use ? [use] : []);
                     } else {
@@ -1576,7 +1577,7 @@
                     return;
                 }
                 if (slot.kind === 'armor' || slot.kind === 'weapon') {
-                    showMessage('Equip it on your character sheet');
+                    sendCharacter('equip', { slot: slot.kind === 'weapon' ? 'weapon' : (slot.slot || 'chest'), index });
                     return;
                 }
                 if (slot.kind === 'bomb') {
@@ -5446,22 +5447,36 @@
                 close.addEventListener('click', toggleSheet);
                 panel.appendChild(close);
                 const title = document.createElement('h2');
-                title.textContent = 'Character';
+                const titles = { character: 'Character', talents: 'Talents', craft: 'Craft' };
+                if (!titles[sheetTab]) sheetTab = 'character';
+                title.textContent = titles[sheetTab];
                 panel.appendChild(title);
-                const reset = document.createElement('button');
-                reset.type = 'button';
-                reset.className = 'text-btn';
-                reset.textContent = 'Reset character';
-                reset.addEventListener('click', () => {
-                    if (!confirm('Reset this character to level 1? Level, class, spells, talents, crafting, quests, bag, coins, and explored map will be cleared.')) return;
-                    sendCharacter('reset');
-                });
-                panel.appendChild(reset);
-                appendSheetStats(panel);
+                const views = document.createElement('div');
+                views.className = 'views';
+                for (const [id, label] of [['character', 'Character'], ['talents', 'Talents'], ['craft', 'Craft']]) {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'sheet-tab' + (sheetTab === id ? ' on' : '');
+                    button.textContent = label;
+                    button.addEventListener('click', () => { sheetTab = id; renderSheet(); });
+                    views.appendChild(button);
+                }
+                panel.appendChild(views);
+
+                if (sheetTab === 'talents') {
+                    renderTalentList(panel);
+                    updateStatsUI();
+                    return;
+                }
+                if (sheetTab === 'craft') {
+                    renderCraft(panel);
+                    updateStatsUI();
+                    return;
+                }
 
                 if (!character.class) {
                     const note = document.createElement('p');
-                    note.textContent = 'Choose a class. This sets your weapon, the spells you can train, and your talent tree.';
+                    note.textContent = 'Choose a class. This sets your weapon and your talent tree.';
                     panel.appendChild(note);
                     const row = document.createElement('div');
                     row.className = 'row';
@@ -5481,10 +5496,6 @@
                     return;
                 }
 
-                const summary = document.createElement('p');
-                summary.textContent = character.class[0].toUpperCase() + character.class.slice(1)
-                    + '  ·  Talent points ' + (character.points || 0);
-                panel.appendChild(summary);
                 const row = document.createElement('div');
                 row.className = 'row';
                 const doll = document.createElement('div');
@@ -5512,24 +5523,21 @@
                     doll.appendChild(button);
                 }
                 row.appendChild(doll);
-
                 const side = document.createElement('div');
-                side.style.flex = '1';
-                const tabs = document.createElement('div');
-                for (const tab of ['talents', 'craft', 'bag']) {
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'sheet-tab' + (sheetTab === tab ? ' on' : '');
-                    button.textContent = tab[0].toUpperCase() + tab.slice(1);
-                    button.addEventListener('click', () => { sheetTab = tab; renderSheet(); });
-                    tabs.appendChild(button);
-                }
-                side.appendChild(tabs);
-                const body = document.createElement('div');
-                if (sheetTab === 'talents' || sheetTab === 'spells') renderTalentList(body);
-                else if (sheetTab === 'craft') renderCraft(body);
-                else renderEquipList(body);
-                side.appendChild(body);
+                const summary = document.createElement('p');
+                summary.textContent = character.class[0].toUpperCase() + character.class.slice(1);
+                side.appendChild(summary);
+                appendSheetStats(side);
+                const reset = document.createElement('button');
+                reset.type = 'button';
+                reset.className = 'text-btn';
+                reset.textContent = 'Reset character';
+                reset.style.marginTop = '10px';
+                reset.addEventListener('click', () => {
+                    if (!confirm('Reset this character to level 1? Level, class, spells, talents, crafting, quests, bag, coins, and explored map will be cleared.')) return;
+                    sendCharacter('reset');
+                });
+                side.appendChild(reset);
                 row.appendChild(side);
                 panel.appendChild(row);
                 updateStatsUI();
@@ -5666,29 +5674,6 @@
                         body.appendChild(line);
                     }
                 }
-            }
-
-            function renderEquipList(body) {
-                const note = document.createElement('div');
-                note.textContent = 'Click a bag item to equip it.';
-                body.appendChild(note);
-                (inventory.slots || []).forEach((slot, index) => {
-                    if (!slot || (slot.kind !== 'armor' && slot.kind !== 'weapon')) return;
-                    const line = document.createElement('div');
-                    line.className = 'spell-row';
-                    line.appendChild(itemCanvas(slot));
-                    const label = document.createElement('div');
-                    label.textContent = slot.name + (statBits(slot).length ? ' · ' + statBits(slot).join(' ') : '');
-                    bindItemTip(line, slot, ['Click Equip']);
-                    line.appendChild(label);
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'text-btn';
-                    button.textContent = 'Equip';
-                    button.addEventListener('click', () => sendCharacter('equip', { slot: slot.kind === 'weapon' ? 'weapon' : (slot.slot || 'chest'), index }));
-                    line.appendChild(button);
-                    body.appendChild(line);
-                });
             }
 
             document.getElementById('pagePrev').addEventListener('click', () => changePage(-1));
