@@ -1445,19 +1445,19 @@ const CLASS_KITS = {
     }
 };
 const SPELLS = {
-    sword: { class: 'warrior', name: 'Sword', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 0, manaRank: 2 },
-    'power-strike': { class: 'warrior', name: 'Power Strike', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 6, manaRank: 3 },
-    hamstring: { class: 'warrior', name: 'Hamstring', level: 2, cost: 12, maxRank: 5, rankCost: 10, mana: 4, manaRank: 2 },
-    execute: { class: 'warrior', name: 'Execute', level: 6, cost: 30, maxRank: 5, rankCost: 16, mana: 8, manaRank: 4 },
-    cleave: { class: 'warrior', name: 'Cleave', level: 4, cost: 20, maxRank: 5, rankCost: 16, mana: 5, manaRank: 3, talent: 'cleave' },
-    whirlwind: { class: 'warrior', name: 'Whirlwind', level: 8, cost: 40, maxRank: 5, rankCost: 18, mana: 10, manaRank: 4 },
-    staff: { class: 'mage', name: 'Staff', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 5, manaRank: 3 },
-    'arcane-bolt': { class: 'mage', name: 'Arcane Missile', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4 },
-    'frost-bolt': { class: 'mage', name: 'Frost Bolt', level: 3, cost: 15, maxRank: 5, rankCost: 12, mana: 7, manaRank: 3 },
-    mend: { class: 'mage', name: 'Mend', level: 2, cost: 15, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4 },
-    barrier: { class: 'mage', name: 'Barrier', level: 6, cost: 28, maxRank: 5, rankCost: 16, mana: 12, manaRank: 4 },
-    'frost-nova': { class: 'mage', name: 'Frost Nova', level: 8, cost: 36, maxRank: 5, rankCost: 18, mana: 12, manaRank: 5 },
-    'arcane-surge': { class: 'mage', name: 'Arcane Surge', level: 4, cost: 25, maxRank: 5, rankCost: 18, mana: 14, manaRank: 6, talent: 'surge' }
+    sword: { class: 'warrior', name: 'Sword', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 0, manaRank: 2, power: 4, scale: 1 },
+    'power-strike': { class: 'warrior', name: 'Power Strike', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 6, manaRank: 3, power: 8, scale: 2 },
+    hamstring: { class: 'warrior', name: 'Hamstring', level: 2, cost: 12, maxRank: 5, rankCost: 10, mana: 4, manaRank: 2, power: 2, scale: 1 },
+    execute: { class: 'warrior', name: 'Execute', level: 6, cost: 30, maxRank: 5, rankCost: 16, mana: 8, manaRank: 4, power: 6, scale: 2, execute: true },
+    cleave: { class: 'warrior', name: 'Cleave', level: 4, cost: 20, maxRank: 5, rankCost: 16, mana: 5, manaRank: 3, power: 6, scale: 1, talent: 'cleave' },
+    whirlwind: { class: 'warrior', name: 'Whirlwind', level: 8, cost: 40, maxRank: 5, rankCost: 18, mana: 10, manaRank: 4, power: 5, scale: 1 },
+    staff: { class: 'mage', name: 'Staff', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 5, manaRank: 3, power: 4, scale: 1 },
+    'arcane-bolt': { class: 'mage', name: 'Arcane Missile', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4, power: 6, scale: 1 },
+    'frost-bolt': { class: 'mage', name: 'Frost Bolt', level: 3, cost: 15, maxRank: 5, rankCost: 12, mana: 7, manaRank: 3, power: 5, scale: 1 },
+    mend: { class: 'mage', name: 'Mend', level: 2, cost: 15, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4, power: 8, scale: 2, effect: 'heal' },
+    barrier: { class: 'mage', name: 'Barrier', level: 6, cost: 28, maxRank: 5, rankCost: 16, mana: 12, manaRank: 4, power: 6, scale: 2, effect: 'shield' },
+    'frost-nova': { class: 'mage', name: 'Frost Nova', level: 8, cost: 36, maxRank: 5, rankCost: 18, mana: 12, manaRank: 5, power: 4, scale: 1 },
+    'arcane-surge': { class: 'mage', name: 'Arcane Surge', level: 4, cost: 25, maxRank: 5, rankCost: 18, mana: 14, manaRank: 6, power: 12, scale: 2, talent: 'surge' }
 };
 const TALENTS = {
     toughness: { class: 'warrior', name: 'Toughness', max: 3, row: 0, requires: null, text: '+1 armor per rank' },
@@ -1483,6 +1483,12 @@ function abilityCost(id, rank) {
 
 function rankPower(rank) {
     return 1 + Math.max(0, rank - 1) * 0.2;
+}
+
+function spellAmount(id, level) {
+    const spell = SPELLS[id];
+    if (!spell || spell.power == null) return 0;
+    return spell.power + (level || 1) * (spell.scale || 0);
 }
 
 const COMBAT_HOLD = 6000;
@@ -2978,7 +2984,7 @@ wss.on('connection', (ws) => {
                     }
                     subject = ally;
                 }
-                const healed = Math.round((spec.heal(player.level) + ((player.stats && player.stats.intellect) || 0)) * rankPower(rank));
+                const healed = Math.round((spellAmount(abilityId, player.level) + ((player.stats && player.stats.intellect) || 0)) * rankPower(rank));
                 subject.hp = Math.min(subject.maxHp, subject.hp + healed);
                 startCooldown(player, abilityId, cdMax, now);
                 broadcast({
@@ -2997,7 +3003,7 @@ wss.on('connection', (ws) => {
                 return;
             }
             if (spec.absorb) {
-                const amount = Math.round((spec.absorb(player.level) + ((player.stats && player.stats.intellect) || 0)) * rankPower(rank));
+                const amount = Math.round((spellAmount(abilityId, player.level) + ((player.stats && player.stats.intellect) || 0)) * rankPower(rank));
                 const current = now < (player.absorbUntil || 0) ? (player.absorb || 0) : 0;
                 player.absorb = Math.max(current, amount);
                 player.absorbUntil = now + 15000;
@@ -3044,7 +3050,7 @@ wss.on('connection', (ws) => {
             const statBonus = spec.weapon === 'sword'
                 ? ((player.stats && player.stats.strength) || 0)
                 : ((player.stats && player.stats.intellect) || 0);
-            const per = (spec.damage(player.level) + statBonus + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0)) * rankPower(rank);
+            const per = (spellAmount(abilityId, player.level) + statBonus + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0)) * rankPower(rank);
             const projectile = !!spec.bolt;
             const travel = projectile ? Math.min(900, Math.max(220, Math.round(dist * 140))) : 0;
             const victims = [npc];

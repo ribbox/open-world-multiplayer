@@ -4093,9 +4093,31 @@
                 return rank >= 5 ? 3 : rank >= 3 ? 2 : 1;
             }
 
-            function spellManaAt(id, rank) {
-                const spell = (character.spells || {})[id] || {};
-                return (spell.mana || 0) + Math.max(0, rank - 1) * (spell.manaRank || 0);
+            function spellHit(id, rank) {
+                const spell = (character.spells || {})[id];
+                if (!spell || spell.power == null) return null;
+                const level = stats.level || 1;
+                const raw = spell.power + level * (spell.scale || 0);
+                const effect = spell.effect || 'damage';
+                const melee = effect === 'damage' && spell.class === 'warrior';
+                const stat = melee ? (stats.strength || 0) : (stats.intellect || 0);
+                const talent = effect !== 'damage' ? 0 : melee
+                    ? ((character.talents && character.talents.might) || 0)
+                    : ((character.talents && character.talents['arcane-power']) || 0);
+                const scaled = (raw + stat + talent) * (1 + Math.max(0, rank - 1) * 0.2);
+                const each = Math.max(1, Math.round(scaled));
+                const bolts = id === 'arcane-bolt' ? (rank >= 5 ? 3 : rank >= 3 ? 2 : 1) : 1;
+                return { each, bolts, effect, execute: !!spell.execute, finish: Math.max(each, Math.round(scaled * 2)) };
+            }
+
+            function spellHitText(id, rank) {
+                const hit = spellHit(id, rank);
+                if (!hit) return '';
+                if (hit.effect === 'heal') return 'Heals ' + hit.each;
+                if (hit.effect === 'shield') return 'Shields ' + hit.each;
+                if (hit.execute) return hit.each + ' damage, ' + hit.finish + ' below 35% health';
+                if (hit.bolts > 1) return (hit.each * hit.bolts) + ' damage, ' + hit.each + ' each bolt';
+                return hit.each + ' damage';
             }
 
             function actionTitle(id, action) {
@@ -4103,8 +4125,8 @@
                 let extra = '';
                 if (spell && spell.maxRank) {
                     const rank = Math.max(1, (character.spellRanks && character.spellRanks[id]) || 1);
-                    const mana = spellManaAt(id, rank);
-                    extra = ' Rank ' + rank + (mana ? ', ' + mana + ' mana.' : '.');
+                    const hit = spellHitText(id, rank);
+                    extra = ' Rank ' + rank + (hit ? '. ' + hit + '.' : '.');
                 }
                 return action.name + '.' + extra + ' ' + action.hint + ' Right-click to assign.';
             }
@@ -4647,7 +4669,10 @@
                         choice.className = 'icon-btn';
                         choice.appendChild(makeIcon(id, spellBolts(id)));
                         const name = document.createElement('span');
-                        name.textContent = ACTIONS[id].name;
+                        const knownRank = Math.max(1, (character.spellRanks && character.spellRanks[id]) || 1);
+                        const hit = spellHitText(id, knownRank);
+                        name.textContent = ACTIONS[id].name + (hit ? ' · ' + hit : '');
+                        choice.title = actionTitle(id, ACTIONS[id]);
                         choice.appendChild(name);
                         choice.draggable = true;
                         choice.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', 'action:' + id));
@@ -5373,10 +5398,13 @@
                     const need = (spell.level || 1) + Math.max(0, next - 1) * 2;
                     const coins = rank <= 0 ? (spell.cost || 0) : (spell.rankCost || 0) * rank;
                     const parts = [spell.name];
-                    if (known) parts.push(rank + '/' + maxRank, spellManaAt(id, rank) + ' mana');
-                    else if ((spell.mana || 0) > 0) parts.push(spellManaAt(id, 1) + ' mana');
+                    const shown = known ? rank : 1;
+                    const effect = spellHitText(id, shown);
+                    if (known) parts.push(rank + '/' + maxRank);
+                    if (effect) parts.push(effect);
                     if (known && rank < maxRank) {
-                        parts.push('next ' + spellManaAt(id, next) + ' mana');
+                        const nextEffect = spellHitText(id, next);
+                        if (nextEffect) parts.push('next ' + nextEffect);
                         parts.push('level ' + need);
                         if (coins) parts.push(coins + ' coins');
                     } else if (!known) {
