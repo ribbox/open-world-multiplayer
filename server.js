@@ -1436,11 +1436,11 @@ const EQUIP_SLOTS = ['head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'wa
 const CLASS_KITS = {
     warrior: {
         weapon: { kind: 'weapon', weapon: 'sword', name: 'Worn Sword', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { strength: 1 }, reqLevel: 1 },
-        trained: ['sword', 'power-strike']
+        trained: ['sword']
     },
     mage: {
         weapon: { kind: 'weapon', weapon: 'staff', name: 'Apprentice Staff', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { intellect: 1 }, reqLevel: 1 },
-        trained: ['staff', 'arcane-bolt']
+        trained: ['staff']
     }
 };
 const SPELLS = {
@@ -1448,7 +1448,7 @@ const SPELLS = {
     'power-strike': { class: 'warrior', name: 'Power Strike', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 6, manaRank: 3, power: 8, scale: 2 },
     hamstring: { class: 'warrior', name: 'Hamstring', level: 2, cost: 12, maxRank: 5, rankCost: 10, mana: 4, manaRank: 2, power: 2, scale: 1 },
     execute: { class: 'warrior', name: 'Execute', level: 6, cost: 30, maxRank: 5, rankCost: 16, mana: 8, manaRank: 4, power: 6, scale: 2, execute: true },
-    cleave: { class: 'warrior', name: 'Cleave', level: 4, cost: 20, maxRank: 5, rankCost: 16, mana: 5, manaRank: 3, power: 6, scale: 1, talent: 'cleave' },
+    cleave: { class: 'warrior', name: 'Cleave', level: 4, cost: 20, maxRank: 5, rankCost: 16, mana: 5, manaRank: 3, power: 6, scale: 1 },
     whirlwind: { class: 'warrior', name: 'Whirlwind', level: 8, cost: 40, maxRank: 5, rankCost: 18, mana: 10, manaRank: 4, power: 5, scale: 1 },
     staff: { class: 'mage', name: 'Staff', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 5, manaRank: 3, power: 4, scale: 1 },
     'arcane-bolt': { class: 'mage', name: 'Arcane Missile', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4, power: 6, scale: 1 },
@@ -1456,16 +1456,34 @@ const SPELLS = {
     mend: { class: 'mage', name: 'Mend', level: 2, cost: 15, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4, power: 8, scale: 2, effect: 'heal' },
     barrier: { class: 'mage', name: 'Barrier', level: 6, cost: 28, maxRank: 5, rankCost: 16, mana: 12, manaRank: 4, power: 6, scale: 2, effect: 'shield' },
     'frost-nova': { class: 'mage', name: 'Frost Nova', level: 8, cost: 36, maxRank: 5, rankCost: 18, mana: 12, manaRank: 5, power: 4, scale: 1 },
-    'arcane-surge': { class: 'mage', name: 'Arcane Surge', level: 4, cost: 25, maxRank: 5, rankCost: 18, mana: 14, manaRank: 6, power: 12, scale: 2, talent: 'surge' }
+    'arcane-surge': { class: 'mage', name: 'Arcane Surge', level: 4, cost: 25, maxRank: 5, rankCost: 18, mana: 14, manaRank: 6, power: 12, scale: 2 }
 };
-const TALENTS = {
-    toughness: { class: 'warrior', name: 'Toughness', max: 3, row: 0, requires: null, text: '+1 armor per rank' },
-    might: { class: 'warrior', name: 'Might', max: 3, row: 1, requires: { toughness: 1 }, text: '+1 melee damage per rank' },
-    cleave: { class: 'warrior', name: 'Cleave', max: 1, row: 2, requires: { might: 2 }, text: 'Unlocks Cleave' },
-    meditation: { class: 'mage', name: 'Meditation', max: 3, row: 0, requires: null, text: '+2 max mana per rank' },
-    'arcane-power': { class: 'mage', name: 'Arcane Power', max: 3, row: 1, requires: { meditation: 1 }, text: '+1 spell damage per rank' },
-    surge: { class: 'mage', name: 'Surge', max: 1, row: 2, requires: { 'arcane-power': 2 }, text: 'Unlocks Arcane Surge' }
+const TREE = {
+    sword: { class: 'warrior', spell: 'sword', requires: null },
+    'power-strike': { class: 'warrior', spell: 'power-strike', requires: 'sword' },
+    toughness: { class: 'warrior', name: 'Toughness', max: 3, requires: 'sword', text: '+1 armor per rank' },
+    hamstring: { class: 'warrior', spell: 'hamstring', requires: 'power-strike' },
+    might: { class: 'warrior', name: 'Might', max: 3, requires: 'power-strike', text: '+1 melee damage per rank' },
+    execute: { class: 'warrior', spell: 'execute', requires: 'hamstring' },
+    whirlwind: { class: 'warrior', spell: 'whirlwind', requires: 'hamstring' },
+    cleave: { class: 'warrior', spell: 'cleave', requires: 'might' },
+    staff: { class: 'mage', spell: 'staff', requires: null },
+    'arcane-bolt': { class: 'mage', spell: 'arcane-bolt', requires: 'staff' },
+    meditation: { class: 'mage', name: 'Meditation', max: 3, requires: 'staff', text: '+2 max mana per rank' },
+    'frost-bolt': { class: 'mage', spell: 'frost-bolt', requires: 'arcane-bolt' },
+    mend: { class: 'mage', spell: 'mend', requires: 'arcane-bolt' },
+    'arcane-power': { class: 'mage', name: 'Arcane Power', max: 3, requires: 'meditation', text: '+1 spell damage per rank' },
+    barrier: { class: 'mage', spell: 'barrier', requires: 'mend' },
+    'frost-nova': { class: 'mage', spell: 'frost-nova', requires: 'frost-bolt' },
+    'arcane-surge': { class: 'mage', spell: 'arcane-surge', requires: 'arcane-power' }
 };
+const TALENTS = Object.fromEntries(Object.entries(TREE).filter(([, node]) => !node.spell).map(([id, node]) => [id, {
+    class: node.class,
+    name: node.name,
+    max: node.max,
+    requires: node.requires ? { [node.requires]: 1 } : null,
+    text: node.text
+}]));
 
 function abilityRank(player, id) {
     const maxRank = (SPELLS[id] && SPELLS[id].maxRank) || 1;
@@ -1635,6 +1653,8 @@ function loadCharacter(prof) {
     }
     if (prof.class !== 'warrior' && prof.class !== 'mage') prof.class = null;
     prof.trained = Array.isArray(prof.trained) ? prof.trained.filter(id => SPELLS[id]) : [];
+    if (prof.talents && prof.talents.cleave && !prof.trained.includes('cleave')) prof.trained.push('cleave');
+    if (prof.talents && prof.talents.surge && !prof.trained.includes('arcane-surge')) prof.trained.push('arcane-surge');
     const talents = {};
     if (prof.talents && typeof prof.talents === 'object') {
         for (const [id, rank] of Object.entries(prof.talents)) {
@@ -1687,8 +1707,28 @@ function refreshDerived(player) {
 }
 
 function talentPoints(player) {
-    const spent = Object.values(player.talents || {}).reduce((sum, rank) => sum + rank, 0);
+    let spent = 0;
+    const free = new Set((CLASS_KITS[player.class] && CLASS_KITS[player.class].trained) || []);
+    for (const [id, rank] of Object.entries(player.spellRanks || {})) {
+        const value = Math.max(0, Number(rank) || 0);
+        spent += free.has(id) ? Math.max(0, value - 1) : value;
+    }
+    spent += Object.values(player.talents || {}).reduce((sum, rank) => sum + (Number(rank) || 0), 0);
     return Math.max(0, (player.level || 1) - 1 - spent);
+}
+
+function nodeRank(player, id) {
+    const node = TREE[id];
+    if (!node) return 0;
+    if (node.spell) return player.trained.includes(node.spell) ? ((player.spellRanks && player.spellRanks[node.spell]) || 1) : 0;
+    return talentRank(player, id);
+}
+
+function nodeMax(id) {
+    const node = TREE[id];
+    if (!node) return 1;
+    if (node.spell) return (SPELLS[node.spell] && SPELLS[node.spell].maxRank) || 1;
+    return node.max || 1;
 }
 
 function knownSpells(player) {
@@ -1697,7 +1737,6 @@ function knownSpells(player) {
     for (const id of player.trained) {
         const spell = SPELLS[id];
         if (!spell || spell.class !== player.class) continue;
-        if (spell.talent && talentRank(player, spell.talent) < 1) continue;
         known.push(id);
     }
     return known;
@@ -1715,6 +1754,7 @@ function publicCharacter(player) {
         points: talentPoints(player),
         known: knownSpells(player),
         spells: SPELLS,
+        tree: TREE,
         talentsDef: TALENTS,
         stats: player.stats || totalStats(player)
     };
@@ -1888,43 +1928,38 @@ function chooseClass(player, className) {
 }
 
 function trainSpell(player, id) {
-    const spell = SPELLS[id];
+    return spendNode(player, id);
+}
+
+function spendNode(player, id) {
+    const node = TREE[id];
     if (!player.class) return 'Choose a class first';
-    if (!spell || spell.class !== player.class) return 'Not for your class';
-    if (spell.talent && talentRank(player, spell.talent) < 1) return 'Needs the talent';
-    if (!player.spellRanks) player.spellRanks = {};
-    const rank = player.trained.includes(id) ? (player.spellRanks[id] || 1) : 0;
-    const maxRank = spell.maxRank || 1;
-    if (rank >= maxRank) return 'Already trained';
-    const next = rank + 1;
-    const need = spell.level + (next - 1) * 2;
-    if (player.level < need) return 'Requires level ' + need;
-    const cost = next === 1 ? (spell.cost || 0) : (spell.rankCost || spell.cost || 0) * (next - 1);
-    if (!spendCoins(player, cost)) return 'Not enough coins';
-    if (!player.trained.includes(id)) player.trained.push(id);
-    player.spellRanks[id] = next;
+    if (!node || node.class !== player.class) return 'Not for your class';
+    const rank = nodeRank(player, id);
+    const max = nodeMax(id);
+    if (rank >= max) return 'Max rank';
+    if (talentPoints(player) < 1) return 'No talent points';
+    if (node.requires) {
+        const parent = TREE[node.requires];
+        if (!parent || nodeRank(player, node.requires) < nodeMax(node.requires)) {
+            const name = parent && parent.spell ? SPELLS[parent.spell].name : (parent && parent.name) || 'the previous talent';
+            return 'Requires ' + name + ' fully trained';
+        }
+    }
+    if (node.spell) {
+        if (!player.spellRanks) player.spellRanks = {};
+        if (!player.trained.includes(node.spell)) player.trained.push(node.spell);
+        player.spellRanks[node.spell] = rank + 1;
+    } else {
+        player.talents[id] = rank + 1;
+    }
+    refreshDerived(player);
     savePlayer(player);
     return null;
 }
 
 function spendTalent(player, id) {
-    const def = TALENTS[id];
-    if (!player.class) return 'Choose a class first';
-    if (!def || def.class !== player.class) return 'Not for your class';
-    const rank = talentRank(player, id);
-    if (rank >= def.max) return 'Max rank';
-    if (talentPoints(player) < 1) return 'No talent points';
-    if (def.requires) {
-        for (const [need, min] of Object.entries(def.requires)) {
-            if (talentRank(player, need) < min) return 'Requires ' + TALENTS[need].name;
-        }
-    }
-    player.talents[id] = rank + 1;
-    if (id === 'cleave' && !player.trained.includes('cleave')) player.trained.push('cleave');
-    if (id === 'surge' && !player.trained.includes('arcane-surge')) player.trained.push('arcane-surge');
-    refreshDerived(player);
-    savePlayer(player);
-    return null;
+    return spendNode(player, id);
 }
 
 function equipItem(player, equipSlot, bagIndex) {

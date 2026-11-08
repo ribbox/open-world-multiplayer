@@ -410,7 +410,17 @@
         .class-pick { width: 220px; min-height: 88px; padding: 8px; text-align: left; }
         .sheet-tab { padding: 4px 10px; margin-right: 4px; }
         .sheet-tab.on { background: #3d4f6f; }
-        .spell-row, .talent-row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.12); font-size: 13px; }
+        .slot:hover, .paper-slot.filled:hover { box-shadow: inset 0 0 0 2px var(--q, rgba(232, 206, 150, 0.85)); }
+        .talent-tree { display: flex; gap: 14px; align-items: flex-start; overflow-x: auto; padding-bottom: 6px; }
+        .talent-col { display: flex; flex-direction: column; gap: 8px; }
+        .talent-node {
+            width: 156px; padding: 6px 8px; font-size: 12px; line-height: 1.3;
+            border: 1px solid rgba(214, 176, 96, 0.35); background: rgba(0, 0, 0, 0.28);
+        }
+        .talent-node.maxed { border-color: rgba(61, 204, 120, 0.75); }
+        .talent-node.locked { opacity: 0.5; }
+        .talent-node .text-btn { margin-top: 6px; }
+        .spell-row, .talent-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(214, 176, 96, 0.16); font-size: 13px; }
         .text-btn { padding: 3px 8px; }
         .text-btn:disabled { opacity: 0.45; cursor: default; }
         #sheetClose { float: right; }
@@ -558,7 +568,7 @@
         C: Character sheet. Reset character is on that page and returns you to level 1<br>
         Strength raises melee hits, Intellect raises spells and mana, Stamina raises health<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
-        Spells train to rank 5. A higher rank hits harder and spends more mana. The next rank is every 2 levels<br>
+        Spells and talents share one tree and spend talent points. The next node stays locked until the one before it is fully trained. A branch does not wait on the other branch<br>
         Hamstring and Frost Bolt slow. Execute doubles damage under 35% health. Cleave and Whirlwind hit nearby foes. Barrier soaks hits. Frost Nova does both<br>
         The bar is your level and experience. Armor and stats are on the character sheet<br>
         Camps are safe. Creatures walk out, and you cannot attack while you are inside. The camp name appears when you enter<br>
@@ -569,7 +579,7 @@
         100 coins make 1 silver, and 100 silver make 1 gold<br>
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills, and only while standing at a shop assistant<br>
-        Train spells only while standing at a trainer. Improve a spell there to raise its rank. Gather herbs by hand and sulfur with a pickaxe<br>
+        Gather herbs by hand and sulfur with a pickaxe<br>
         M: World map. Scroll or +/− to zoom. Right-click a spot to mark it. The minimap points the way<br>
         Active quests stay on the right, with progress<br>
         A gold ? is a quest you can take. Blue means one is underway, green means turn it in. The minimap shows the same ?<br>
@@ -1179,7 +1189,7 @@
             let equippedWeapon = 'sword';
             let currentTool = 'sword';
             let character = { class: null, equipment: {}, trained: [], talents: {}, points: 0, known: null, spells: {}, talentsDef: {} };
-            let sheetTab = 'spells';
+            let sheetTab = 'talents';
             let barPage = 0;
             let actionBar = defaultActionBar();
             let restoreWeapon = false;
@@ -1324,6 +1334,19 @@
                 if (item && (item.reqLevel || 1) > 1) bits.push('Lv ' + item.reqLevel);
                 return bits;
             }
+            const QUALITY_COLOR = ['#9a9a9a', '#f2f2f2', '#3dcc78', '#5dade2', '#c39bd3', '#f0b429'];
+            const QUALITY_NAME = ['Junk', 'Common', 'Uncommon', 'Rare', 'Epic', 'Gem'];
+            function itemQuality(item) {
+                if (!item) return 1;
+                if (item.kind === 'junk') return 0;
+                let quality = itemRarity(item);
+                if (item.magic) quality = Math.min(5, quality + 1);
+                return quality;
+            }
+            function tintSlot(el, item) {
+                if (!el || !item) return;
+                el.style.setProperty('--q', QUALITY_COLOR[itemQuality(item)] || QUALITY_COLOR[1]);
+            }
             function itemTipLines(item) {
                 const lines = [];
                 if (!item) return lines;
@@ -1377,7 +1400,13 @@
                 const title = document.createElement('div');
                 title.className = 'tip-name';
                 title.textContent = item.name || 'Item';
+                title.style.color = QUALITY_COLOR[itemQuality(item)] || QUALITY_COLOR[1];
+                tip.style.borderColor = title.style.color;
                 tip.appendChild(title);
+                const mark = document.createElement('div');
+                mark.textContent = QUALITY_NAME[itemQuality(item)] || 'Common';
+                mark.style.color = title.style.color;
+                tip.appendChild(mark);
                 for (const line of itemTipLines(item)) {
                     const row = document.createElement('div');
                     row.textContent = line;
@@ -1445,6 +1474,7 @@
                             cell.appendChild(qty);
                         }
                         cell.title = '';
+                        tintSlot(cell, slot);
                         const use = slot.kind === 'recipe'
                             ? 'Click to learn'
                             : (slot.kind === 'health' || slot.kind === 'mana')
@@ -1480,7 +1510,8 @@
                     mark.textContent = String(qty);
                     cell.appendChild(mark);
                     cell.title = '';
-                    bindItemTip(cell, { kind, name, qty }, ['Supply', 'Does not use a bag slot']);
+                    bindItemTip(cell, { kind, name, qty }, ['Supply']);
+                    tintSlot(cell, { kind, name, qty });
                     cell.addEventListener('contextmenu', (e) => {
                         e.preventDefault();
                         if (!qty || !gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
@@ -5074,7 +5105,7 @@
             function activitiesFor(entry) {
                 const tabs = [];
                 if (entry.role === 'shop') tabs.push(['buy', 'Buy'], ['sell', 'Sell']);
-                else if (entry.role === 'trainer') tabs.push(['spells', 'Spells'], ['talents', 'Talents']);
+                else if (entry.role === 'trainer') tabs.push(['talents', 'Talents']);
                 else if (entry.role === 'inn') tabs.push(['rest', 'Rest']);
                 if (offeredHere(entry).length) tabs.push(['quests', 'Quests']);
                 return tabs;
@@ -5263,19 +5294,8 @@
             function renderService(parent, entry, tab) {
                 if (tab === 'buy') renderBuyList(parent);
                 else if (tab === 'sell') renderSellList(parent);
-                else if (tab === 'spells') {
-                    if (!character.class) {
-                        const note = document.createElement('p');
-                        note.textContent = 'Choose a class on your character sheet before training.';
-                        parent.appendChild(note);
-                    } else renderSpellList(parent);
-                } else if (tab === 'talents') {
-                    if (!character.class) {
-                        const note = document.createElement('p');
-                        note.textContent = 'Choose a class on your character sheet before spending talents.';
-                        parent.appendChild(note);
-                    } else renderTalentList(parent);
-                } else if (tab === 'rest') {
+                else if (tab === 'talents' || tab === 'spells') renderTalentList(parent);
+                else if (tab === 'rest') {
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.className = 'text-btn gold-btn';
@@ -5408,8 +5428,8 @@
                     const row = document.createElement('div');
                     row.className = 'row';
                     for (const [id, name, text] of [
-                        ['warrior', 'Warrior', 'Strength and stamina. Sword, Power Strike, and a Might tree.'],
-                        ['mage', 'Mage', 'Intellect and stamina. Arcane Bolt, Mend, and an Arcane tree.']
+                        ['warrior', 'Warrior', 'Strength and stamina. One tree of attacks and talents.'],
+                        ['mage', 'Mage', 'Intellect and stamina. One tree of spells and talents.']
                     ]) {
                         const button = document.createElement('button');
                         button.type = 'button';
@@ -5444,8 +5464,10 @@
                     const shown = piece || { kind: slot === 'weapon' ? 'weapon' : 'armor', slot, weapon: slot === 'weapon' && character.class === 'mage' ? 'staff' : 'sword' };
                     paintItem(button, shown, !piece);
                     button.title = '';
-                    if (piece) bindItemTip(button, piece, ['Click to unequip']);
-                    else button.title = labels[slot];
+                    if (piece) {
+                        bindItemTip(button, piece, ['Click to unequip']);
+                        tintSlot(button, piece);
+                    } else button.title = labels[slot];
                     button.addEventListener('click', () => {
                         if (piece) sendCharacter('unequip', { slot });
                     });
@@ -5456,7 +5478,7 @@
                 const side = document.createElement('div');
                 side.style.flex = '1';
                 const tabs = document.createElement('div');
-                for (const tab of ['spells', 'talents', 'craft', 'bag']) {
+                for (const tab of ['talents', 'craft', 'bag']) {
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.className = 'sheet-tab' + (sheetTab === tab ? ' on' : '');
@@ -5466,8 +5488,7 @@
                 }
                 side.appendChild(tabs);
                 const body = document.createElement('div');
-                if (sheetTab === 'spells') renderSpellList(body);
-                else if (sheetTab === 'talents') renderTalentList(body);
+                if (sheetTab === 'talents' || sheetTab === 'spells') renderTalentList(body);
                 else if (sheetTab === 'craft') renderCraft(body);
                 else renderEquipList(body);
                 side.appendChild(body);
@@ -5476,80 +5497,95 @@
                 updateStatsUI();
             }
 
-            function renderSpellList(body) {
-                const atTrainer = !!nearestRole('trainer');
-                const where = document.createElement('div');
-                where.textContent = atTrainer ? 'The trainer can teach your spells.' : 'Stand next to a trainer to train spells.';
-                body.appendChild(where);
-                const spells = character.spells || {};
-                for (const [id, spell] of Object.entries(spells)) {
-                    if (spell.class !== character.class) continue;
-                    const line = document.createElement('div');
-                    line.className = 'spell-row';
-                    const rank = (character.spellRanks && character.spellRanks[id]) || 0;
-                    const maxRank = spell.maxRank || 1;
-                    const known = rank > 0 && (!spell.talent || (character.talents[spell.talent] || 0) > 0);
-                    line.appendChild(makeIcon(id, id === 'arcane-bolt' ? Math.max(1, rank) : 1));
-                    const label = document.createElement('div');
-                    const next = rank + 1;
-                    const need = (spell.level || 1) + Math.max(0, next - 1) * 2;
-                    const coins = rank <= 0 ? (spell.cost || 0) : (spell.rankCost || 0) * rank;
-                    const parts = [spell.name];
-                    const shown = known ? rank : 1;
-                    const effect = spellHitText(id, shown);
-                    if (known) parts.push(rank + '/' + maxRank);
-                    if (effect) parts.push(effect);
-                    if (known && rank < maxRank) {
-                        const nextEffect = spellHitText(id, next);
-                        if (nextEffect) parts.push('next ' + nextEffect);
-                        parts.push('level ' + need);
-                        if (coins) parts.push(formatMoney(coins));
-                    } else if (!known) {
-                        if (spell.level > 1) parts.push('level ' + spell.level);
-                        if (coins) parts.push(formatMoney(coins));
-                    }
-                    label.textContent = parts.join(' · ');
-                    line.appendChild(label);
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'text-btn';
-                    if (known && rank >= maxRank) {
-                        button.textContent = 'Trained';
-                        button.disabled = true;
-                    } else if (spell.talent && !(character.talents[spell.talent] > 0)) {
-                        button.textContent = 'Talent';
-                        button.disabled = true;
-                    } else if (!atTrainer) {
-                        button.textContent = 'Trainer';
-                        button.disabled = true;
-                    } else {
-                        button.textContent = rank > 0 ? 'Improve' : 'Train';
-                        button.addEventListener('click', () => sendCharacter('train', { spell: id }));
-                    }
-                    line.appendChild(button);
-                    body.appendChild(line);
-                }
+            function treeNodeRank(id, node) {
+                if (!node) return 0;
+                if (node.spell) return (character.trained || []).includes(node.spell) ? ((character.spellRanks && character.spellRanks[node.spell]) || 1) : 0;
+                return (character.talents && character.talents[id]) || 0;
             }
-
+            function treeNodeMax(node) {
+                if (!node) return 1;
+                if (node.spell) return ((character.spells || {})[node.spell] && character.spells[node.spell].maxRank) || 1;
+                return node.max || 1;
+            }
+            function treeNodeName(node) {
+                if (!node) return 'Talent';
+                if (node.spell) return ((character.spells || {})[node.spell] && character.spells[node.spell].name) || node.spell;
+                return node.name || 'Talent';
+            }
+            function treeDepth(id, tree, seen) {
+                const node = tree[id];
+                if (!node || !node.requires || !tree[node.requires] || seen.has(id)) return 0;
+                seen.add(id);
+                return treeDepth(node.requires, tree, seen) + 1;
+            }
             function renderTalentList(body) {
-                const defs = character.talentsDef || {};
-                const rows = Object.entries(defs).filter(([, def]) => def.class === character.class).sort((a, b) => a[1].row - b[1].row);
-                for (const [id, def] of rows) {
-                    const rank = (character.talents && character.talents[id]) || 0;
-                    const line = document.createElement('div');
-                    line.className = 'talent-row';
-                    const label = document.createElement('div');
-                    label.textContent = def.name + ' ' + rank + '/' + def.max + ' — ' + def.text;
-                    line.appendChild(label);
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'text-btn';
-                    button.textContent = rank >= def.max ? 'Max' : 'Learn';
-                    button.disabled = rank >= def.max;
-                    button.addEventListener('click', () => sendCharacter('talent', { id }));
-                    line.appendChild(button);
-                    body.appendChild(line);
+                if (!character.class) {
+                    const note = document.createElement('p');
+                    note.textContent = 'Choose a class before spending talent points.';
+                    body.appendChild(note);
+                    return;
                 }
+                const tree = character.tree || {};
+                const ids = Object.keys(tree).filter(id => tree[id].class === character.class);
+                const note = document.createElement('p');
+                note.textContent = (character.points || 0) + ' talent points. A node stays locked until the one before it is fully trained. A branch does not wait on the other branch.';
+                body.appendChild(note);
+                const depths = {};
+                let maxDepth = 0;
+                for (const id of ids) {
+                    depths[id] = treeDepth(id, tree, new Set());
+                    if (depths[id] > maxDepth) maxDepth = depths[id];
+                }
+                const wrap = document.createElement('div');
+                wrap.className = 'talent-tree';
+                for (let depth = 0; depth <= maxDepth; depth++) {
+                    const col = document.createElement('div');
+                    col.className = 'talent-col';
+                    const column = ids.filter(id => depths[id] === depth).sort((a, b) => {
+                        const pa = tree[a].requires || '';
+                        const pb = tree[b].requires || '';
+                        if (pa !== pb) return pa.localeCompare(pb);
+                        return treeNodeName(tree[a]).localeCompare(treeNodeName(tree[b]));
+                    });
+                    for (const id of column) {
+                        const node = tree[id];
+                        const rank = treeNodeRank(id, node);
+                        const max = treeNodeMax(node);
+                        const parent = node.requires ? tree[node.requires] : null;
+                        const open = !parent || treeNodeRank(node.requires, parent) >= treeNodeMax(parent);
+                        const card = document.createElement('div');
+                        card.className = 'talent-node' + (rank >= max ? ' maxed' : '') + (open ? '' : ' locked');
+                        const label = document.createElement('div');
+                        const bits = [treeNodeName(node) + '  ' + rank + '/' + max];
+                        if (node.spell) {
+                            const hit = spellHitText(node.spell, Math.max(1, rank));
+                            if (hit) bits.push(hit);
+                        } else if (node.text) bits.push(node.text);
+                        if (!open && parent) bits.push('Needs ' + treeNodeName(parent));
+                        label.textContent = bits.join(' · ');
+                        card.appendChild(label);
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'text-btn';
+                        if (rank >= max) {
+                            button.textContent = 'Max';
+                            button.disabled = true;
+                        } else if (!open) {
+                            button.textContent = 'Locked';
+                            button.disabled = true;
+                        } else if (!(character.points > 0)) {
+                            button.textContent = 'No points';
+                            button.disabled = true;
+                        } else {
+                            button.textContent = rank > 0 ? 'Improve' : 'Learn';
+                            button.addEventListener('click', () => sendCharacter('talent', { id }));
+                        }
+                        card.appendChild(button);
+                        col.appendChild(card);
+                    }
+                    if (column.length) wrap.appendChild(col);
+                }
+                body.appendChild(wrap);
             }
 
             function haveKind(kind) {
