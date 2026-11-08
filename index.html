@@ -2996,12 +2996,7 @@
                 const fill = document.getElementById('targetHpFill');
                 fill.style.width = (pct * 100) + '%';
                 fill.style.background = aimed.kind === 'player' ? '#3d9eff' : aimed.elite ? '#f1c40f' : '#e74c3c';
-                if (statLine) {
-                    if (aimed.kind === 'npc') {
-                        statLine.hidden = false;
-                        statLine.textContent = 'Unknown';
-                    } else statLine.hidden = true;
-                }
+                if (statLine) statLine.hidden = true;
                 targetRing.material.color.set(aimed.kind === 'player' ? 0x3d9eff : aimed.elite ? 0xf1c40f : 0xff3333);
                 targetRing.visible = true;
                 targetRing.position.set(aimed.group.position.x, 0.05, aimed.group.position.z);
