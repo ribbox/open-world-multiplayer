@@ -412,11 +412,12 @@
         .sheet-tab.on { background: #3d4f6f; }
         .slot:hover, .paper-slot.filled:hover { box-shadow: inset 0 0 0 2px var(--q, rgba(232, 206, 150, 0.85)); }
         .talent-tree { display: flex; justify-content: center; }
-        .t-wrap { display: flex; flex-direction: column; align-items: center; }
+        .t-wrap { display: flex; flex-direction: column; align-items: center; position: relative; }
         .talent-node {
+            position: relative; z-index: 1;
             width: 100px; min-height: 42px; padding: 4px 6px; font-size: 12px; line-height: 1.2;
             text-align: center; color: inherit; cursor: pointer;
-            border: 1px solid rgba(214, 176, 96, 0.5); background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(214, 176, 96, 0.5); background: rgba(20, 16, 12, 0.96);
         }
         .talent-node:disabled { cursor: default; }
         .talent-node .t-rank { color: #e2c48a; font-size: 11px; }
@@ -424,17 +425,18 @@
         .talent-node.locked { opacity: 0.45; }
         .talent-node.ready { border-color: #f1c40f; }
         .t-kids {
-            display: flex; justify-content: center; gap: 10px;
-            position: relative; margin-top: 8px; padding-top: 14px;
+            display: flex; justify-content: center;
+            position: relative; margin-top: 18px; padding-top: 18px;
         }
+        .t-kids > .t-wrap { padding: 0 6px; }
         .t-kids::before,
         .t-kids > .t-wrap::before {
-            content: ""; position: absolute; left: 50%; border-left: 1px solid #d6b060;
+            content: ""; position: absolute; top: -18px; left: calc(50% - 0.5px);
+            height: 18px; border-left: 1px solid #d6b060;
         }
-        .t-kids::before { top: -8px; height: 8px; }
-        .t-kids > .t-wrap::before { top: -14px; height: 14px; }
         .t-kids > .t-wrap::after {
-            content: ""; position: absolute; top: -14px; left: 0; right: 0; border-top: 1px solid #d6b060;
+            content: ""; position: absolute; top: -18px; left: 0; right: 0;
+            border-top: 1px solid #d6b060;
         }
         .t-kids > .t-wrap:first-child::after { left: 50%; }
         .t-kids > .t-wrap:last-child::after { right: 50%; }
