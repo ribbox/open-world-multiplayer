@@ -39,7 +39,7 @@
             grid-template-columns: repeat(4, 40px);
             gap: 3px;
         }
-        #bagHint { font-size: 11px; color: #ccc; margin-top: 8px; line-height: 1.3; }
+        #bagHint { display: none; }
         #nameRow { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
         #playerName { flex: 1; min-width: 0; }
         #itemTip {
@@ -597,7 +597,6 @@
                 <div id="supplySlots"></div>
             </div>
         </div>
-        <div id="bagHint">Click a health or mana potion to drink it. Click a bomb to throw it at your target. You can also put potions and explosives on the action bar. Right-click destroys one bag item or supply. Shift+right-click destroys the stack. Supplies and coins do not use bag slots.</div>
         <div id="nameRow">
             <span id="playerColor" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ccc;flex:0 0 auto;"></span>
             <input id="playerName" maxlength="16" placeholder="Name">
