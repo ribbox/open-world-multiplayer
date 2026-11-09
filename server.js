@@ -795,10 +795,10 @@ function gearReq(level) {
 
 function classBaseStats(player) {
     const steps = Math.max(0, (player.level || 1) - 1);
-    if (player.class === 'mage') {
+    if (player.class === 'mage' || player.class === 'warlock') {
         return { strength: 0, stamina: 1 + Math.floor(steps / 2), intellect: 1 + steps };
     }
-    if (player.class === 'warrior') {
+    if (player.class === 'warrior' || player.class === 'hunter') {
         return { strength: 1 + steps, stamina: 1 + Math.floor(steps / 2), intellect: 0 };
     }
     return { strength: 1, stamina: 1, intellect: 0 };
@@ -1186,7 +1186,7 @@ function talentRank(player, id) {
 }
 
 function maxManaFor(player) {
-    return 10 + ((player.level || 1) - 1) * 4 + talentRank(player, 'meditation') * 2;
+    return 10 + ((player.level || 1) - 1) * 4 + talentRank(player, 'meditation') * 2 + talentRank(player, 'reservoir') * 2;
 }
 
 function damageScale(playerLevel, mobLevel) {
@@ -1433,7 +1433,18 @@ const ABILITIES = {
     'arcane-surge': { weapon: 'staff', mana: 14, range: 8, bolt: true, damage: (level) => 12 + level * 2 },
     mend: { weapon: 'staff', mana: 8, range: 0, heal: (level) => 8 + level * 2 },
     barrier: { weapon: 'staff', mana: 12, range: 0, absorb: (level) => 6 + level * 2 },
-    'frost-nova': { weapon: 'staff', mana: 12, range: 4.2, aoe: 4.2, aoeSelf: true, slow: 3500, damage: (level) => 4 + level }
+    'frost-nova': { weapon: 'staff', mana: 12, range: 4.2, aoe: 4.2, aoeSelf: true, slow: 3500, damage: (level) => 4 + level },
+    bow: { weapon: 'bow', mana: 0, range: 9, bolt: true, damage: (level) => 4 + level },
+    'aimed-shot': { weapon: 'bow', mana: 6, range: 9, bolt: true, damage: (level) => 8 + level * 2 },
+    'wing-clip': { weapon: 'bow', mana: 4, range: 9, bolt: true, slow: 4000, damage: (level) => 2 + level },
+    'multi-shot': { weapon: 'bow', mana: 8, range: 9, aoe: 2.8, damage: (level) => 5 + level },
+    'kill-shot': { weapon: 'bow', mana: 8, range: 9, bolt: true, execute: 2, damage: (level) => 6 + level * 2 },
+    wand: { weapon: 'wand', mana: 5, range: 8, bolt: true, damage: (level) => 4 + level },
+    'shadow-bolt': { weapon: 'wand', mana: 8, range: 8, bolt: true, damage: (level) => 7 + level },
+    'drain-life': { weapon: 'wand', mana: 8, range: 8, bolt: true, leech: 1, damage: (level) => 4 + level },
+    curse: { weapon: 'wand', mana: 6, range: 8, bolt: true, slow: 5000, damage: (level) => 3 + level },
+    hellfire: { weapon: 'wand', mana: 12, range: 4.2, aoe: 4.2, aoeSelf: true, damage: (level) => 5 + level },
+    'soul-burn': { weapon: 'wand', mana: 14, range: 8, bolt: true, execute: 2, damage: (level) => 8 + level * 2 }
 };
 const ABILITY_COOLDOWN = {
     sword: 1200,
@@ -1448,7 +1459,18 @@ const ABILITY_COOLDOWN = {
     'arcane-surge': 8000,
     mend: 5000,
     barrier: 18000,
-    'frost-nova': 14000
+    'frost-nova': 14000,
+    bow: 1400,
+    'aimed-shot': 6000,
+    'wing-clip': 8000,
+    'multi-shot': 8000,
+    'kill-shot': 8000,
+    wand: 1400,
+    'shadow-bolt': 2000,
+    'drain-life': 5000,
+    curse: 8000,
+    hellfire: 12000,
+    'soul-burn': 8000
 };
 const POTION_COOLDOWN = 12000;
 const BOMB_COOLDOWN = 4000;
@@ -1463,15 +1485,16 @@ function startCooldown(player, key, ms, now) {
     player.cds[key] = now + ms;
 }
 
-const BAR_PAGES = 3;
+const BAR_PAGES = 4;
 const BAR_SLOTS = 8;
-const ACTION_IDS = new Set(['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind', 'staff', 'arcane-bolt', 'frost-bolt', 'arcane-surge', 'mend', 'barrier', 'frost-nova', 'gather', 'health', 'mana', 'bomb']);
+const ACTION_IDS = new Set(['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind', 'staff', 'arcane-bolt', 'frost-bolt', 'arcane-surge', 'mend', 'barrier', 'frost-nova', 'bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot', 'wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn', 'gather', 'health', 'mana', 'bomb']);
 
 function defaultActionBar() {
     return [
         ['sword', 'power-strike', 'gather', null, null, null, null, null],
         ['staff', 'arcane-bolt', 'mend', null, null, null, null, null],
-        [null, null, null, null, null, null, null, null]
+        ['bow', 'aimed-shot', 'gather', null, null, null, null, null],
+        ['wand', 'shadow-bolt', 'drain-life', null, null, null, null, null]
     ];
 }
 
@@ -1497,6 +1520,14 @@ const CLASS_KITS = {
     mage: {
         weapon: { kind: 'weapon', weapon: 'staff', name: 'Apprentice Staff', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { intellect: 1 }, reqLevel: 1 },
         trained: ['staff']
+    },
+    hunter: {
+        weapon: { kind: 'weapon', weapon: 'bow', name: 'Short Bow', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { strength: 1 }, reqLevel: 1 },
+        trained: ['bow']
+    },
+    warlock: {
+        weapon: { kind: 'weapon', weapon: 'wand', name: 'Apprentice Wand', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { intellect: 1 }, reqLevel: 1 },
+        trained: ['wand']
     }
 };
 const SPELLS = {
@@ -1512,7 +1543,18 @@ const SPELLS = {
     mend: { class: 'mage', name: 'Mend', level: 2, cost: 15, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4, power: 8, scale: 2, effect: 'heal' },
     barrier: { class: 'mage', name: 'Barrier', level: 6, cost: 28, maxRank: 5, rankCost: 16, mana: 12, manaRank: 4, power: 6, scale: 2, effect: 'shield' },
     'frost-nova': { class: 'mage', name: 'Frost Nova', level: 8, cost: 36, maxRank: 5, rankCost: 18, mana: 12, manaRank: 5, power: 4, scale: 1 },
-    'arcane-surge': { class: 'mage', name: 'Arcane Surge', level: 4, cost: 25, maxRank: 5, rankCost: 18, mana: 14, manaRank: 6, power: 12, scale: 2 }
+    'arcane-surge': { class: 'mage', name: 'Arcane Surge', level: 4, cost: 25, maxRank: 5, rankCost: 18, mana: 14, manaRank: 6, power: 12, scale: 2 },
+    bow: { class: 'hunter', name: 'Bow', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 0, manaRank: 2, power: 4, scale: 1 },
+    'aimed-shot': { class: 'hunter', name: 'Aimed Shot', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 6, manaRank: 3, power: 8, scale: 2 },
+    'wing-clip': { class: 'hunter', name: 'Wing Clip', level: 2, cost: 12, maxRank: 5, rankCost: 10, mana: 4, manaRank: 2, power: 2, scale: 1 },
+    'multi-shot': { class: 'hunter', name: 'Multi-Shot', level: 4, cost: 20, maxRank: 5, rankCost: 16, mana: 8, manaRank: 3, power: 5, scale: 1 },
+    'kill-shot': { class: 'hunter', name: 'Kill Shot', level: 6, cost: 30, maxRank: 5, rankCost: 16, mana: 8, manaRank: 4, power: 6, scale: 2, execute: true },
+    wand: { class: 'warlock', name: 'Wand', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 5, manaRank: 3, power: 4, scale: 1 },
+    'shadow-bolt': { class: 'warlock', name: 'Shadow Bolt', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4, power: 7, scale: 1 },
+    'drain-life': { class: 'warlock', name: 'Drain Life', level: 2, cost: 15, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4, power: 4, scale: 1, leech: 1 },
+    curse: { class: 'warlock', name: 'Curse', level: 3, cost: 15, maxRank: 5, rankCost: 12, mana: 6, manaRank: 3, power: 3, scale: 1 },
+    hellfire: { class: 'warlock', name: 'Hellfire', level: 8, cost: 36, maxRank: 5, rankCost: 18, mana: 12, manaRank: 5, power: 5, scale: 1 },
+    'soul-burn': { class: 'warlock', name: 'Soul Burn', level: 6, cost: 30, maxRank: 5, rankCost: 18, mana: 14, manaRank: 6, power: 8, scale: 2, execute: true }
 };
 const TREE = {
     sword: { class: 'warrior', spell: 'sword', requires: null },
@@ -1531,7 +1573,22 @@ const TREE = {
     'arcane-power': { class: 'mage', name: 'Arcane Power', max: 3, requires: 'meditation', text: '+1 spell damage per rank' },
     barrier: { class: 'mage', spell: 'barrier', requires: 'mend' },
     'frost-nova': { class: 'mage', spell: 'frost-nova', requires: 'frost-bolt' },
-    'arcane-surge': { class: 'mage', spell: 'arcane-surge', requires: 'arcane-power' }
+    'arcane-surge': { class: 'mage', spell: 'arcane-surge', requires: 'arcane-power' },
+    bow: { class: 'hunter', spell: 'bow', requires: null },
+    'aimed-shot': { class: 'hunter', spell: 'aimed-shot', requires: 'bow' },
+    'thick-hide': { class: 'hunter', name: 'Thick Hide', max: 3, requires: 'bow', text: '+1 armor per rank' },
+    'wing-clip': { class: 'hunter', spell: 'wing-clip', requires: 'aimed-shot' },
+    precision: { class: 'hunter', name: 'Precision', max: 3, requires: 'aimed-shot', text: '+1 shot damage per rank' },
+    'multi-shot': { class: 'hunter', spell: 'multi-shot', requires: 'wing-clip' },
+    'kill-shot': { class: 'hunter', spell: 'kill-shot', requires: 'precision' },
+    wand: { class: 'warlock', spell: 'wand', requires: null },
+    'shadow-bolt': { class: 'warlock', spell: 'shadow-bolt', requires: 'wand' },
+    reservoir: { class: 'warlock', name: 'Reservoir', max: 3, requires: 'wand', text: '+2 max mana per rank' },
+    'drain-life': { class: 'warlock', spell: 'drain-life', requires: 'shadow-bolt' },
+    curse: { class: 'warlock', spell: 'curse', requires: 'shadow-bolt' },
+    affliction: { class: 'warlock', name: 'Affliction', max: 3, requires: 'reservoir', text: '+1 spell damage per rank' },
+    hellfire: { class: 'warlock', spell: 'hellfire', requires: 'curse' },
+    'soul-burn': { class: 'warlock', spell: 'soul-burn', requires: 'affliction' }
 };
 const TALENTS = Object.fromEntries(Object.entries(TREE).filter(([, node]) => !node.spell).map(([id, node]) => [id, {
     class: node.class,
@@ -1595,6 +1652,8 @@ const RECIPES = {
     'plate-belt': { name: 'Plate Belt', set: 'plate', slot: 'waist', kind: 'armor', style: 'plate', armor: 2, cost: { ore: 2 }, loot: true },
     'iron-sword': { name: 'Iron Sword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', armor: 0, cost: { ore: 2, wood: 1 } },
     'oak-staff': { name: 'Oak Staff', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'staff', armor: 0, cost: { wood: 3 } },
+    'yew-bow': { name: 'Yew Bow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'bow', armor: 0, cost: { wood: 3 } },
+    'oak-wand': { name: 'Oak Wand', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'wand', armor: 0, cost: { wood: 2, gem: 1 } },
     'iron-buckler': { name: 'Iron Buckler', set: 'weapon', slot: 'offhand', kind: 'armor', style: 'plate', armor: 2, cost: { ore: 3 }, loot: true },
     'rune-blade': { name: 'Rune Blade', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'sword', magic: true, armor: 0, cost: { ore: 2, wood: 1, gem: 1 } },
     'arcane-staff': { name: 'Arcane Staff', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'staff', magic: true, armor: 0, cost: { wood: 2, gem: 1 } },
@@ -1675,7 +1734,7 @@ const APPRENTICE_LEVEL = {
     'cloth-hat': 1, 'cloth-gloves': 1, 'cloth-shoes': 15, 'cloth-pants': 30, 'cloth-robe': 50,
     'leather-cap': 1, 'leather-gloves': 10, 'leather-boots': 20, 'leather-pants': 35, 'leather-jerkin': 55,
     'plate-helm': 5, 'plate-gauntlets': 15, 'plate-sabatons': 25, 'plate-greaves': 40, 'plate-breastplate': 55,
-    'iron-sword': 1, 'oak-staff': 25,
+    'iron-sword': 1, 'oak-staff': 25, 'yew-bow': 10, 'oak-wand': 25,
     'rune-blade': 15, 'arcane-staff': 40,
     'minor-health': 1, 'minor-mana': 15,
     'rough-bomb': 1, 'bitter-flask': 20
@@ -1829,7 +1888,7 @@ function loadCharacter(prof) {
 }
 
 function armorValue(player) {
-    let total = talentRank(player, 'toughness');
+    let total = talentRank(player, 'toughness') + talentRank(player, 'thick-hide');
     let worn = false;
     for (const slot of EQUIP_SLOTS) {
         if (slot === 'weapon') continue;
@@ -2021,7 +2080,7 @@ function learnPattern(player, index) {
 
 function craftedStats(recipe) {
     if (!recipe || (recipe.kind !== 'armor' && recipe.kind !== 'weapon')) return { stats: {}, reqLevel: 1 };
-    const intellect = recipe.style === 'cloth' || recipe.weapon === 'staff';
+    const intellect = recipe.style === 'cloth' || recipe.weapon === 'staff' || recipe.weapon === 'wand';
     let amount = recipe.kind === 'weapon' ? 2 : Math.max(1, recipe.armor || 1);
     if (recipe.magic) amount += 2;
     if (recipe.loot) amount += 1;
@@ -3292,10 +3351,11 @@ wss.on('connection', (ws) => {
             startCooldown(player, abilityId, cdMax, now);
             enterCombat(player, now);
             const bolts = abilityId === 'arcane-bolt' ? Math.min(3, rank) : 1;
-            const statBonus = spec.weapon === 'sword'
+            const statBonus = (spec.weapon === 'sword' || spec.weapon === 'bow')
                 ? ((player.stats && player.stats.strength) || 0)
                 : ((player.stats && player.stats.intellect) || 0);
-            const per = (spellAmount(abilityId, player.level) + statBonus + (spec.weapon === 'sword' ? talentRank(player, 'might') : spec.damage ? talentRank(player, 'arcane-power') : 0)) * rankPower(rank);
+            const powerTalent = spec.weapon === 'sword' ? 'might' : spec.weapon === 'bow' ? 'precision' : spec.weapon === 'wand' ? 'affliction' : 'arcane-power';
+            const per = (spellAmount(abilityId, player.level) + statBonus + (spec.damage || spec.leech ? talentRank(player, powerTalent) : 0)) * rankPower(rank);
             const projectile = !!spec.bolt;
             const travel = projectile ? Math.min(900, Math.max(220, Math.round(dist * 140))) : 0;
             const victims = [npc];
@@ -3324,11 +3384,17 @@ wss.on('connection', (ws) => {
             });
             const finish = (dealt, killed, gained, leveled, chest, executed) => {
                 if (ws.readyState !== 1) return;
-                const note = executed ? 'Execute' : spec.slow ? 'Slowed' : 'Hit';
+                let drained = 0;
+                if (spec.leech && dealt > 0) {
+                    drained = Math.max(1, Math.round(dealt * spec.leech));
+                    player.hp = Math.min(player.maxHp, player.hp + drained);
+                }
+                const note = executed ? 'Execute' : spec.leech ? 'Drained' : spec.slow ? 'Slowed' : 'Hit';
                 send(ws, {
                     type: 'attackResult',
                     ok: true,
                     damage: dealt,
+                    drained,
                     bolts,
                     note,
                     npcId: npc.id,
@@ -4368,7 +4434,7 @@ function sanitizeItems(input) {
         let slot = ITEM_SLOTS.includes(raw.slot) ? raw.slot : '';
         if (!slot && kind === 'weapon') slot = 'weapon';
         const style = ITEM_STYLES.includes(raw.style) ? raw.style : '';
-        const weapon = raw.weapon === 'staff' || raw.weapon === 'sword' ? raw.weapon : (kind === 'weapon' ? 'sword' : '');
+        const weapon = raw.weapon === 'staff' || raw.weapon === 'sword' || raw.weapon === 'bow' || raw.weapon === 'wand' ? raw.weapon : (kind === 'weapon' ? 'sword' : '');
         let set = String(raw.set || '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '').slice(0, 24);
         if (!set) set = kind === 'health' || kind === 'mana' ? 'alchemy' : kind === 'bomb' ? 'explosive' : kind === 'weapon' ? 'weapon' : 'cloth';
         out.push({

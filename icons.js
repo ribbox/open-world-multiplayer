@@ -69,7 +69,12 @@ export function iconIndex(value) {
 export function defaultIconName(item) {
     if (!item) return '';
     if (item.icon != null && String(item.icon).trim() !== '') return String(item.icon).trim();
-    if (item.kind === 'weapon') return item.weapon === 'staff' ? 'staff' : 'sword';
+    if (item.kind === 'weapon') {
+        if (item.weapon === 'staff') return 'staff';
+        if (item.weapon === 'bow') return 'bow';
+        if (item.weapon === 'wand') return 'wand';
+        return 'sword';
+    }
     if (item.kind === 'health' || item.kind === 'mana' || item.kind === 'bomb') return item.kind;
     if (item.kind === 'armor') {
         const key = (item.slot || 'chest') + '-' + (item.style || 'plate');

@@ -393,7 +393,7 @@
             border-bottom: 1px solid rgba(255,255,255,0.08); padding: 2px 0;
         }
         .stat-line span:last-child { color: #f1c40f; }
-        #sheet .row { display: flex; gap: 28px; align-items: flex-start; }
+        #sheet .row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
         #sheet .views { display: flex; gap: 6px; margin: 0 0 12px; }
         #doll {
             position: relative;
@@ -434,7 +434,7 @@
             border-radius: 4px; cursor: pointer;
         }
         .paper-slot.filled { background-color: #3d4f6f; }
-        .class-pick { width: 220px; min-height: 88px; padding: 8px; text-align: left; }
+        .class-pick { width: 168px; min-height: 88px; padding: 8px; text-align: left; white-space: pre-line; }
         .sheet-tab { padding: 4px 10px; margin-right: 4px; }
         .sheet-tab.on { background: #3d4f6f; }
         .slot:hover, .paper-slot.filled:hover { box-shadow: inset 0 0 0 2px var(--q, rgba(232, 206, 150, 0.85)); }
@@ -626,14 +626,14 @@
         Enter: Talk. The open tab is the channel. /p is the party, /w Name whispers, /t whispers your target<br>
         Sounds play for combat, gathering, loot, quests, travel, chat, and the other events<br>
         C: Character sheet. Reset character is on that page and returns you to level 1<br>
-        Strength raises melee hits, Intellect raises spells and mana, Stamina raises health<br>
+        Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
         Spells and talents share one tree and spend talent points. The next node stays locked until the one before it is fully trained. A branch does not wait on the other branch<br>
-        Hamstring and Frost Bolt slow. Execute doubles damage under 35% health. Cleave and Whirlwind hit nearby foes. Barrier soaks hits. Frost Nova does both<br>
+        Hamstring, Wing Clip, Frost Bolt, and Curse slow. Execute, Kill Shot, and Soul Burn double damage under 35% health. Cleave, Multi-Shot, Whirlwind, Frost Nova, and Hellfire hit nearby foes. Drain Life returns the damage as health. Barrier soaks hits<br>
         The bar is your level and experience. Armor and stats are on the character sheet<br>
         Camps are safe. Creatures walk out, and you cannot attack while you are inside. The camp name appears when you enter<br>
         Tracked quests mark the zone, the dungeon portal, or the turn-in on the minimap<br>
-        Crafted armor and weapons add stats. Cloth and staves favor Intellect, swords and leather favor Strength<br>
+        Crafted armor and weapons add stats. Cloth, staves, and wands favor Intellect. Swords, bows, and leather favor Strength<br>
         Setup downloads quests and items, or copies them so you can paste into cell A1<br>
         Character sheet Craft tab makes gear. A shop sells health and mana potions, and has Buy and Sell tabs<br>
         100 coins make 1 silver, and 100 silver make 1 gold<br>
@@ -1351,6 +1351,10 @@
                         if (!obj.isMesh) return;
                         obj.castShadow = true;
                         obj.receiveShadow = true;
+                        if (options.tint != null && obj.material) {
+                            obj.material = obj.material.clone();
+                            if (obj.material.color) obj.material.color.set(options.tint);
+                        }
                     });
                     root.add(model);
                 }, undefined, (err) => console.warn('Tool failed', url, err));
@@ -1360,6 +1364,32 @@
             const pickaxe = holdTool('/models/pick_axe.glb', { length: 1.05, x: 0.34, y: 0.9, z: 0.26, tilt: -0.5 });
             const sword = holdTool('/models/stylized_emerald_sword.glb', { length: 1.05, x: 0.26, y: 0.95, z: 0.2, tilt: -0.2, spinZ: Math.PI / 2 - 0.802 });
             const staff = holdTool('/models/wizards_staff.glb', { length: 1.45, x: 0.2, y: 0.82, z: 0.16, tilt: -0.4 });
+            const wand = holdTool('/models/wizards_staff.glb', { length: 0.85, x: 0.28, y: 0.95, z: 0.18, tilt: -0.7, tint: 0x6b3fa0 });
+            function holdShape(build, options) {
+                const root = new THREE.Group();
+                root.position.set(options.x, options.y, options.z);
+                root.rotation.z = options.tilt || 0;
+                root.userData.rest = root.rotation.clone();
+                root.visible = false;
+                characterGroup.add(root);
+                root.add(build());
+                return root;
+            }
+            const bow = holdShape(() => {
+                const group = new THREE.Group();
+                const limb = new THREE.Mesh(
+                    new THREE.TorusGeometry(0.46, 0.028, 6, 18, Math.PI * 1.2),
+                    new THREE.MeshStandardMaterial({ color: 0x8a5a32, roughness: 0.55 })
+                );
+                limb.rotation.z = Math.PI / 2;
+                const string = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.008, 0.008, 0.86, 4),
+                    new THREE.MeshStandardMaterial({ color: 0xead8b0 })
+                );
+                string.position.x = 0.16;
+                group.add(limb, string);
+                return group;
+            }, { x: 0.22, y: 1.05, z: 0.16, tilt: -0.15 });
 
             const ACTIONS = {
                 sword: { name: 'Sword', short: 'Swd', kind: 'weapon', weapon: 'sword', hint: 'A higher rank hits harder. 1.2s.' },
@@ -1375,18 +1405,30 @@
                 mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Restore health. 5s.' },
                 barrier: { name: 'Barrier', short: 'Bar', kind: 'spell', weapon: 'staff', hint: 'Mage spell. A shield that soaks the next hits. 18s.' },
                 'frost-nova': { name: 'Frost Nova', short: 'Nova', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Frost and a slow around you. 14s.' },
+                bow: { name: 'Bow', short: 'Bow', kind: 'weapon', weapon: 'bow', hint: 'A ranged shot. A higher rank hits harder. 1.4s.' },
+                'aimed-shot': { name: 'Aimed Shot', short: 'Aim', kind: 'spell', weapon: 'bow', hint: 'Hunter spell. A heavy shot. 6s.' },
+                'wing-clip': { name: 'Wing Clip', short: 'Clip', kind: 'spell', weapon: 'bow', hint: 'Hunter spell. A shot that slows. 8s.' },
+                'multi-shot': { name: 'Multi-Shot', short: 'Multi', kind: 'spell', weapon: 'bow', hint: 'Hunter spell. Hits the target and anyone beside them. 8s.' },
+                'kill-shot': { name: 'Kill Shot', short: 'Kill', kind: 'spell', weapon: 'bow', hint: 'Hunter spell. Double damage under 35% health. 8s.' },
+                wand: { name: 'Wand', short: 'Wnd', kind: 'weapon', weapon: 'wand', hint: 'A shadow bolt. 1.4s.' },
+                'shadow-bolt': { name: 'Shadow Bolt', short: 'Shd', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. A hard bolt. 2s.' },
+                'drain-life': { name: 'Drain Life', short: 'Drain', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. The damage returns as health. 5s.' },
+                curse: { name: 'Curse', short: 'Curse', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. A bolt that slows. 8s.' },
+                hellfire: { name: 'Hellfire', short: 'Hell', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. Hits every hostile around you. 12s.' },
+                'soul-burn': { name: 'Soul Burn', short: 'Soul', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. Double damage under 35% health. 8s.' },
                 gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.' },
                 health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion. Shares a 12s wait with mana potions.' },
                 mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion. Shares a 12s wait with health potions.' },
                 bomb: { name: 'Explosives', short: 'Bomb', kind: 'explosive', item: 'bomb', hint: 'Throw a bomb at the targeted hostile. 4s.' }
             };
-            const BAR_PAGES = 3;
+            const BAR_PAGES = 4;
             const BAR_SLOTS = 8;
             function defaultActionBar() {
                 return [
                     ['sword', 'power-strike', 'gather', null, null, null, null, null],
                     ['staff', 'arcane-bolt', 'mend', null, null, null, null, null],
-                    [null, null, null, null, null, null, null, null]
+                    ['bow', 'aimed-shot', 'gather', null, null, null, null, null],
+                    ['wand', 'shadow-bolt', 'drain-life', null, null, null, null, null]
                 ];
             }
             let equippedWeapon = 'sword';
@@ -1398,13 +1440,15 @@
             let restoreWeapon = false;
 
             function updateToolUI() {
-                const names = { axe: 'Axe', pickaxe: 'Pickaxe', sword: 'Sword', staff: 'Staff' };
+                const names = { axe: 'Axe', pickaxe: 'Pickaxe', sword: 'Sword', staff: 'Staff', bow: 'Bow', wand: 'Wand' };
                 const toolLabel = document.getElementById('toolName');
                 if (toolLabel) toolLabel.textContent = names[currentTool] || currentTool;
                 axe.visible = currentTool === 'axe';
                 pickaxe.visible = currentTool === 'pickaxe';
                 sword.visible = currentTool === 'sword';
                 staff.visible = currentTool === 'staff';
+                bow.visible = currentTool === 'bow';
+                wand.visible = currentTool === 'wand';
             }
             updateToolUI();
 
@@ -1562,8 +1606,8 @@
                     if (SLOT_NAMES[item.slot]) lines.push(SLOT_NAMES[item.slot]);
                     lines.push('Armor +' + (item.armor || 0));
                 } else if (item.kind === 'weapon') {
-                    const weapon = item.weapon === 'staff' ? 'Staff' : 'Sword';
-                    lines.push((item.magic ? 'Magic ' : '') + weapon);
+                    const names = { sword: 'Sword', staff: 'Staff', bow: 'Bow', wand: 'Wand' };
+                    lines.push((item.magic ? 'Magic ' : '') + (names[item.weapon] || 'Weapon'));
                     if (SLOT_NAMES[item.slot]) lines.push(SLOT_NAMES[item.slot]);
                     if (item.armor) lines.push('Armor +' + item.armor);
                 } else if (item.kind === 'recipe') lines.push('Pattern · click to learn');
@@ -1807,15 +1851,15 @@
                 swingTime += delta;
                 const t = Math.min(swingTime / swingDuration, 1);
                 const swingT = Math.sin(t * Math.PI);
-                const tool = currentTool === 'axe' ? axe : currentTool === 'pickaxe' ? pickaxe : currentTool === 'staff' ? staff : sword;
+                const tool = currentTool === 'axe' ? axe : currentTool === 'pickaxe' ? pickaxe : currentTool === 'staff' ? staff : currentTool === 'wand' ? wand : currentTool === 'bow' ? bow : sword;
                 const rest = tool.userData.rest;
                 if (currentTool === 'axe') {
                     tool.rotation.x = -1.2 * swingT;
                     tool.rotation.z = (rest ? rest.z : 0) - 0.6 * swingT;
-                } else if (currentTool === 'sword') {
+                } else if (currentTool === 'sword' || currentTool === 'bow') {
                     tool.rotation.z = (rest ? rest.z : 0) - 1.3 * swingT;
                     tool.rotation.x = -0.35 * swingT;
-                } else if (currentTool === 'staff') {
+                } else if (currentTool === 'staff' || currentTool === 'wand') {
                     tool.rotation.x = -0.9 * swingT;
                     tool.rotation.z = rest ? rest.z : 0;
                 } else {
@@ -3280,7 +3324,7 @@
                 updateToolUI();
                 renderBar();
                 if (!playSwing()) return;
-                sfx(ability === 'mend' ? 'heal' : ability === 'barrier' ? 'shield' : (ability === 'frost-bolt' || ability === 'frost-nova') ? 'frost' : action.weapon === 'staff' ? 'spell' : 'swing');
+                sfx(ability === 'mend' || ability === 'drain-life' ? 'heal' : ability === 'barrier' ? 'shield' : (ability === 'frost-bolt' || ability === 'frost-nova') ? 'frost' : (action.weapon === 'staff' || action.weapon === 'wand') ? 'spell' : 'swing');
                 if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
                     showMessage('Not connected');
                     return;
@@ -3558,18 +3602,23 @@
 
             function launchCast(cast) {
                 const color = cast.ability === 'arcane-surge' ? 0xd980ff
-                    : cast.ability === 'mend' ? 0x3ddc84
+                    : cast.ability === 'mend' || cast.ability === 'drain-life' ? 0x3ddc84
                     : cast.ability === 'barrier' ? 0x9ad4ff
                     : (cast.ability === 'frost-bolt' || cast.ability === 'frost-nova') ? 0xb8f0ff
                     : cast.ability === 'whirlwind' ? 0xffd27a
+                    : cast.ability === 'hellfire' ? 0xe67e22
+                    : (cast.ability === 'bow' || cast.ability === 'aimed-shot' || cast.ability === 'wing-clip' || cast.ability === 'kill-shot' || cast.ability === 'multi-shot') ? 0xd7c08a
+                    : (cast.ability === 'wand' || cast.ability === 'shadow-bolt' || cast.ability === 'curse' || cast.ability === 'soul-burn') ? 0x9b59b6
                     : 0x7ecbff;
-                if (cast.ability === 'frost-nova' || cast.ability === 'whirlwind') {
+                if (cast.ability === 'frost-nova' || cast.ability === 'whirlwind' || cast.ability === 'hellfire' || cast.ability === 'multi-shot') {
                     const n = cast.ability === 'frost-nova' ? 8 : 6;
+                    const ox = cast.ability === 'multi-shot' ? (cast.tx || cast.x) : cast.x;
+                    const oz = cast.ability === 'multi-shot' ? (cast.tz || cast.z) : cast.z;
                     for (let i = 0; i < n; i++) {
                         const ang = (i / n) * Math.PI * 2;
                         launchShot(
-                            { x: cast.x, y: 1, z: cast.z },
-                            { x: cast.x + Math.sin(ang) * 2.4, y: 0.55, z: cast.z + Math.cos(ang) * 2.4 },
+                            { x: ox, y: 1, z: oz },
+                            { x: ox + Math.sin(ang) * 2.4, y: 0.55, z: oz + Math.cos(ang) * 2.4 },
                             color, 0, 0.28
                         );
                     }
@@ -3580,7 +3629,8 @@
                     launchShot({ x: cast.x, y: 1.1, z: cast.z }, { x: cast.x, y: 2.5, z: cast.z }, color, 0, 0.45);
                     return;
                 }
-                if (cast.ability !== 'staff' && cast.ability !== 'arcane-bolt' && cast.ability !== 'arcane-surge' && cast.ability !== 'frost-bolt' && cast.ability !== 'mend') return;
+                const shot = { staff: 1, 'arcane-bolt': 1, 'arcane-surge': 1, 'frost-bolt': 1, mend: 1, bow: 1, 'aimed-shot': 1, 'wing-clip': 1, 'kill-shot': 1, wand: 1, 'shadow-bolt': 1, 'drain-life': 1, curse: 1, 'soul-burn': 1 };
+                if (!shot[cast.ability]) return;
                 const n = cast.bolts || 1;
                 const duration = (cast.travel || 400) / 1000;
                 const angle = Math.atan2((cast.tx || 0) - cast.x, (cast.tz || 0) - cast.z);
@@ -3660,7 +3710,7 @@
                             showMessage(action.name + ' equipped');
                             return;
                         }
-                        tryAttack(action.weapon === 'staff' ? 'staff' : 'sword');
+                        tryAttack(id);
                         return;
                     }
                     tryAttack(id);
@@ -3672,7 +3722,7 @@
                         showMessage('Equip a ' + action.weapon + ' on your character sheet');
                         return;
                     }
-                    tryAttack(action.weapon === 'staff' ? 'staff' : 'sword');
+                    tryAttack(id);
                     return;
                 }
                 if (worn !== action.weapon) {
@@ -4496,6 +4546,8 @@
             const PICKER_GROUPS = [
                 ['Warrior', ['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind']],
                 ['Mage', ['staff', 'arcane-bolt', 'frost-bolt', 'mend', 'barrier', 'frost-nova', 'arcane-surge']],
+                ['Hunter', ['bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot']],
+                ['Warlock', ['wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn']],
                 ['Field', ['gather']],
                 ['Potions', ['health', 'mana']],
                 ['Explosives', ['bomb']]
@@ -4518,11 +4570,10 @@
                 const level = stats.level || 1;
                 const raw = spell.power + level * (spell.scale || 0);
                 const effect = spell.effect || 'damage';
-                const melee = effect === 'damage' && spell.class === 'warrior';
+                const melee = effect === 'damage' && (spell.class === 'warrior' || spell.class === 'hunter');
                 const stat = melee ? (stats.strength || 0) : (stats.intellect || 0);
-                const talent = effect !== 'damage' ? 0 : melee
-                    ? ((character.talents && character.talents.might) || 0)
-                    : ((character.talents && character.talents['arcane-power']) || 0);
+                const bonusId = spell.class === 'hunter' ? 'precision' : spell.class === 'warlock' ? 'affliction' : melee ? 'might' : 'arcane-power';
+                const talent = effect !== 'damage' ? 0 : ((character.talents && character.talents[bonusId]) || 0);
                 const scaled = (raw + stat + talent) * (1 + Math.max(0, rank - 1) * 0.2);
                 const each = Math.max(1, Math.round(scaled));
                 const bolts = id === 'arcane-bolt' ? (rank >= 5 ? 3 : rank >= 3 ? 2 : 1) : 1;
@@ -4532,11 +4583,13 @@
             function spellHitText(id, rank) {
                 const hit = spellHit(id, rank);
                 if (!hit) return '';
+                const spell = (character.spells || {})[id];
                 if (hit.effect === 'heal') return 'Heals ' + hit.each;
                 if (hit.effect === 'shield') return 'Shields ' + hit.each;
                 if (hit.execute) return hit.each + ' damage, ' + hit.finish + ' below 35% health';
-                if (hit.bolts > 1) return (hit.each * hit.bolts) + ' damage, ' + hit.each + ' each bolt';
-                return hit.each + ' damage';
+                const leech = spell && spell.leech ? ', returns ' + hit.each + ' health' : '';
+                if (hit.bolts > 1) return (hit.each * hit.bolts) + ' damage, ' + hit.each + ' each bolt' + leech;
+                return hit.each + ' damage' + leech;
             }
 
             function actionTitle(id, action) {
@@ -4548,6 +4601,65 @@
                     extra = ' Rank ' + rank + (hit ? '. ' + hit + '.' : '.');
                 }
                 return action.name + '.' + extra + ' ' + action.hint + ' Right-click to assign.';
+            }
+
+            function drawAbilityIcon(g, id) {
+                g.clearRect(0, 0, 64, 64);
+                const shadow = id === 'wand' || id === 'shadow-bolt' || id === 'curse' || id === 'soul-burn' || id === 'hellfire' || id === 'drain-life';
+                g.strokeStyle = shadow ? '#c39bff' : '#e6c27a';
+                g.fillStyle = shadow ? '#6b3fa0' : '#8a5a32';
+                g.lineWidth = 4;
+                if (id === 'wand' || id === 'soul-burn') {
+                    g.beginPath();
+                    g.moveTo(18, 50);
+                    g.lineTo(40, 16);
+                    g.stroke();
+                    g.beginPath();
+                    g.fillStyle = id === 'soul-burn' ? '#e67e22' : '#9b59b6';
+                    g.arc(42, 14, 8, 0, Math.PI * 2);
+                    g.fill();
+                } else if (id === 'shadow-bolt' || id === 'curse' || id === 'drain-life') {
+                    g.beginPath();
+                    g.fillStyle = id === 'drain-life' ? '#3ddc84' : '#9b59b6';
+                    g.arc(32, 32, 16, 0, Math.PI * 2);
+                    g.fill();
+                    if (id === 'curse') {
+                        g.strokeStyle = '#2b1030';
+                        g.stroke();
+                    }
+                } else if (id === 'hellfire') {
+                    g.fillStyle = '#e67e22';
+                    g.beginPath();
+                    g.moveTo(32, 8);
+                    g.lineTo(44, 28);
+                    g.lineTo(58, 24);
+                    g.lineTo(46, 38);
+                    g.lineTo(52, 56);
+                    g.lineTo(32, 46);
+                    g.lineTo(12, 56);
+                    g.lineTo(18, 38);
+                    g.lineTo(6, 24);
+                    g.lineTo(20, 28);
+                    g.closePath();
+                    g.fill();
+                } else {
+                    g.beginPath();
+                    g.arc(24, 32, 18, Math.PI * 0.7, Math.PI * 1.3);
+                    g.stroke();
+                    g.beginPath();
+                    g.moveTo(30, 16);
+                    g.lineTo(30, 48);
+                    g.stroke();
+                    if (id === 'aimed-shot' || id === 'kill-shot' || id === 'multi-shot') {
+                        g.fillStyle = id === 'kill-shot' ? '#e74c3c' : '#f4efe4';
+                        g.beginPath();
+                        g.moveTo(46, 32);
+                        g.lineTo(34, 26);
+                        g.lineTo(34, 38);
+                        g.closePath();
+                        g.fill();
+                    }
+                }
             }
 
             function paintSheetIcon(g, index, x, y, size) {
@@ -4568,7 +4680,8 @@
                     const spots = n === 1 ? [[8, 8, 48]] : n === 2 ? [[2, 18, 34], [28, 8, 34]] : [[0, 28, 26], [19, 18, 26], [36, 6, 26]];
                     for (const [x, y, size] of spots) paintSheetIcon(g, SHEET_ICONS['arcane-bolt'], x, y, size);
                 } else {
-                    paintSheetIcon(g, SHEET_ICONS[id], 0, 0, 64);
+                    if (SHEET_ICONS[id] != null) paintSheetIcon(g, SHEET_ICONS[id], 0, 0, 64);
+                    else drawAbilityIcon(g, id);
                 }
                 return canvas;
             }
@@ -4714,7 +4827,19 @@
                 const kind = item.kind;
                 const slot = item.slot || 'chest';
                 let index = iconIndex(item.icon);
-                if (index == null && kind === 'weapon') index = item.weapon === 'staff' ? SHEET_ICONS.staff : SHEET_ICONS.sword;
+                if (index == null && kind === 'weapon') {
+                    if (item.weapon === 'bow' || item.weapon === 'wand') {
+                        drawAbilityIcon(g, item.weapon);
+                        if (item.magic) paintSheetIcon(g, SHEET_ICONS.gem, 40, 2, 22);
+                        if (faded) {
+                            g.globalCompositeOperation = 'source-atop';
+                            g.fillStyle = 'rgba(20, 24, 32, 0.45)';
+                            g.fillRect(0, 0, 64, 64);
+                        }
+                        return canvas;
+                    }
+                    index = item.weapon === 'staff' ? SHEET_ICONS.staff : SHEET_ICONS.sword;
+                }
                 if (index == null) index = SHEET_ICONS[kind];
                 if (index == null) {
                     const row = GEAR_ICONS[slot] || GEAR_ICONS.chest;
@@ -5157,7 +5282,7 @@
                 if (!data) return;
                 character = data;
                 const worn = wornWeapon();
-                if (worn && (currentTool === 'sword' || currentTool === 'staff')) {
+                if (worn && currentTool !== 'axe' && currentTool !== 'pickaxe') {
                     equippedWeapon = worn;
                     currentTool = worn;
                     updateToolUI();
@@ -5734,8 +5859,10 @@
                     const row = document.createElement('div');
                     row.className = 'row';
                     for (const [id, name, text] of [
-                        ['warrior', 'Warrior', 'Strength and stamina. One tree of attacks and talents.'],
-                        ['mage', 'Mage', 'Intellect and stamina. One tree of spells and talents.']
+                        ['warrior', 'Warrior', 'Strength and stamina. Melee attacks.'],
+                        ['mage', 'Mage', 'Intellect and stamina. Spells and barriers.'],
+                        ['hunter', 'Hunter', 'Strength and stamina. Ranged shots.'],
+                        ['warlock', 'Warlock', 'Intellect and stamina. Shadow and drain.']
                     ]) {
                         const button = document.createElement('button');
                         button.type = 'button';
@@ -5763,7 +5890,8 @@
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.className = 'paper-slot ' + slot + (piece ? ' filled' : '');
-                    const shown = piece || { kind: slot === 'weapon' ? 'weapon' : 'armor', slot, weapon: slot === 'weapon' && character.class === 'mage' ? 'staff' : 'sword' };
+                    const emptyWeapon = { mage: 'staff', hunter: 'bow', warlock: 'wand' }[character.class] || 'sword';
+                    const shown = piece || { kind: slot === 'weapon' ? 'weapon' : 'armor', slot, weapon: slot === 'weapon' ? emptyWeapon : 'sword' };
                     paintItem(button, shown, !piece);
                     button.title = '';
                     if (piece) {
@@ -6092,8 +6220,10 @@
                     for (const c of allColliders) {
                         if (c.gather && Math.hypot(px - c.x, pz - c.z) < 2.8) near = true;
                     }
+                    const basic = { sword: 'sword', staff: 'staff', bow: 'bow', wand: 'wand' };
+                    const worn = character.class ? wornWeapon() : equippedWeapon;
                     if (near) tryGather();
-                    else if ((character.class ? wornWeapon() : equippedWeapon) === 'sword') tryAttack('sword');
+                    else if (basic[worn]) tryAttack(basic[worn]);
                     else showMessage('Select a spell');
                 }
                 if (k === 'l') toggleQuestLog();
@@ -6909,7 +7039,7 @@
                                 showMessage((ready ? xp + ' · ' + ready : xp) + cost);
                                 if (data.chest) addChest(data.chest);
                             } else if (ready) showMessage(ready + cost);
-                            else if (data.damage) showMessage((data.note || 'Hit') + ' ' + data.damage + cost);
+                            else if (data.damage) showMessage((data.note || 'Hit') + ' ' + data.damage + (data.drained ? ' · +' + data.drained + ' HP' : '') + cost);
                             else if (cost) showMessage(cost.slice(3));
                         }
                     } else if (data.type === 'partyAward') {
