@@ -613,7 +613,7 @@
         E: Gather if something is close, otherwise attack your target<br>
         Click an NPC or another player, or press Tab, to target them<br>
         P: Invite the targeted player. A party holds up to 5. A nearby member shares kill experience and quest credit<br>
-        Enter: Talk. /p speaks to the party, /w Name whispers, /t whispers your target, and anything else is heard by the world<br>
+        Enter: Talk. The open tab is the channel. /p is the party, /w Name whispers, /t whispers your target<br>
         Sounds play for combat, gathering, loot, quests, travel, chat, and the other events<br>
         C: Character sheet. Reset character is on that page and returns you to level 1<br>
         Strength raises melee hits, Intellect raises spells and mana, Stamina raises health<br>
@@ -817,6 +817,8 @@
             for (const pane of document.querySelectorAll('.log-pane')) pane.hidden = pane.dataset.log !== tab;
             const pane = logPane(tab);
             if (pane) pane.scrollTop = pane.scrollHeight;
+            const input = document.getElementById('chatInput');
+            if (input) input.placeholder = tab === 'party' ? 'Party' : tab === 'whisper' ? 'Whisper' : 'World';
         }
         function addLogLine(tab, text, kind) {
             const pane = logPane(tab);
@@ -3313,39 +3315,50 @@
             function parseChat(raw) {
                 const text = String(raw || '').trim();
                 if (!text) return null;
-                let match = text.match(/^\/w(?:hisper)?\s+([\s\S]+)$/i);
-                if (match) {
-                    const rest = match[1].trim();
+                const pref = text.match(/^(?:\/)?(party|whisper|world|say|p|w|t|s)[:\s]+([\s\S]*)$/i);
+                let channel = chatTab === 'party' || chatTab === 'whisper' ? chatTab : 'world';
+                let body = text;
+                let forced = '';
+                if (pref) {
+                    forced = pref[1].toLowerCase();
+                    body = pref[2].trim();
+                    if (forced === 'p' || forced === 'party') channel = 'party';
+                    else if (forced === 'w' || forced === 'whisper') channel = 'whisper';
+                    else if (forced === 't') channel = 'tell';
+                    else channel = 'world';
+                }
+                if (!body) return { error: 'Type a message' };
+                if (channel === 'tell' || (channel === 'whisper' && forced)) {
+                    if (forced === 't' || channel === 'tell') {
+                        const aimed = currentTarget();
+                        if (!aimed || aimed.kind !== 'player') return { error: 'Select a player, then use /t' };
+                        return { channel: 'whisper', toId: aimed.id, to: aimed.name, text: body };
+                    }
                     const known = [];
                     for (const entry of remotePlayers.values()) {
                         if (entry.data && entry.data.name) known.push(entry.data.name);
                     }
                     known.sort((a, b) => b.length - a.length);
-                    const lower = rest.toLowerCase();
+                    const lower = body.toLowerCase();
                     for (const name of known) {
                         const key = name.toLowerCase();
                         if (lower === key || lower.startsWith(key + ' ')) {
-                            const body = rest.slice(name.length).trim();
-                            if (!body) return { error: 'Use /w Name message' };
-                            return { channel: 'whisper', to: name, text: body };
+                            const said = body.slice(name.length).trim();
+                            if (!said) return { error: 'Use /w Name message' };
+                            return { channel: 'whisper', to: name, text: said };
                         }
                     }
-                    const parts = rest.split(/\s+/);
+                    const parts = body.split(/\s+/);
                     if (parts.length < 2) return { error: 'Use /w Name message' };
                     return { channel: 'whisper', to: parts[0], text: parts.slice(1).join(' ') };
                 }
-                match = text.match(/^\/t(?:ell)?\s+([\s\S]+)$/i);
-                if (match) {
+                if (channel === 'whisper') {
+                    if (lastTell) return { channel: 'whisper', to: lastTell, text: body };
                     const aimed = currentTarget();
-                    if (!aimed || aimed.kind !== 'player') return { error: 'Select a player, then use /t' };
-                    return { channel: 'whisper', toId: aimed.id, to: aimed.name, text: match[1].trim() };
+                    if (aimed && aimed.kind === 'player') return { channel: 'whisper', toId: aimed.id, to: aimed.name, text: body };
+                    return { error: 'Use /w Name, or target a player' };
                 }
-                match = text.match(/^\/p(?:arty)?\s+([\s\S]+)$/i);
-                if (match) return { channel: 'party', text: match[1].trim() };
-                match = text.match(/^\/s(?:ay)?\s+([\s\S]+)$/i);
-                if (match) return { channel: 'world', text: match[1].trim() };
-                if (text.startsWith('/')) return { error: 'Use /p, /w Name, or /t' };
-                return { channel: 'world', text };
+                return { channel, text: body };
             }
             document.getElementById('chatForm').addEventListener('submit', (e) => {
                 e.preventDefault();
