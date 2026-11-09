@@ -2056,8 +2056,15 @@ function learnTier(player, setId) {
     return null;
 }
 
+function ensureCraftSkill(player, setId) {
+    if (!CRAFT_SETS[setId]) return null;
+    if (!player.craftSkill || typeof player.craftSkill !== 'object') player.craftSkill = {};
+    if (!player.craftSkill[setId]) player.craftSkill[setId] = { level: 1, xp: 0, tiers: [0] };
+    return player.craftSkill[setId];
+}
+
 function grantCraftXp(player, recipe) {
-    const skill = player.craftSkill && player.craftSkill[recipe.set];
+    const skill = ensureCraftSkill(player, recipe.set);
     if (!skill) return '';
     const gain = craftXpGain(recipe.craftLevel || 1, skill.level);
     if (!gain) return 'No skill gain';
@@ -2078,7 +2085,7 @@ function craftItem(player, id) {
     const recipe = RECIPES[id];
     if (!recipe) return 'Unknown recipe';
     if (!player.recipes.includes(id)) return 'Recipe not learned';
-    const skill = (player.craftSkill && player.craftSkill[recipe.set]) || { level: 1, xp: 0, tiers: [0] };
+    const skill = ensureCraftSkill(player, recipe.set) || { level: 1, xp: 0, tiers: [0] };
     const tier = recipe.tier || 0;
     if (!(skill.tiers || [0]).includes(tier)) return 'Train tier ' + tier + ' at a trainer';
     if (skill.level < tier) return 'Requires crafting level ' + tier;
@@ -2360,6 +2367,7 @@ function savePlayer(player) {
     prof.talents = player.talents;
     prof.spellRanks = player.spellRanks || {};
     prof.recipes = player.recipes || [];
+    prof.craftSkill = JSON.parse(JSON.stringify(player.craftSkill || {}));
     prof.quests = player.quests || {};
     prof.spawn = player.spawn || mapSpawn();
     prof.level = player.level;
@@ -2912,6 +2920,7 @@ wss.on('connection', (ws) => {
                 talents: { ...prof.talents },
                 spellRanks: { ...prof.spellRanks },
                 recipes: Array.isArray(prof.recipes) ? prof.recipes.slice() : [],
+                craftSkill: JSON.parse(JSON.stringify(prof.craftSkill || {})),
                 quests: JSON.parse(JSON.stringify(prof.quests || {})),
                 bagSlots: prof.bagSlots || 0,
                 coins: prof.coins || 0,
