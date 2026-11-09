@@ -116,7 +116,8 @@ const CIVILIANS = [
     { id: 'mira', name: 'Mira', role: 'shop', title: 'Shop assistant', tint: '#f1c40f', x: 10, z: 4, text: 'I buy what you carry and sell potions and crafting skills. Bring coins.' },
     { id: 'bram', name: 'Bram', role: 'trainer', title: 'Trainer', tint: '#5dade2', x: -10, z: 4, text: 'Choose a class, then train your spells with me. I also teach crafting tiers.' },
     { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' },
-    { id: 'holt', name: 'Holt', role: 'inn', title: 'Innkeeper', tint: '#e67e22', x: GLADE_INN.x, z: GLADE_INN.z, text: 'I keep the inn. You can set your spawn here.' }
+    { id: 'holt', name: 'Holt', role: 'inn', title: 'Innkeeper', tint: '#e67e22', x: GLADE_INN.x, z: GLADE_INN.z, text: 'I keep the inn. You can set your spawn here. I also have a spare sack if you clear some wolves.' },
+    { id: 'nessa', name: 'Nessa', role: 'bank', title: 'Banker', tint: '#f4d03f', x: GLADE_INN.x + 3.2, z: GLADE_INN.z + 1.2, text: 'The vault is only here, in the main settlement. I will hold what you do not want to carry.' }
 ];
 
 function pushCampRole(list, camp, zone, index, role, title, tint, text) {
@@ -161,7 +162,7 @@ function mapSpawn() {
 }
 
 function rebuildCivilians() {
-    const home = CIVILIANS.filter(civ => civ.id === 'mira' || civ.id === 'bram' || civ.id === 'sela' || civ.id === 'holt');
+    const home = CIVILIANS.filter(civ => civ.id === 'mira' || civ.id === 'bram' || civ.id === 'sela' || civ.id === 'holt' || civ.id === 'nessa');
     CIVILIANS.length = 0;
     if (!customMap()) CIVILIANS.push(...home);
     if (!customMap()) {
@@ -202,6 +203,27 @@ function rebuildCivilians() {
             quest: '',
             dungeonId: dungeon.id
         });
+    }
+    if (customMap() && !CIVILIANS.some(civ => civ.role === 'bank')) {
+        const spawn = mapSpawn();
+        let best = null;
+        for (const civ of CIVILIANS) {
+            if (civ.role !== 'inn') continue;
+            const dist = Math.hypot(civ.x - spawn.x, civ.z - spawn.z);
+            if (!best || dist < best.dist) best = { dist, civ };
+        }
+        if (best) {
+            CIVILIANS.push({
+                id: 'nessa',
+                name: 'Nessa',
+                role: 'bank',
+                title: 'Banker',
+                tint: '#f4d03f',
+                x: best.civ.x + 2.4,
+                z: best.civ.z,
+                text: 'The vault is only here, in the main settlement. I will hold what you do not want to carry.'
+            });
+        }
     }
     rememberSettlements();
 }
@@ -310,6 +332,27 @@ const QUESTS = {
         named: '',
         rewardKind: '',
         rewardName: '',
+        rewardQty: 1,
+        designed: false
+    },
+    'pack-for-the-road': {
+        id: 'pack-for-the-road',
+        name: 'Pack for the Road',
+        text: 'Kill 4 wolves. Holt will give you a linen sack.',
+        custom: true,
+        type: 'kill',
+        mob: 'wolf',
+        kind: 'wolf',
+        count: 4,
+        coins: 15,
+        xp: 40,
+        minLevel: 1,
+        giver: 'Holt',
+        requires: '',
+        item: '',
+        named: '',
+        rewardKind: 'bag',
+        rewardName: 'Linen Sack',
         rewardQty: 1,
         designed: false
     }
@@ -490,6 +533,27 @@ function installQuests(list) {
             named: '',
             rewardKind: '',
             rewardName: '',
+            rewardQty: 1,
+            designed: false
+        };
+        QUESTS['pack-for-the-road'] = {
+            id: 'pack-for-the-road',
+            name: 'Pack for the Road',
+            text: 'Kill 4 wolves. Holt will give you a linen sack.',
+            custom: true,
+            type: 'kill',
+            mob: 'wolf',
+            kind: 'wolf',
+            count: 4,
+            coins: 15,
+            xp: 40,
+            minLevel: 1,
+            giver: 'Holt',
+            requires: '',
+            item: '',
+            named: '',
+            rewardKind: 'bag',
+            rewardName: 'Linen Sack',
             rewardQty: 1,
             designed: false
         };
@@ -1792,6 +1856,10 @@ function statsForRecipe(recipe) {
 }
 
 function rewardFromCatalog(quest) {
+    if (quest.rewardKind === 'bag') {
+        const named = Object.entries(BAGS).find(([, bag]) => bag.name === quest.rewardName);
+        return makeBag(named ? named[0] : 'linen-sack');
+    }
     const name = quest.rewardName || quest.rewardKind;
     const found = Object.values(RECIPES).find(recipe => recipe.name === name && (!quest.rewardKind || recipe.kind === quest.rewardKind));
     if (!found) return { kind: quest.rewardKind, name, qty: quest.rewardQty || 1 };
@@ -2295,10 +2363,113 @@ function unequipItem(player, equipSlot) {
     return null;
 }
 
+function equipBag(player, index) {
+    normalizeBags(player);
+    normalizeSlots(player);
+    const item = player.slots[index];
+    if (!item || item.kind !== 'bag') return 'That is not a bag';
+    const pocket = player.bags.findIndex(bag => !bag);
+    if (pocket < 0) return 'Bag slots are full';
+    player.bags[pocket] = { kind: 'bag', name: item.name, qty: 1, slots: item.slots || 4, bag: item.bag || '' };
+    item.qty -= 1;
+    if (item.qty <= 0) player.slots[index] = null;
+    normalizeSlots(player);
+    savePlayer(player);
+    return null;
+}
+
+function unequipBag(player, pocket) {
+    normalizeBags(player);
+    const bag = player.bags[pocket];
+    if (!bag) return 'Empty bag slot';
+    const nextCap = slotCapacity(player) - bag.slots;
+    let occupied = 0;
+    let high = -1;
+    player.slots.forEach((slot, index) => {
+        if (!slot) return;
+        occupied += 1;
+        high = index;
+    });
+    if (occupied + 1 > nextCap || high >= nextCap) return 'Empty some slots first';
+    const leftover = addToSlots(player, bag);
+    if (leftover) return 'Inventory full';
+    player.bags[pocket] = null;
+    while (player.slots.length > slotCapacity(player) && !player.slots[player.slots.length - 1]) player.slots.pop();
+    savePlayer(player);
+    return null;
+}
+
+function nearBanker(player) {
+    return CIVILIANS.find(civ => civ.role === 'bank' && Math.hypot(civ.x - player.x, civ.z - player.z) <= 3.6) || null;
+}
+
+function bankStore(player, index) {
+    if (!nearBanker(player)) return 'The bank is only in the main settlement';
+    normalizeSlots(player);
+    normalizeBank(player);
+    const item = player.slots[index];
+    if (!item) return 'Empty slot';
+    if (item.kind === 'quest') return 'Quest items stay with you';
+    const hole = player.bank.findIndex(slot => !slot);
+    if (hole < 0) return 'The vault is full';
+    player.bank[hole] = copySlot(item);
+    player.slots[index] = null;
+    savePlayer(player);
+    return null;
+}
+
+function bankTake(player, index) {
+    if (!nearBanker(player)) return 'The bank is only in the main settlement';
+    normalizeBank(player);
+    const item = player.bank[index];
+    if (!item) return 'Empty vault slot';
+    const leftover = addToSlots(player, item);
+    if (leftover) return 'Inventory full';
+    player.bank[index] = null;
+    savePlayer(player);
+    return null;
+}
+
+const BAG_POCKETS = 4;
+const BANK_SLOTS = 24;
+const BAGS = {
+    'linen-sack': { name: 'Linen Sack', slots: 4 },
+    'traveler-pack': { name: 'Traveler Pack', slots: 6 },
+    'deep-pack': { name: 'Deep Pack', slots: 8 }
+};
+
+function makeBag(id) {
+    const key = BAGS[id] ? id : 'linen-sack';
+    const def = BAGS[key];
+    return { kind: 'bag', name: def.name, qty: 1, slots: def.slots, bag: key };
+}
+
+function normalizeBags(player) {
+    const raw = Array.isArray(player.bags) ? player.bags : [];
+    player.bags = raw.slice(0, BAG_POCKETS).map(bag => {
+        if (!bag || bag.kind !== 'bag') return null;
+        const slots = Math.max(1, Math.min(12, Math.round(Number(bag.slots) || 4)));
+        return { kind: 'bag', name: String(bag.name || 'Bag').slice(0, 24), qty: 1, slots, bag: String(bag.bag || '').slice(0, 24) };
+    });
+    while (player.bags.length < BAG_POCKETS) player.bags.push(null);
+}
+
+function normalizeBank(player) {
+    const raw = Array.isArray(player.bank) ? player.bank : [];
+    player.bank = raw.slice(0, BANK_SLOTS).map(slot => copySlot(slot));
+    while (player.bank.length < BANK_SLOTS) player.bank.push(null);
+}
+
+function bagBonus(player) {
+    normalizeBags(player);
+    return player.bags.reduce((sum, bag) => sum + (bag ? bag.slots : 0), 0);
+}
+
 const BASE_SLOTS = 16;
 
 function stackLimit(item) {
     if (item.kind === 'coins') return 99;
+    if (item.kind === 'bag') return 1;
     if (item.kind === 'wood' || item.kind === 'stone' || item.kind === 'cloth' || item.kind === 'leather' || item.kind === 'ore') return 20;
     if (item.kind === 'junk' || item.kind === 'gem' || item.kind === 'recipe' || item.kind === 'quest') return 10;
     if (item.kind === 'health' || item.kind === 'mana' || item.kind === 'armor' || item.kind === 'bomb') return 5;
@@ -2317,7 +2488,7 @@ function sameStack(a, b) {
 }
 
 function slotCapacity(player) {
-    return BASE_SLOTS + (player.bagSlots || 0);
+    return BASE_SLOTS + (player.bagSlots || 0) + bagBonus(player);
 }
 
 function normalizeSlots(player) {
@@ -2368,17 +2539,19 @@ function addToSlots(player, source) {
             recipe: source.recipe || '',
             icon: source.icon ? String(source.icon).slice(0, 32) : '',
             stats: cleanStats(source.stats),
-            reqLevel: Math.max(1, Math.round(Number(source.reqLevel) || 1))
+            reqLevel: Math.max(1, Math.round(Number(source.reqLevel) || 1)),
+            slots: Math.max(0, Math.round(Number(source.slots) || 0)),
+            bag: source.bag ? String(source.bag).slice(0, 24) : ''
         };
         qty -= take;
         if (qty <= 0) return null;
     }
-    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0, weapon: source.weapon || '', slot: source.slot || '', style: source.style || '', magic: !!source.magic, recipe: source.recipe || '', icon: source.icon ? String(source.icon).slice(0, 32) : '', stats: cleanStats(source.stats), reqLevel: Math.max(1, Math.round(Number(source.reqLevel) || 1)) };
+    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0, weapon: source.weapon || '', slot: source.slot || '', style: source.style || '', magic: !!source.magic, recipe: source.recipe || '', icon: source.icon ? String(source.icon).slice(0, 32) : '', stats: cleanStats(source.stats), reqLevel: Math.max(1, Math.round(Number(source.reqLevel) || 1)), slots: Math.max(0, Math.round(Number(source.slots) || 0)), bag: source.bag ? String(source.bag).slice(0, 24) : '' };
 }
 
 function copySlot(slot) {
     if (!slot) return null;
-    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0, weapon: slot.weapon || '', slot: slot.slot || '', style: slot.style || '', magic: !!slot.magic, recipe: slot.recipe || '', icon: slot.icon ? String(slot.icon).slice(0, 32) : '', stats: cleanStats(slot.stats), reqLevel: Math.max(1, Math.round(Number(slot.reqLevel) || 1)) };
+    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0, weapon: slot.weapon || '', slot: slot.slot || '', style: slot.style || '', magic: !!slot.magic, recipe: slot.recipe || '', icon: slot.icon ? String(slot.icon).slice(0, 32) : '', stats: cleanStats(slot.stats), reqLevel: Math.max(1, Math.round(Number(slot.reqLevel) || 1)), slots: Math.max(0, Math.round(Number(slot.slots) || 0)), bag: slot.bag ? String(slot.bag).slice(0, 24) : '' };
 }
 
 function absorbWallet(player) {
@@ -2399,11 +2572,15 @@ function absorbWallet(player) {
     player.slots = player.slots.filter(Boolean);
     while (player.slots.length > slotCapacity(player)) expandBag(player, 4);
     normalizeSlots(player);
+    normalizeBags(player);
+    normalizeBank(player);
 }
 
 function loadInventory(prof) {
     const player = {
         bagSlots: prof.bagSlots || 0,
+        bags: Array.isArray(prof.bags) ? prof.bags.map(copySlot) : [],
+        bank: Array.isArray(prof.bank) ? prof.bank.map(copySlot) : [],
         slots: Array.isArray(prof.slots) ? prof.slots.map(copySlot) : [],
         coins: prof.coins || 0,
         materials: prof.materials || blankMaterials()
@@ -2418,6 +2595,8 @@ function loadInventory(prof) {
     absorbWallet(player);
     prof.slots = player.slots;
     prof.bagSlots = player.bagSlots;
+    prof.bags = player.bags;
+    prof.bank = player.bank;
     prof.coins = player.coins;
     prof.materials = player.materials;
     prof.wood = 0;
@@ -2428,10 +2607,13 @@ function loadInventory(prof) {
 }
 
 function inventoryOf(player) {
+    normalizeBank(player);
     return {
         slots: player.slots,
         capacity: slotCapacity(player),
         bagSlots: player.bagSlots || 0,
+        bags: player.bags,
+        bank: player.bank,
         baseSlots: BASE_SLOTS,
         coins: player.coins || 0,
         materials: player.materials || blankMaterials()
@@ -2442,6 +2624,8 @@ function savePlayer(player) {
     const prof = save.players[player.persistentId];
     prof.slots = player.slots;
     prof.bagSlots = player.bagSlots || 0;
+    prof.bags = player.bags;
+    prof.bank = player.bank;
     prof.armor = player.armor;
     prof.legacyArmor = player.legacyArmor || 0;
     prof.class = player.class || null;
@@ -2524,6 +2708,15 @@ const LOOT_TABLES = {
         { kind: 'cloth', weight: 14 },
         { kind: 'coins', weight: 12 },
         { kind: 'junk', weight: 14, names: ['Hexed bead', 'Burnt page', 'Black candle'] }
+    ],
+    boss: [
+        { kind: 'coins', weight: 26 },
+        { kind: 'bag', weight: 16, bags: ['linen-sack', 'traveler-pack'] },
+        { kind: 'bag', weight: 6, bags: ['deep-pack'] },
+        { kind: 'health', weight: 14 },
+        { kind: 'armor', weight: 16 },
+        { kind: 'gem', weight: 10 },
+        { kind: 'recipe', weight: 12, sets: ['weapon', 'plate', 'cloth', 'leather', 'magic'] }
     ]
 };
 
@@ -2558,6 +2751,10 @@ function lootItem(row, level, tableId) {
         if (!ids.length) ids = lootRecipeIds();
         const id = ids[Math.floor(Math.random() * ids.length)];
         return { kind: 'recipe', name: 'Pattern: ' + RECIPES[id].name, qty: 1, recipe: id };
+    }
+    if (kind === 'bag') {
+        const ids = Array.isArray(row.bags) && row.bags.length ? row.bags : ['linen-sack'];
+        return makeBag(ids[Math.floor(Math.random() * ids.length)]);
     }
     return makeGear(level, tableId || 'plate');
 }
@@ -2641,7 +2838,7 @@ function rollLoot(level, tableId) {
     const table = tables[tableId] || tables.hide || LOOT_TABLES.hide;
     const coins = table.filter(row => row.kind === 'coins');
     const junk = table.filter(row => row.kind === 'junk');
-    const goods = table.filter(row => row.kind !== 'coins' && row.kind !== 'junk' && row.kind !== 'recipe');
+    const goods = table.filter(row => row.kind !== 'coins' && row.kind !== 'junk' && row.kind !== 'recipe' && row.kind !== 'bag');
     const patterns = table.filter(row => row.kind === 'recipe');
     const items = [];
     if (coins.length && Math.random() < 0.7) items.push(lootItem(rollRow(coins), level, tableId));
@@ -2649,6 +2846,12 @@ function rollLoot(level, tableId) {
     else if (Math.random() < 0.55 || !goods.length) items.push(makeGear(level, tableId));
     else if (goods.length) items.push(lootItem(rollRow(goods), level, tableId));
     if (junk.length && Math.random() < 0.6) items.push(lootItem(rollRow(junk), level, tableId));
+    const bags = table.filter(row => row.kind === 'bag');
+    if (bags.length) {
+        const bagWeight = bags.reduce((sum, row) => sum + row.weight, 0);
+        const total = table.reduce((sum, row) => sum + row.weight, 0);
+        if (total > 0 && Math.random() < bagWeight / total) items.push(lootItem(rollRow(bags), level, tableId));
+    }
     if (!items.length) items.push(makeGear(level, tableId));
     return items;
 }
@@ -3008,6 +3211,8 @@ wss.on('connection', (ws) => {
                 craftSkill: JSON.parse(JSON.stringify(prof.craftSkill || {})),
                 quests: JSON.parse(JSON.stringify(prof.quests || {})),
                 bagSlots: prof.bagSlots || 0,
+                bags: Array.isArray(prof.bags) ? prof.bags.map(copySlot) : [],
+                bank: Array.isArray(prof.bank) ? prof.bank.map(copySlot) : [],
                 coins: prof.coins || 0,
                 materials: Object.assign(blankMaterials(), prof.materials || {}),
                 slots: prof.slots.map(copySlot),
@@ -3878,9 +4083,13 @@ wss.on('connection', (ws) => {
             player.recipes = [];
             player.quests = {};
             player.bagSlots = 0;
+            player.bags = [];
+            player.bank = [];
             player.coins = 0;
             player.materials = blankMaterials();
             player.slots = [];
+            normalizeBags(player);
+            normalizeBank(player);
             normalizeSlots(player);
             player.actionbar = defaultActionBar();
             player.legacyArmor = 0;
@@ -4017,6 +4226,30 @@ wss.on('connection', (ws) => {
             return;
         }
 
+        if (data.type === 'equipBag') {
+            const error = equipBag(player, data.index);
+            send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'unequipBag') {
+            const error = unequipBag(player, data.pocket);
+            send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'bankStore') {
+            const error = bankStore(player, data.index);
+            send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'bankTake') {
+            const error = bankTake(player, data.index);
+            send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
         if (data.type === 'chat') {
             handleChat(player, data);
             return;
@@ -4133,7 +4366,7 @@ wss.on('connection', (ws) => {
 const worldPath = path.join(dataDir, 'world.json');
 let worldConfig = null;
 const adminTokens = new Set();
-const LOOT_KINDS = ['junk', 'coins', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor'];
+const LOOT_KINDS = ['junk', 'coins', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor', 'bag'];
 
 function defaultWorldConfig() {
     return {
@@ -4172,6 +4405,11 @@ function sanitizeLoot(input) {
             if (row.kind === 'recipe') {
                 const sets = Array.isArray(row.sets) ? row.sets : String(row.sets || '').split(',').map(part => part.trim()).filter(Boolean);
                 entry.sets = sets.filter(id => CRAFT_SETS[id]).slice(0, 8);
+            }
+            if (row.kind === 'bag') {
+                const bags = Array.isArray(row.bags) ? row.bags : String(row.bags || '').split(',').map(part => part.trim()).filter(Boolean);
+                entry.bags = bags.filter(id => BAGS[id]).slice(0, 4);
+                if (!entry.bags.length) entry.bags = ['linen-sack'];
             }
             clean.push(entry);
         }
@@ -4329,6 +4567,7 @@ function spawnDungeonMobs() {
     for (const brief of listDungeons()) {
         const dungeon = dungeonById(brief.id) || brief;
         const samples = dungeon.samples && dungeon.samples.length ? dungeon.samples : dungeon.points;
+        if (!samples || !samples.length) continue;
         let travel = 0;
         let since = 0;
         let spawned = 0;
@@ -4393,8 +4632,37 @@ function spawnDungeonMobs() {
                 attackAt: 0
             };
             applyElite(boss, !!quest.elite, 0);
+            boss.boss = true;
+            boss.loot = 'boss';
             pickWander(boss);
             npcs.set(boss.id, boss);
+        }
+        const hasBoss = Array.from(npcs.values()).some(npc => npc.dungeonId === dungeon.id && npc.boss);
+        if (!hasBoss) {
+            const kind = NPC_KINDS[dungeon.mob] || NPC_KINDS.knight;
+            const warden = {
+                id: 'db-end-' + dungeon.id,
+                dungeonId: dungeon.id,
+                boss: true,
+                pinned: true,
+                x: endWorld.x,
+                z: endWorld.z,
+                homeX: endWorld.x,
+                homeZ: endWorld.z,
+                zx: 0,
+                zz: 0,
+                kind: kind.id,
+                name: dungeon.endName || 'Warden',
+                tint: kind.tint,
+                loot: 'boss',
+                level: dungeon.level + 1,
+                alive: true,
+                aggroId: null,
+                attackAt: 0
+            };
+            applyElite(warden, true, 0);
+            pickWander(warden);
+            npcs.set(warden.id, warden);
         }
     }
 }
@@ -4703,7 +4971,7 @@ function workbookSource() {
             yes: ['yes', 'no'],
             type: ['kill', 'gather', 'named', 'protect'],
             mob: ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'],
-            reward: ['junk', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor'],
+            reward: ['junk', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor', 'bag'],
             role: ['inn', 'shop', 'trainer', 'quest']
         }
     };

@@ -34,11 +34,13 @@
             display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
         }
         #bagBody { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; margin-top: 8px; }
-        #bagSlots, #supplySlots {
+        #bagSlots, #supplySlots, #vaultGrid {
             display: grid;
             grid-template-columns: repeat(4, 40px);
             gap: 3px;
         }
+        #bagPockets, #talk .bag-pockets { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+        #vaultGrid { margin-top: 6px; }
         #nameRow { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
         #playerName { flex: 1; min-width: 0; }
         #itemTip {
@@ -710,7 +712,7 @@
         Crafted armor and weapons add stats. Cloth, staves, and wands favor Intellect. Swords, bows, and leather favor Strength<br>
         Setup downloads quests and items, or copies them so you can paste into cell A1<br>
         Character sheet Craft tab makes gear. A shop sells health and mana potions, and has Buy and Sell tabs<br>
-        100 coins make 1 silver, and 100 silver make 1 gold<br>
+        100 coins make 1 silver, and 100 silver make 1 gold. Bags go in the bag slots and add room. Nessa's bank is only in the main settlement<br>
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills from a shop assistant. Making items raises the skill. A trainer teaches the next tier at 75, 150, and 225<br>
         Gather herbs by hand and sulfur with a pickaxe<br>
@@ -733,6 +735,7 @@
             <span id="bagLabel">Bag 0/16</span>
             <div id="coinLine">0 coins</div>
         </div>
+        <div id="bagPockets"></div>
         <div id="bagBody">
             <div id="bagSlots"></div>
             <div>
@@ -1821,7 +1824,7 @@
                 rememberCharacter();
             }
 
-            const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, baseSlots: 16, coins: 0, materials: {} };
+            const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, bags: [null, null, null, null], bank: [], baseSlots: 16, coins: 0, materials: {} };
             const SUPPLY_KINDS = [['wood', 'Wood'], ['stone', 'Stone'], ['cloth', 'Cloth'], ['leather', 'Leather'], ['ore', 'Ore'], ['gem', 'Gem'], ['herb', 'Herb'], ['powder', 'Powder']];
             const iconSheet = new Image();
             let iconSheetReady = false;
@@ -1911,7 +1914,8 @@
                     lines.push((item.magic ? 'Magic ' : '') + (names[item.weapon] || 'Weapon'));
                     if (SLOT_NAMES[item.slot]) lines.push(SLOT_NAMES[item.slot]);
                     if (item.armor) lines.push('Armor +' + item.armor);
-                } else if (item.kind === 'recipe') lines.push('Pattern · click to learn');
+                } else if (item.kind === 'bag') lines.push('Adds ' + (item.slots || 0) + ' slots');
+                else if (item.kind === 'recipe') lines.push('Pattern · click to learn');
                 else if (item.kind === 'quest') lines.push('Quest item');
                 else if (item.kind === 'junk') lines.push('Junk');
                 if (item.kind === 'armor' || item.kind === 'weapon') {
@@ -2023,9 +2027,26 @@
                 hideItemTip();
                 const slots = inventory.slots || [];
                 const used = slots.filter(Boolean).length;
-                const extra = inventory.bagSlots ? ' +' + inventory.bagSlots : '';
-                document.getElementById('bagLabel').textContent = 'Bag ' + used + '/' + inventory.capacity + extra;
+                document.getElementById('bagLabel').textContent = 'Bag ' + used + '/' + inventory.capacity;
                 fillMoney(document.getElementById('coinLine'), inventory.coins);
+                const pockets = document.getElementById('bagPockets');
+                pockets.textContent = '';
+                const bags = inventory.bags && inventory.bags.length ? inventory.bags : [null, null, null, null];
+                bags.forEach((bag, pocket) => {
+                    const cell = document.createElement('button');
+                    cell.type = 'button';
+                    cell.className = 'slot' + (bag ? ' bag' : '');
+                    if (bag) {
+                        paintItem(cell, bag);
+                        cell.title = '';
+                        bindItemTip(cell, bag, ['+' + (bag.slots || 0) + ' slots', 'Click to remove']);
+                        cell.addEventListener('click', () => {
+                            if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
+                            gameSocket.send(JSON.stringify({ type: 'unequipBag', pocket }));
+                        });
+                    } else cell.title = 'Empty bag slot';
+                    pockets.appendChild(cell);
+                });
                 const sheetCoins = document.getElementById('sheetCoins');
                 if (sheetCoins) fillMoney(sheetCoins, inventory.coins || 0);
                 const root = document.getElementById('bagSlots');
@@ -2052,6 +2073,8 @@
                             ? 'Click to throw at your target'
                             : (slot.kind === 'armor' || slot.kind === 'weapon')
                             ? 'Click to equip'
+                            : (slot.kind === 'bag')
+                            ? 'Click to add this bag'
                             : '';
                         bindItemTip(cell, slot, use ? [use] : []);
                     } else {
@@ -2094,6 +2117,8 @@
                 inventory.slots = data.slots;
                 inventory.capacity = data.capacity;
                 inventory.bagSlots = data.bagSlots || 0;
+                inventory.bags = Array.isArray(data.bags) ? data.bags : inventory.bags;
+                inventory.bank = Array.isArray(data.bank) ? data.bank : inventory.bank;
                 inventory.baseSlots = data.baseSlots || 16;
                 inventory.coins = data.coins || 0;
                 inventory.materials = data.materials || {};
@@ -2104,6 +2129,10 @@
                 if (!slot || !gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
                 if (slot.kind === 'recipe') {
                     gameSocket.send(JSON.stringify({ type: 'learnPattern', slot: index }));
+                    return;
+                }
+                if (slot.kind === 'bag') {
+                    gameSocket.send(JSON.stringify({ type: 'equipBag', index }));
                     return;
                 }
                 if (slot.kind === 'armor' || slot.kind === 'weapon') {
@@ -4232,7 +4261,7 @@
             }
 
             function cloneNpcModel(kind) {
-                const key = kind === 'inn' && !npcModels.has('inn') ? 'shop' : kind;
+                const key = (kind === 'inn' || kind === 'bank') && !npcModels.has(kind) ? 'shop' : kind;
                 const template = npcModels.get(key) || npcModels.get('boar');
                 if (!template) return null;
                 const model = template.clone(true);
@@ -4257,6 +4286,7 @@
                 const body = cloneNpcModel(civ.role);
                 if (!body) return;
                 if (civ.role === 'inn') tintHostile(body, civ.tint || '#e67e22', 0.55);
+                if (civ.role === 'bank') tintHostile(body, civ.tint || '#f4d03f', 0.45);
                 const group = new THREE.Group();
                 body.updateWorldMatrix(true, true);
                 const bounds = new THREE.Box3().setFromObject(body);
@@ -5830,6 +5860,7 @@
                 if (entry.role === 'shop') tabs.push(['buy', 'Buy'], ['sell', 'Sell']);
                 else if (entry.role === 'trainer') tabs.push(['talents', 'Talents'], ['craft', 'Craft']);
                 else if (entry.role === 'inn') tabs.push(['rest', 'Rest']);
+                else if (entry.role === 'bank') tabs.push(['vault', 'Vault']);
                 if (offeredHere(entry).length) tabs.push(['quests', 'Quests']);
                 return tabs;
             }
@@ -6014,6 +6045,55 @@
                 }
             }
 
+            function renderVault(parent) {
+                const note = document.createElement('p');
+                note.textContent = nearestRole('bank')
+                    ? 'Click something you carry to store it. Click a vault slot to take it back. 24 slots.'
+                    : 'The bank is only in the main settlement.';
+                parent.appendChild(note);
+                const carried = document.createElement('div');
+                carried.className = 'bag-pockets';
+                (inventory.slots || []).forEach((slot, index) => {
+                    if (!slot || slot.kind === 'quest') return;
+                    const cell = document.createElement('button');
+                    cell.type = 'button';
+                    cell.className = 'slot ' + slot.kind;
+                    paintItem(cell, slot);
+                    if (slot.qty > 1) {
+                        const qty = document.createElement('div');
+                        qty.className = 'qty';
+                        qty.textContent = String(slot.qty);
+                        cell.appendChild(qty);
+                    }
+                    bindItemTip(cell, slot, ['Store']);
+                    cell.addEventListener('click', () => sendCharacter('bankStore', { index }));
+                    carried.appendChild(cell);
+                });
+                parent.appendChild(carried);
+                const grid = document.createElement('div');
+                grid.id = 'vaultGrid';
+                const bank = inventory.bank || [];
+                for (let index = 0; index < 24; index++) {
+                    const slot = bank[index];
+                    const cell = document.createElement('button');
+                    cell.type = 'button';
+                    cell.className = 'slot' + (slot ? ' ' + slot.kind : '');
+                    if (slot) {
+                        paintItem(cell, slot);
+                        if (slot.qty > 1) {
+                            const qty = document.createElement('div');
+                            qty.className = 'qty';
+                            qty.textContent = String(slot.qty);
+                            cell.appendChild(qty);
+                        }
+                        bindItemTip(cell, slot, ['Take']);
+                        cell.addEventListener('click', () => sendCharacter('bankTake', { index }));
+                    } else cell.title = 'Empty';
+                    grid.appendChild(cell);
+                }
+                parent.appendChild(grid);
+            }
+
             function renderService(parent, entry, tab) {
                 if (tab === 'buy') renderBuyList(parent);
                 else if (tab === 'sell') renderSellList(parent);
@@ -6027,7 +6107,8 @@
                     button.textContent = here ? 'This is your spawn' : 'Set spawn here';
                     button.addEventListener('click', () => sendCharacter('setSpawn', { id: entry.id }));
                     parent.appendChild(button);
-                } else if (tab === 'quests') renderQuestOffers(parent, entry);
+                } else if (tab === 'vault') renderVault(parent);
+                else if (tab === 'quests') renderQuestOffers(parent, entry);
             }
 
             function renderTalk(entry) {
@@ -7116,7 +7197,7 @@
                 character = { class: null, equipment: {}, trained: [], talents: {}, points: 0, known: null, spells: {}, talentsDef: {} };
                 actionBar = defaultActionBar();
                 renderBar();
-                applyInventory({ slots: Array(16).fill(null), capacity: 16, bagSlots: 0, baseSlots: 16, coins: 0, materials: {} });
+                applyInventory({ slots: Array(16).fill(null), capacity: 16, bagSlots: 0, bags: [null, null, null, null], bank: [], baseSlots: 16, coins: 0, materials: {} });
                 document.getElementById('sheet').classList.remove('open');
             }
 

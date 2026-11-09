@@ -1,6 +1,6 @@
 # Open World Prototype (Multiplayer)
 
-Browser-based open-world game with multiplayer support, packaged for Docker. The ground has hills, a river, and lakes. The minimap is divided into named zones and shows coordinates from 0 to 100 inside the current zone. The Map button on the minimap turns markers on or off. Hide the instruction box with ×; Help brings it back. Equipped armor shows on the body. Warriors wear plate, hunters wear leather, and mages and warlocks wear cloth. Cloaks and necklaces are not limited.
+Browser-based open-world game with multiplayer support, packaged for Docker. The ground has hills, a river, and lakes. The minimap is divided into named zones and shows coordinates from 0 to 100 inside the current zone. The Map button on the minimap turns markers on or off. Hide the instruction box with ×; Help brings it back. Equipped armor shows on the body. Warriors wear plate, hunters wear leather, and mages and warlocks wear cloth. Cloaks and necklaces are not limited. Bags fit in the four bag slots and add room. A bag drops from a dungeon boss only when that boss's loot table includes one, and Holt's quest Pack for the Road rewards a linen sack. Nessa keeps a bank in the main settlement only.
 
 ## Models
 - `/models/player.glb` — more human low-poly civilian (CC0) used for the local player.
