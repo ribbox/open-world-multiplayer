@@ -628,7 +628,7 @@
         Character sheet Craft tab makes gear. A shop sells health and mana potions, and has Buy and Sell tabs<br>
         100 coins make 1 silver, and 100 silver make 1 gold<br>
         Farther zones hold stronger creatures with their own loot<br>
-        You can learn 2 crafting skills, and only while standing at a shop assistant<br>
+        You can learn 2 crafting skills from a shop assistant. Making items raises the skill. A trainer teaches the next tier at 75, 150, and 225<br>
         Gather herbs by hand and sulfur with a pickaxe<br>
         M: World map. Scroll or +/− to zoom. Right-click a spot to mark it. The minimap points the way<br>
         Active quests stay on the right, with progress<br>
@@ -5386,7 +5386,7 @@
             function activitiesFor(entry) {
                 const tabs = [];
                 if (entry.role === 'shop') tabs.push(['buy', 'Buy'], ['sell', 'Sell']);
-                else if (entry.role === 'trainer') tabs.push(['talents', 'Talents']);
+                else if (entry.role === 'trainer') tabs.push(['talents', 'Talents'], ['craft', 'Craft']);
                 else if (entry.role === 'inn') tabs.push(['rest', 'Rest']);
                 if (offeredHere(entry).length) tabs.push(['quests', 'Quests']);
                 return tabs;
@@ -5491,7 +5491,7 @@
                         head.style.margin = '10px 0 4px';
                         parent.appendChild(head);
                     }
-                    const ids = Object.entries(craft.recipes || {}).filter(([, recipe]) => recipe.set === id && !recipe.loot);
+                    const ids = Object.entries(craft.recipes || {}).filter(([, recipe]) => recipe.set === id && !recipe.loot && !(recipe.tier > 0));
                     const owned = ids.length > 0 && ids.every(([recipeId]) => known.has(recipeId));
                     const line = document.createElement('div');
                     line.className = 'spell-row';
@@ -5576,6 +5576,7 @@
                 if (tab === 'buy') renderBuyList(parent);
                 else if (tab === 'sell') renderSellList(parent);
                 else if (tab === 'talents' || tab === 'spells') renderTalentList(parent);
+                else if (tab === 'craft') renderCraftTrain(parent);
                 else if (tab === 'rest') {
                     const button = document.createElement('button');
                     button.type = 'button';
@@ -5878,11 +5879,67 @@
                 return (inventory.slots || []).reduce((sum, slot) => sum + (slot && slot.kind === kind ? slot.qty : 0), 0);
             }
 
+            function xpToNextCraft(level) {
+                return 6 + level * 2;
+            }
+            function craftXpGain(craftLevel, skill) {
+                if (skill >= 300) return 0;
+                const over = skill - craftLevel;
+                if (over >= 40) return 0;
+                const base = Math.max(1, Math.ceil(craftLevel / 10));
+                if (over <= 0) return base;
+                return Math.max(1, Math.ceil(base * (40 - over) / 40));
+            }
+            function renderCraftTrain(parent) {
+                const craft = character.craft || { sets: {}, recipes: {} };
+                const skills = character.craftSkill || {};
+                const note = document.createElement('p');
+                note.textContent = 'I teach the next tier at crafting level 75, then 150, then 225.';
+                parent.appendChild(note);
+                const known = Object.keys(skills);
+                if (!known.length) {
+                    const none = document.createElement('p');
+                    none.textContent = 'Learn a skill from a shop assistant first.';
+                    parent.appendChild(none);
+                    return;
+                }
+                for (const setId of known) {
+                    const set = (craft.sets || {})[setId] || { name: setId };
+                    const skill = skills[setId];
+                    const tiers = skill.tiers || [0];
+                    const next = [75, 150, 225].find(tier => !tiers.includes(tier));
+                    const line = document.createElement('div');
+                    line.className = 'spell-row';
+                    const label = document.createElement('div');
+                    const progress = skill.level >= 300 ? 'max' : skill.xp + '/' + xpToNextCraft(skill.level);
+                    label.textContent = set.name + '  ' + skill.level + '  ' + progress;
+                    line.appendChild(label);
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn';
+                    if (!next) {
+                        button.textContent = 'Trained';
+                        button.disabled = true;
+                    } else if (skill.level < next) {
+                        button.textContent = 'Needs ' + next;
+                        button.disabled = true;
+                    } else if (!nearestRole('trainer')) {
+                        button.textContent = 'Trainer';
+                        button.disabled = true;
+                    } else {
+                        button.textContent = 'Train ' + next;
+                        button.addEventListener('click', () => sendCharacter('learnTier', { set: setId }));
+                    }
+                    line.appendChild(button);
+                    parent.appendChild(line);
+                }
+            }
             function renderCraft(body) {
                 const craft = character.craft || { sets: {}, recipes: {} };
                 const known = new Set(character.recipes || []);
+                const skills = character.craftSkill || {};
                 const note = document.createElement('div');
-                note.textContent = 'Known recipes. Buy a new skill from a shop assistant. You can learn 2. Click a pattern in your bag while standing there.';
+                note.textContent = 'Making items raises the skill. Low items give less as you improve. Higher items give more. Tiers at 75, 150, and 225 are taught by a trainer.';
                 body.appendChild(note);
                 const groups = {};
                 for (const [id, recipe] of Object.entries(craft.recipes || {})) {
@@ -5891,10 +5948,13 @@
                     groups[recipe.set].push([id, recipe]);
                 }
                 for (const [setId, rows] of Object.entries(groups)) {
+                    const skill = skills[setId] || { level: 1, xp: 0, tiers: [0] };
                     const head = document.createElement('div');
                     head.style.margin = '8px 0 4px';
-                    head.textContent = (craft.sets[setId] && craft.sets[setId].name) || setId;
+                    const progress = skill.level >= 300 ? 'max' : skill.xp + '/' + xpToNextCraft(skill.level);
+                    head.textContent = ((craft.sets[setId] && craft.sets[setId].name) || setId) + '  ' + skill.level + '  ' + progress;
                     body.appendChild(head);
+                    rows.sort((a, b) => (a[1].craftLevel || 1) - (b[1].craftLevel || 1));
                     for (const [id, recipe] of rows) {
                         const line = document.createElement('div');
                         line.className = 'spell-row';
@@ -5903,15 +5963,26 @@
                         const cost = Object.entries(recipe.cost || {}).map(([kind, qty]) => qty + ' ' + kind).join(', ');
                         const ready = Object.entries(recipe.cost || {}).every(([kind, qty]) => haveKind(kind) >= qty);
                         const bits = statBits(recipe);
-                        label.textContent = recipe.name + (bits.length ? ' · ' + bits.join(' ') : '') + (recipe.armor ? ' · armor ' + recipe.armor : '') + ' · ' + cost;
+                        const gain = craftXpGain(recipe.craftLevel || 1, skill.level);
+                        const tier = recipe.tier || 0;
+                        const trained = (skill.tiers || [0]).includes(tier);
+                        label.textContent = recipe.name + (tier ? ' · tier ' + tier : '') + (bits.length ? ' · ' + bits.join(' ') : '') + (recipe.armor ? ' · armor ' + recipe.armor : '') + ' · ' + cost + (gain ? ' · +' + gain + ' skill' : '');
                         bindItemTip(line, recipe, ['Click Craft']);
                         line.appendChild(label);
                         const button = document.createElement('button');
                         button.type = 'button';
                         button.className = 'text-btn';
-                        button.textContent = 'Craft';
-                        button.disabled = !ready;
-                        button.addEventListener('click', () => sendCharacter('craft', { recipe: id }));
+                        if (!trained) {
+                            button.textContent = 'Train ' + tier;
+                            button.disabled = true;
+                        } else if (skill.level < tier) {
+                            button.textContent = 'Needs ' + tier;
+                            button.disabled = true;
+                        } else {
+                            button.textContent = 'Craft';
+                            button.disabled = !ready;
+                            button.addEventListener('click', () => sendCharacter('craft', { recipe: id }));
+                        }
                         line.appendChild(button);
                         body.appendChild(line);
                     }

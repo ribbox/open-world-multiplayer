@@ -114,7 +114,7 @@ const DEFAULT_SPAWN = { x: GLADE_INN.x, z: GLADE_INN.z, name: 'Holt' };
 
 const CIVILIANS = [
     { id: 'mira', name: 'Mira', role: 'shop', title: 'Shop assistant', tint: '#f1c40f', x: 10, z: 4, text: 'I buy what you carry and sell potions and crafting skills. Bring coins.' },
-    { id: 'bram', name: 'Bram', role: 'trainer', title: 'Trainer', tint: '#5dade2', x: -10, z: 4, text: 'Choose a class, then train your spells with me.' },
+    { id: 'bram', name: 'Bram', role: 'trainer', title: 'Trainer', tint: '#5dade2', x: -10, z: 4, text: 'Choose a class, then train your spells with me. I also teach crafting tiers.' },
     { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' },
     { id: 'holt', name: 'Holt', role: 'inn', title: 'Innkeeper', tint: '#e67e22', x: GLADE_INN.x, z: GLADE_INN.z, text: 'I keep the inn. You can set your spawn here.' }
 ];
@@ -1608,7 +1608,49 @@ const RECIPES = {
     'greater-mana': { name: 'Greater Mana Potion', set: 'alchemy', kind: 'mana', amount: 30, cost: { herb: 4, powder: 1 }, loot: true },
     'rough-bomb': { name: 'Rough Bomb', set: 'explosive', kind: 'bomb', amount: 14, cost: { powder: 2, stone: 1 } },
     'bitter-flask': { name: 'Bitter Flask', set: 'explosive', kind: 'bomb', amount: 10, cost: { herb: 2, powder: 1 } },
-    'heavy-bomb': { name: 'Heavy Bomb', set: 'explosive', kind: 'bomb', amount: 28, cost: { powder: 3, ore: 1 }, loot: true }
+    'heavy-bomb': { name: 'Heavy Bomb', set: 'explosive', kind: 'bomb', amount: 28, cost: { powder: 3, ore: 1 }, loot: true },
+    'silk-robe': { name: 'Silk Robe', set: 'cloth', slot: 'chest', kind: 'armor', style: 'cloth', armor: 4, cost: { cloth: 8 }, tier: 75, craftLevel: 75 },
+    'silk-gloves': { name: 'Silk Gloves', set: 'cloth', slot: 'hands', kind: 'armor', style: 'cloth', armor: 2, cost: { cloth: 5 }, tier: 75, craftLevel: 100 },
+    'rune-robe': { name: 'Runecloth Robe', set: 'cloth', slot: 'chest', kind: 'armor', style: 'cloth', armor: 6, cost: { cloth: 10, gem: 1 }, tier: 150, craftLevel: 150 },
+    'rune-hood': { name: 'Runecloth Hood', set: 'cloth', slot: 'head', kind: 'armor', style: 'cloth', armor: 4, cost: { cloth: 6, gem: 1 }, tier: 150, craftLevel: 180 },
+    'arcane-robe': { name: 'Arcanoweave Robe', set: 'cloth', slot: 'chest', kind: 'armor', style: 'cloth', magic: true, armor: 8, cost: { cloth: 12, gem: 2 }, tier: 225, craftLevel: 225 },
+    'arcane-hood': { name: 'Arcanoweave Hood', set: 'cloth', slot: 'head', kind: 'armor', style: 'cloth', magic: true, armor: 5, cost: { cloth: 8, gem: 2 }, tier: 225, craftLevel: 260 },
+    'cured-jerkin': { name: 'Cured Jerkin', set: 'leather', slot: 'chest', kind: 'armor', style: 'leather', armor: 5, cost: { leather: 8 }, tier: 75, craftLevel: 75 },
+    'cured-boots': { name: 'Cured Boots', set: 'leather', slot: 'feet', kind: 'armor', style: 'leather', armor: 3, cost: { leather: 5 }, tier: 75, craftLevel: 100 },
+    'thick-jerkin': { name: 'Thick Jerkin', set: 'leather', slot: 'chest', kind: 'armor', style: 'leather', armor: 7, cost: { leather: 10 }, tier: 150, craftLevel: 150 },
+    'thick-cap': { name: 'Thick Cap', set: 'leather', slot: 'head', kind: 'armor', style: 'leather', armor: 5, cost: { leather: 6 }, tier: 150, craftLevel: 180 },
+    'hardened-jerkin': { name: 'Hardened Jerkin', set: 'leather', slot: 'chest', kind: 'armor', style: 'leather', armor: 9, cost: { leather: 12, gem: 1 }, tier: 225, craftLevel: 225 },
+    'hardened-cap': { name: 'Hardened Cap', set: 'leather', slot: 'head', kind: 'armor', style: 'leather', armor: 6, cost: { leather: 8, gem: 1 }, tier: 225, craftLevel: 260 },
+    'steel-breastplate': { name: 'Steel Breastplate', set: 'plate', slot: 'chest', kind: 'armor', style: 'plate', armor: 7, cost: { ore: 8, stone: 2 }, tier: 75, craftLevel: 75 },
+    'steel-helm': { name: 'Steel Helm', set: 'plate', slot: 'head', kind: 'armor', style: 'plate', armor: 5, cost: { ore: 5, stone: 1 }, tier: 75, craftLevel: 100 },
+    'mithril-breastplate': { name: 'Mithril Breastplate', set: 'plate', slot: 'chest', kind: 'armor', style: 'plate', armor: 9, cost: { ore: 10, stone: 3, gem: 1 }, tier: 150, craftLevel: 150 },
+    'mithril-helm': { name: 'Mithril Helm', set: 'plate', slot: 'head', kind: 'armor', style: 'plate', armor: 6, cost: { ore: 6, stone: 2, gem: 1 }, tier: 150, craftLevel: 180 },
+    'thorium-breastplate': { name: 'Thorium Breastplate', set: 'plate', slot: 'chest', kind: 'armor', style: 'plate', armor: 12, cost: { ore: 12, stone: 4, gem: 2 }, tier: 225, craftLevel: 225 },
+    'thorium-helm': { name: 'Thorium Helm', set: 'plate', slot: 'head', kind: 'armor', style: 'plate', armor: 8, cost: { ore: 8, stone: 2, gem: 2 }, tier: 225, craftLevel: 260 },
+    'steel-sword': { name: 'Steel Sword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', armor: 0, cost: { ore: 4, wood: 1 }, tier: 75, craftLevel: 75 },
+    'steel-staff': { name: 'Steel Staff', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'staff', armor: 0, cost: { wood: 6 }, tier: 75, craftLevel: 100 },
+    'mithril-sword': { name: 'Mithril Sword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', armor: 0, cost: { ore: 6, wood: 1, gem: 1 }, tier: 150, craftLevel: 150 },
+    'mithril-staff': { name: 'Mithril Staff', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'staff', armor: 0, cost: { wood: 8, gem: 1 }, tier: 150, craftLevel: 180 },
+    'thorium-sword': { name: 'Thorium Sword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', armor: 0, cost: { ore: 8, wood: 2, gem: 2 }, tier: 225, craftLevel: 225 },
+    'thorium-staff': { name: 'Thorium Staff', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'staff', armor: 0, cost: { wood: 10, gem: 2 }, tier: 225, craftLevel: 260 },
+    'bright-blade': { name: 'Bright Rune Blade', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'sword', magic: true, armor: 0, cost: { ore: 3, wood: 1, gem: 1 }, tier: 75, craftLevel: 75 },
+    'bright-staff': { name: 'Bright Staff', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'staff', magic: true, armor: 0, cost: { wood: 3, gem: 2 }, tier: 75, craftLevel: 100 },
+    'sun-blade': { name: 'Sun Blade', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'sword', magic: true, armor: 0, cost: { ore: 4, gem: 2 }, tier: 150, craftLevel: 150 },
+    'sun-staff': { name: 'Sun Staff', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'staff', magic: true, armor: 0, cost: { wood: 4, gem: 3 }, tier: 150, craftLevel: 180 },
+    'star-blade': { name: 'Star Blade', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'sword', magic: true, armor: 0, cost: { ore: 6, gem: 3 }, tier: 225, craftLevel: 225 },
+    'star-staff': { name: 'Star Staff', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'staff', magic: true, armor: 0, cost: { wood: 6, gem: 4 }, tier: 225, craftLevel: 260 },
+    'strong-health': { name: 'Strong Health Potion', set: 'alchemy', kind: 'health', amount: 55, cost: { herb: 6, powder: 1 }, tier: 75, craftLevel: 75 },
+    'strong-mana': { name: 'Strong Mana Potion', set: 'alchemy', kind: 'mana', amount: 40, cost: { herb: 6, powder: 1 }, tier: 75, craftLevel: 100 },
+    'mighty-health': { name: 'Mighty Health Potion', set: 'alchemy', kind: 'health', amount: 80, cost: { herb: 8, powder: 2 }, tier: 150, craftLevel: 150 },
+    'mighty-mana': { name: 'Mighty Mana Potion', set: 'alchemy', kind: 'mana', amount: 60, cost: { herb: 8, powder: 2 }, tier: 150, craftLevel: 180 },
+    'flask-health': { name: 'Health Flask', set: 'alchemy', kind: 'health', amount: 120, cost: { herb: 10, powder: 3, gem: 1 }, tier: 225, craftLevel: 225 },
+    'flask-mana': { name: 'Mana Flask', set: 'alchemy', kind: 'mana', amount: 90, cost: { herb: 10, powder: 3, gem: 1 }, tier: 225, craftLevel: 260 },
+    'packed-bomb': { name: 'Packed Bomb', set: 'explosive', kind: 'bomb', amount: 36, cost: { powder: 4, stone: 2 }, tier: 75, craftLevel: 75 },
+    'packed-flask': { name: 'Packed Flask', set: 'explosive', kind: 'bomb', amount: 22, cost: { herb: 4, powder: 2 }, tier: 75, craftLevel: 100 },
+    'siege-bomb': { name: 'Siege Bomb', set: 'explosive', kind: 'bomb', amount: 50, cost: { powder: 6, ore: 2 }, tier: 150, craftLevel: 150 },
+    'siege-flask': { name: 'Siege Flask', set: 'explosive', kind: 'bomb', amount: 36, cost: { herb: 6, powder: 3 }, tier: 150, craftLevel: 180 },
+    'devastation': { name: 'Devastation Charge', set: 'explosive', kind: 'bomb', amount: 70, cost: { powder: 8, ore: 2, gem: 1 }, tier: 225, craftLevel: 225 },
+    'ruin-flask': { name: 'Ruin Flask', set: 'explosive', kind: 'bomb', amount: 50, cost: { herb: 8, powder: 4, gem: 1 }, tier: 225, craftLevel: 260 }
 };
 
 const CRAFT_SETS = {
@@ -1627,6 +1669,41 @@ const SHOP_GOODS = [
 ];
 
 const MAX_CRAFT_SKILLS = 2;
+const CRAFT_CAP = 300;
+const CRAFT_TIERS = [75, 150, 225];
+const APPRENTICE_LEVEL = {
+    'cloth-hat': 1, 'cloth-gloves': 1, 'cloth-shoes': 15, 'cloth-pants': 30, 'cloth-robe': 50,
+    'leather-cap': 1, 'leather-gloves': 10, 'leather-boots': 20, 'leather-pants': 35, 'leather-jerkin': 55,
+    'plate-helm': 5, 'plate-gauntlets': 15, 'plate-sabatons': 25, 'plate-greaves': 40, 'plate-breastplate': 55,
+    'iron-sword': 1, 'oak-staff': 25,
+    'rune-blade': 15, 'arcane-staff': 40,
+    'minor-health': 1, 'minor-mana': 15,
+    'rough-bomb': 1, 'bitter-flask': 20
+};
+
+for (const [id, recipe] of Object.entries(RECIPES)) {
+    recipe.tier = recipe.tier || 0;
+    if (!recipe.craftLevel) {
+        if (recipe.loot) {
+            const greater = /greater|heavy/i.test(recipe.name);
+            recipe.tier = greater ? 150 : 75;
+            recipe.craftLevel = greater ? 160 : 85;
+        } else recipe.craftLevel = APPRENTICE_LEVEL[id] || 1;
+    }
+}
+
+function xpToNextCraft(level) {
+    return 6 + level * 2;
+}
+
+function craftXpGain(craftLevel, skill) {
+    if (skill >= CRAFT_CAP) return 0;
+    const over = skill - craftLevel;
+    if (over >= 40) return 0;
+    const base = Math.max(1, Math.ceil(craftLevel / 10));
+    if (over <= 0) return base;
+    return Math.max(1, Math.ceil(base * (40 - over) / 40));
+}
 
 const MATERIAL_NAMES = { cloth: 'Cloth', leather: 'Leather', ore: 'Ore', gem: 'Gem', wood: 'Wood', stone: 'Stone', herb: 'Herb', powder: 'Powder' };
 
@@ -1677,6 +1754,8 @@ function publicCraft() {
             magic: !!recipe.magic,
             cost: recipe.cost,
             loot: !!recipe.loot,
+            tier: recipe.tier || 0,
+            craftLevel: recipe.craftLevel || 1,
             icon: recipe.icon || defaultIconName(recipe),
             stats: made.stats,
             reqLevel: made.reqLevel
@@ -1733,6 +1812,19 @@ function loadCharacter(prof) {
         seen.add(id);
         return true;
     });
+    if (!prof.craftSkill || typeof prof.craftSkill !== 'object') prof.craftSkill = {};
+    const skills = {};
+    for (const setId of learnedCraftSets({ recipes: prof.recipes })) {
+        const cur = prof.craftSkill[setId] || {};
+        const level = Math.max(1, Math.min(CRAFT_CAP, Math.round(Number(cur.level) || 1)));
+        const tiers = [0];
+        for (const tier of Array.isArray(cur.tiers) ? cur.tiers : []) {
+            const value = Number(tier);
+            if (CRAFT_TIERS.includes(value) && !tiers.includes(value)) tiers.push(value);
+        }
+        skills[setId] = { level, xp: Math.max(0, Math.round(Number(cur.xp) || 0)), tiers };
+    }
+    prof.craftSkill = skills;
     loadQuests(prof);
 }
 
@@ -1807,6 +1899,7 @@ function publicCharacter(player) {
         spellRanks: player.spellRanks || {},
         recipes: player.recipes || [],
         craft: publicCraft(),
+        craftSkill: player.craftSkill || {},
         points: talentPoints(player),
         known: knownSpells(player),
         spells: SPELLS,
@@ -1879,10 +1972,12 @@ function learnSet(player, setId) {
     if (!set) return 'Unknown set';
     const blocked = craftRoom(player, setId);
     if (blocked) return blocked;
-    const ids = Object.keys(RECIPES).filter(id => RECIPES[id].set === setId && !RECIPES[id].loot);
+    const ids = Object.keys(RECIPES).filter(id => RECIPES[id].set === setId && !RECIPES[id].loot && !(RECIPES[id].tier > 0));
     if (ids.every(id => player.recipes.includes(id))) return 'Already learned';
     if (!spendCoins(player, set.cost)) return 'Not enough coins';
     for (const id of ids) if (!player.recipes.includes(id)) player.recipes.push(id);
+    if (!player.craftSkill) player.craftSkill = {};
+    if (!player.craftSkill[setId]) player.craftSkill[setId] = { level: 1, xp: 0, tiers: [0] };
     savePlayer(player);
     return null;
 }
@@ -1903,6 +1998,7 @@ function buySupply(player, id) {
 }
 
 function learnPattern(player, index) {
+    player.craftNote = '';
     const slot = player.slots[index];
     if (!slot || slot.kind !== 'recipe') return 'Not a pattern';
     const recipe = RECIPES[slot.recipe];
@@ -1914,6 +2010,11 @@ function learnPattern(player, index) {
     player.recipes.push(slot.recipe);
     slot.qty -= 1;
     if (slot.qty <= 0) player.slots[index] = null;
+    const tier = recipe.tier || 0;
+    const skill = player.craftSkill && player.craftSkill[recipe.set];
+    if (tier > 0 && (!skill || !(skill.tiers || []).includes(tier))) {
+        player.craftNote = 'Pattern learned. A trainer teaches tier ' + tier;
+    }
     savePlayer(player);
     return null;
 }
@@ -1924,19 +2025,63 @@ function craftedStats(recipe) {
     let amount = recipe.kind === 'weapon' ? 2 : Math.max(1, recipe.armor || 1);
     if (recipe.magic) amount += 2;
     if (recipe.loot) amount += 1;
+    if (recipe.tier === 75) amount += 2;
+    if (recipe.tier === 150) amount += 4;
+    if (recipe.tier === 225) amount += 6;
     const stats = { [intellect ? 'intellect' : 'strength']: amount };
     if (recipe.style === 'plate' || recipe.set === 'plate') stats.stamina = Math.max(1, Math.ceil(amount / 2));
     else if (recipe.loot || (recipe.armor || 0) >= 3) stats.stamina = 1;
     let reqLevel = 1;
     if (recipe.style === 'plate' || recipe.set === 'plate') reqLevel = 6;
     if (recipe.loot) reqLevel = 8;
+    if (recipe.tier === 75) reqLevel = Math.max(reqLevel, 8);
+    if (recipe.tier === 150) reqLevel = Math.max(reqLevel, 14);
+    if (recipe.tier === 225) reqLevel = Math.max(reqLevel, 20);
     return { stats, reqLevel };
+}
+
+function learnTier(player, setId) {
+    const set = CRAFT_SETS[setId];
+    const skill = player.craftSkill && player.craftSkill[setId];
+    if (!set || !skill) return 'Learn the skill from a shop assistant first';
+    const have = new Set(skill.tiers || [0]);
+    const next = CRAFT_TIERS.find(tier => !have.has(tier));
+    if (!next) return 'All tiers trained';
+    if (skill.level < next) return 'Requires crafting level ' + next;
+    const ids = Object.keys(RECIPES).filter(id => RECIPES[id].set === setId && RECIPES[id].tier === next && !RECIPES[id].loot);
+    if (!ids.length) return 'Nothing to teach';
+    for (const id of ids) if (!player.recipes.includes(id)) player.recipes.push(id);
+    skill.tiers.push(next);
+    savePlayer(player);
+    return null;
+}
+
+function grantCraftXp(player, recipe) {
+    const skill = player.craftSkill && player.craftSkill[recipe.set];
+    if (!skill) return '';
+    const gain = craftXpGain(recipe.craftLevel || 1, skill.level);
+    if (!gain) return 'No skill gain';
+    skill.xp += gain;
+    let raised = 0;
+    while (skill.level < CRAFT_CAP && skill.xp >= xpToNextCraft(skill.level)) {
+        skill.xp -= xpToNextCraft(skill.level);
+        skill.level += 1;
+        raised += 1;
+    }
+    if (skill.level >= CRAFT_CAP) skill.xp = 0;
+    const name = (CRAFT_SETS[recipe.set] && CRAFT_SETS[recipe.set].name) || 'Craft';
+    if (raised) return name + ' is now ' + skill.level;
+    return name + ' +' + gain + '  ' + skill.xp + '/' + xpToNextCraft(skill.level);
 }
 
 function craftItem(player, id) {
     const recipe = RECIPES[id];
     if (!recipe) return 'Unknown recipe';
     if (!player.recipes.includes(id)) return 'Recipe not learned';
+    const skill = (player.craftSkill && player.craftSkill[recipe.set]) || { level: 1, xp: 0, tiers: [0] };
+    const tier = recipe.tier || 0;
+    if (!(skill.tiers || [0]).includes(tier)) return 'Train tier ' + tier + ' at a trainer';
+    if (skill.level < tier) return 'Requires crafting level ' + tier;
     for (const [kind, qty] of Object.entries(recipe.cost)) {
         if (countKind(player, kind) < qty) return 'Need ' + qty + ' ' + (MATERIAL_NAMES[kind] || kind);
     }
@@ -1964,6 +2109,7 @@ function craftItem(player, id) {
         }
         return 'Inventory full';
     }
+    player.craftNote = grantCraftXp(player, recipe);
     savePlayer(player);
     return null;
 }
@@ -3730,14 +3876,30 @@ wss.on('connection', (ws) => {
         if (data.type === 'learnPattern') {
             placePlayer(player, data);
             const error = learnPattern(player, data.slot);
-            send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : 'Pattern learned', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            const extra = !error && player.craftNote ? player.craftNote : '';
+            player.craftNote = '';
+            send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : (extra || 'Pattern learned'), character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'learnTier') {
+            placePlayer(player, data);
+            if (!nearRole(player, 'trainer')) {
+                send(ws, { type: 'character', ok: false, reason: 'See a trainer', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+                return;
+            }
+            const error = learnTier(player, data.set);
+            const set = CRAFT_SETS[data.set];
+            send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : ((set ? set.name : 'Craft') + ' tier trained'), character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
             return;
         }
 
         if (data.type === 'craft') {
             const recipe = RECIPES[data.recipe];
             const error = craftItem(player, data.recipe);
-            send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : ('Crafted ' + (recipe ? recipe.name : 'item')), character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            const extra = !error && player.craftNote ? ' · ' + player.craftNote : '';
+            player.craftNote = '';
+            send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : ('Crafted ' + (recipe ? recipe.name : 'item') + extra), character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
             return;
         }
 

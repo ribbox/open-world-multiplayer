@@ -728,7 +728,7 @@ export function zoneCampPlan(zx, zz) {
         folk.push({ id: 'shop-' + zx + '-' + zz, name: shopName, role: 'shop', title: 'Shop', tint: '#f1c40f', text: 'I buy goods and sell crafting skills in ' + place + '.' });
     }
     if (roll === 1 || roll === 3 || roll === 5) {
-        folk.push({ id: 'train-' + zx + '-' + zz, name: trainName, role: 'trainer', title: 'Trainer', tint: '#5dade2', text: 'I train spells in ' + place + '.' });
+        folk.push({ id: 'train-' + zx + '-' + zz, name: trainName, role: 'trainer', title: 'Trainer', tint: '#5dade2', text: 'I train spells and crafting tiers in ' + place + '.' });
     }
     if (roll === 2 || roll === 5) {
         folk.push({ id: 'quest-' + zx + '-' + zz, name: questName, role: 'quest', title: 'Quest giver', tint: '#2ecc71', text: 'Travelers still stop in ' + place + '.', quest: '' });
