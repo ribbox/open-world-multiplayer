@@ -224,7 +224,7 @@
             border-radius: 4px; font-size: 16px; pointer-events: none; z-index: 10; display: none;
         }
         #log {
-            position: absolute; bottom: 15px; left: 15px; width: min(300px, 70vw);
+            position: absolute; bottom: 86px; left: 15px; width: min(300px, 70vw);
             z-index: 14; pointer-events: auto; color: #eee;
             background: rgba(0,0,0,0.72); border-radius: 6px;
             font-size: 12px; line-height: 1.35; padding: 4px 6px 6px;
@@ -250,9 +250,13 @@
         #log .system { color: #e0a15a; }
         #chatForm { display: flex; margin-top: 4px; }
         #chatInput {
-            flex: 1; min-width: 0; font-size: 12px; color: #f4efe4;
+            flex: 1; min-width: 0; font-size: 16px; color: #f4efe4;
             background: rgba(255,255,255,0.08); border: 1px solid rgba(214,176,96,0.35);
             border-radius: 4px; padding: 4px 6px;
+        }
+        #chatForm button {
+            margin-left: 4px; padding: 4px 8px; font-size: 12px; color: #2b2108;
+            background: #e2c48a; border: 0; border-radius: 4px; cursor: pointer;
         }
         #questTracker {
             position: absolute; top: 258px; right: 12px; width: 220px; z-index: 11;
@@ -754,7 +758,8 @@
         <div id="logParty" class="log-pane" data-log="party" hidden></div>
         <div id="logWhisper" class="log-pane" data-log="whisper" hidden></div>
         <form id="chatForm">
-            <input id="chatInput" maxlength="180" placeholder="Enter to talk. /p  /w Name  /t" autocomplete="off">
+            <input id="chatInput" maxlength="180" placeholder="Talk. /p  /w Name  /t" autocomplete="off">
+            <button type="submit">Send</button>
         </form>
     </div>
     <div id="error"></div>
@@ -936,60 +941,6 @@
             };
             return (name) => { try { if (bank[name]) bank[name](); } catch (err) { /* ignore a blocked audio device */ } };
         })();
-        function parseChat(raw) {
-            const text = String(raw || '').trim();
-            if (!text) return null;
-            let match = text.match(/^\/w(?:hisper)?\s+([\s\S]+)$/i);
-            if (match) {
-                const rest = match[1].trim();
-                const known = [];
-                for (const entry of remotePlayers.values()) {
-                    if (entry.data && entry.data.name) known.push(entry.data.name);
-                }
-                known.sort((a, b) => b.length - a.length);
-                const lower = rest.toLowerCase();
-                for (const name of known) {
-                    const key = name.toLowerCase();
-                    if (lower === key || lower.startsWith(key + ' ')) {
-                        const body = rest.slice(name.length).trim();
-                        if (!body) return { error: 'Use /w Name message' };
-                        return { channel: 'whisper', to: name, text: body };
-                    }
-                }
-                const parts = rest.split(/\s+/);
-                if (parts.length < 2) return { error: 'Use /w Name message' };
-                return { channel: 'whisper', to: parts[0], text: parts.slice(1).join(' ') };
-            }
-            match = text.match(/^\/t(?:ell)?\s+([\s\S]+)$/i);
-            if (match) {
-                const aimed = currentTarget();
-                if (!aimed || aimed.kind !== 'player') return { error: 'Select a player, then use /t' };
-                return { channel: 'whisper', toId: aimed.id, to: aimed.name, text: match[1].trim() };
-            }
-            match = text.match(/^\/p(?:arty)?\s+([\s\S]+)$/i);
-            if (match) return { channel: 'party', text: match[1].trim() };
-            match = text.match(/^\/s(?:ay)?\s+([\s\S]+)$/i);
-            if (match) return { channel: 'world', text: match[1].trim() };
-            if (text.startsWith('/')) return { error: 'Use /p, /w Name, or /t' };
-            return { channel: 'world', text };
-        }
-        document.getElementById('chatForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const input = document.getElementById('chatInput');
-            const parsed = parseChat(input.value);
-            input.value = '';
-            if (!parsed) return;
-            if (parsed.error) {
-                addLogLine('whisper', parsed.error, 'system');
-                if (chatTab !== 'whisper') setLogTab('whisper');
-                return;
-            }
-            if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
-            if (parsed.channel === 'whisper' && parsed.to) lastTell = parsed.to;
-            gameSocket.send(JSON.stringify({ type: 'chat', channel: parsed.channel, text: parsed.text, to: parsed.to || '', toId: parsed.toId || '' }));
-            setLogTab(parsed.channel);
-            input.focus();
-        });
 
         function showLevel(level) {
             const banner = document.getElementById('levelBanner');
@@ -3358,6 +3309,64 @@
                 }
                 return null;
             }
+
+            function parseChat(raw) {
+                const text = String(raw || '').trim();
+                if (!text) return null;
+                let match = text.match(/^\/w(?:hisper)?\s+([\s\S]+)$/i);
+                if (match) {
+                    const rest = match[1].trim();
+                    const known = [];
+                    for (const entry of remotePlayers.values()) {
+                        if (entry.data && entry.data.name) known.push(entry.data.name);
+                    }
+                    known.sort((a, b) => b.length - a.length);
+                    const lower = rest.toLowerCase();
+                    for (const name of known) {
+                        const key = name.toLowerCase();
+                        if (lower === key || lower.startsWith(key + ' ')) {
+                            const body = rest.slice(name.length).trim();
+                            if (!body) return { error: 'Use /w Name message' };
+                            return { channel: 'whisper', to: name, text: body };
+                        }
+                    }
+                    const parts = rest.split(/\s+/);
+                    if (parts.length < 2) return { error: 'Use /w Name message' };
+                    return { channel: 'whisper', to: parts[0], text: parts.slice(1).join(' ') };
+                }
+                match = text.match(/^\/t(?:ell)?\s+([\s\S]+)$/i);
+                if (match) {
+                    const aimed = currentTarget();
+                    if (!aimed || aimed.kind !== 'player') return { error: 'Select a player, then use /t' };
+                    return { channel: 'whisper', toId: aimed.id, to: aimed.name, text: match[1].trim() };
+                }
+                match = text.match(/^\/p(?:arty)?\s+([\s\S]+)$/i);
+                if (match) return { channel: 'party', text: match[1].trim() };
+                match = text.match(/^\/s(?:ay)?\s+([\s\S]+)$/i);
+                if (match) return { channel: 'world', text: match[1].trim() };
+                if (text.startsWith('/')) return { error: 'Use /p, /w Name, or /t' };
+                return { channel: 'world', text };
+            }
+            document.getElementById('chatForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const input = document.getElementById('chatInput');
+                const parsed = parseChat(input.value);
+                if (!parsed) return;
+                if (parsed.error) {
+                    input.value = '';
+                    addLogLine('whisper', parsed.error, 'system');
+                    if (chatTab !== 'whisper') setLogTab('whisper');
+                    return;
+                }
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
+                    addLogLine('activity', 'Not connected', 'system');
+                    return;
+                }
+                input.value = '';
+                if (parsed.channel === 'whisper' && parsed.to) lastTell = parsed.to;
+                gameSocket.send(JSON.stringify({ type: 'chat', channel: parsed.channel, text: parsed.text, to: parsed.to || '', toId: parsed.toId || '' }));
+                setLogTab(parsed.channel);
+            });
 
             function refreshTargetFrame() {
                 const frame = document.getElementById('targetFrame');
