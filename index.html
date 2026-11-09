@@ -70,6 +70,14 @@
             background-size: 28px 28px;
             color: white;
             cursor: pointer;
+            touch-action: none;
+        }
+        .slot.drop-on { box-shadow: inset 0 0 0 2px rgba(232, 206, 150, 0.9); }
+        .drag-ghost {
+            position: fixed; z-index: 90; width: 40px; height: 40px; margin: -20px 0 0 -20px;
+            pointer-events: none; border: 1px solid rgba(232, 206, 150, 0.9); border-radius: 2px;
+            background-color: rgba(8, 10, 16, 0.9); background-repeat: no-repeat;
+            background-position: center; background-size: 32px 32px;
         }
         .slot .qty {
             position: absolute; right: 2px; bottom: 0; font-size: 10px;
@@ -712,7 +720,7 @@
         Crafted armor and weapons add stats. Cloth, staves, and wands favor Intellect. Swords, bows, and leather favor Strength<br>
         Setup downloads quests and items, or copies them so you can paste into cell A1<br>
         Character sheet Craft tab makes gear. A shop sells health and mana potions, and has Buy and Sell tabs<br>
-        100 coins make 1 silver, and 100 silver make 1 gold. Bags go in the bag slots and add room. Nessa's bank is only in the main settlement<br>
+        100 coins make 1 silver, and 100 silver make 1 gold. Drag an item in the bag to move it. Bags go in the bag slots and add room. Nessa's bank is only in the main settlement<br>
         Farther zones hold stronger creatures with their own loot<br>
         You can learn 2 crafting skills from a shop assistant. Making items raises the skill. A trainer teaches the next tier at 75, 150, and 225<br>
         Gather herbs by hand and sulfur with a pickaxe<br>
@@ -2023,6 +2031,27 @@
                     el.appendChild(span);
                 });
             }
+            let bagDrag = null;
+            function clearBagDrag() {
+                if (bagDrag && bagDrag.ghost) bagDrag.ghost.remove();
+                bagDrag = null;
+                document.querySelectorAll('#bagSlots .drop-on').forEach(el => el.classList.remove('drop-on'));
+            }
+            function bagSlotAt(x, y) {
+                const ghost = bagDrag && bagDrag.ghost;
+                if (ghost) ghost.style.visibility = 'hidden';
+                const el = document.elementFromPoint(x, y);
+                if (ghost) ghost.style.visibility = '';
+                const cell = el && el.closest ? el.closest('#bagSlots .slot') : null;
+                if (!cell || cell.dataset.index == null) return null;
+                return Number(cell.dataset.index);
+            }
+            function markBagDrop(index) {
+                document.querySelectorAll('#bagSlots .drop-on').forEach(el => el.classList.remove('drop-on'));
+                if (index == null) return;
+                const cell = document.querySelector('#bagSlots .slot[data-index="' + index + '"]');
+                if (cell) cell.classList.add('drop-on');
+            }
             function updateInventoryUI() {
                 hideItemTip();
                 const slots = inventory.slots || [];
@@ -2080,7 +2109,61 @@
                     } else {
                         cell.title = 'Empty';
                     }
-                    cell.addEventListener('click', () => useSlot(index));
+                    cell.dataset.index = String(index);
+                    if (slot) {
+                        cell.addEventListener('pointerdown', (e) => {
+                            if (e.button > 0 || bagDrag) return;
+                            hideItemTip();
+                            e.preventDefault();
+                            const ghost = document.createElement('div');
+                            ghost.className = 'drag-ghost';
+                            paintItem(ghost, slot);
+                            ghost.style.left = e.clientX + 'px';
+                            ghost.style.top = e.clientY + 'px';
+                            document.body.appendChild(ghost);
+                            bagDrag = { index, ghost, moved: false, x: e.clientX, y: e.clientY };
+                            cell.setPointerCapture(e.pointerId);
+                        });
+                        cell.addEventListener('pointermove', (e) => {
+                            if (!bagDrag || bagDrag.index !== index) return;
+                            const dx = e.clientX - bagDrag.x;
+                            const dy = e.clientY - bagDrag.y;
+                            if (dx * dx + dy * dy > 36) bagDrag.moved = true;
+                            bagDrag.ghost.style.left = e.clientX + 'px';
+                            bagDrag.ghost.style.top = e.clientY + 'px';
+                            if (bagDrag.moved) markBagDrop(bagSlotAt(e.clientX, e.clientY));
+                        });
+                        const finishDrag = (e) => {
+                            if (!bagDrag || bagDrag.index !== index) return;
+                            const from = bagDrag.index;
+                            const moved = bagDrag.moved;
+                            const to = moved ? bagSlotAt(e.clientX, e.clientY) : null;
+                            clearBagDrag();
+                            if (!moved) {
+                                useSlot(from);
+                                return;
+                            }
+                            if (to == null || to === from || !gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
+                            const next = inventory.slots.slice();
+                            const target = next[to];
+                            const stackLimit = { health: 5, mana: 5, bomb: 5, armor: 5, junk: 10, gem: 10, recipe: 10, quest: 10 }[slot.kind] || 1;
+                            const same = target && target.kind === slot.kind && target.name === slot.name && (target.amount || 0) === (slot.amount || 0) && (target.armor || 0) === (slot.armor || 0);
+                            if (same && (target.qty || 1) < stackLimit) {
+                                const take = Math.min(stackLimit - target.qty, slot.qty || 1);
+                                target.qty += take;
+                                const left = (slot.qty || 1) - take;
+                                next[from] = left > 0 ? Object.assign({}, slot, { qty: left }) : null;
+                            } else {
+                                next[from] = target || null;
+                                next[to] = slot;
+                            }
+                            inventory.slots = next;
+                            updateInventoryUI();
+                            gameSocket.send(JSON.stringify({ type: 'moveItem', from, to }));
+                        };
+                        cell.addEventListener('pointerup', finishDrag);
+                        cell.addEventListener('pointercancel', () => clearBagDrag());
+                    }
                     cell.addEventListener('contextmenu', (e) => {
                         e.preventDefault();
                         if (!slot || !gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
@@ -7684,8 +7767,9 @@
                         if (data.inventory) applyInventory(data.inventory);
                         applyStats(data);
                         if (data.character) applyCharacter(data.character);
-                        sfx(data.ok === false ? 'deny' : 'click');
-                        showMessage(data.ok === false ? (data.reason || 'Cannot do that') : (data.note || 'Character updated'));
+                        sfx(data.ok === false ? 'deny' : (data.quiet ? null : 'click'));
+                        if (data.quiet && data.ok !== false) { /* arranged the bag */ }
+                        else showMessage(data.ok === false ? (data.reason || 'Cannot do that') : (data.note || 'Character updated'));
                     } else if (data.type === 'reset') {
                         if (data.inventory) applyInventory(data.inventory);
                         applyStats(data);

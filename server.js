@@ -2399,6 +2399,32 @@ function unequipBag(player, pocket) {
     return null;
 }
 
+function moveItem(player, from, to) {
+    normalizeSlots(player);
+    from = Math.round(Number(from));
+    to = Math.round(Number(to));
+    if (!Number.isInteger(from) || !Number.isInteger(to)) return 'Bad slot';
+    if (from < 0 || to < 0 || from >= player.slots.length || to >= player.slots.length || from === to) return null;
+    const source = player.slots[from];
+    if (!source) return null;
+    const target = player.slots[to];
+    if (target && sameStack(source, target)) {
+        const room = stackLimit(target) - (target.qty || 0);
+        if (room > 0) {
+            const take = Math.min(room, source.qty || 1);
+            target.qty += take;
+            source.qty -= take;
+            if (source.qty <= 0) player.slots[from] = null;
+            savePlayer(player);
+            return null;
+        }
+    }
+    player.slots[from] = target || null;
+    player.slots[to] = source;
+    savePlayer(player);
+    return null;
+}
+
 function nearBanker(player) {
     return CIVILIANS.find(civ => civ.role === 'bank' && Math.hypot(civ.x - player.x, civ.z - player.z) <= 3.6) || null;
 }
@@ -4235,6 +4261,12 @@ wss.on('connection', (ws) => {
         if (data.type === 'unequipBag') {
             const error = unequipBag(player, data.pocket);
             send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'moveItem') {
+            const error = moveItem(player, data.from, data.to);
+            send(ws, { type: 'character', ok: !error, reason: error, quiet: !error, inventory: inventoryOf(player) });
             return;
         }
 
