@@ -469,6 +469,16 @@
         .t-kids > .t-wrap:last-child::after { right: 50%; }
         .t-kids > .t-wrap:only-child::after { display: none; }
         .spell-row, .talent-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(214, 176, 96, 0.16); font-size: 13px; }
+        .craft-skill { margin: 8px 0 4px; flex: 1; min-width: 0; }
+        .craft-skill .craft-level { margin: 2px 0 3px; }
+        .craft-track {
+            position: relative; height: 10px; background: rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.35); border-radius: 6px; overflow: hidden;
+        }
+        .craft-fill {
+            position: absolute; left: 0; top: 0; bottom: 0;
+            background: linear-gradient(180deg, #ffe58a 0%, #e0b123 55%, #8a6a10 100%);
+        }
         .text-btn { padding: 3px 8px; }
         .text-btn:disabled { opacity: 0.45; cursor: default; }
         #sheetClose { float: right; }
@@ -5890,6 +5900,26 @@
                 if (over <= 0) return base;
                 return Math.max(1, Math.ceil(base * (40 - over) / 40));
             }
+            function craftSkillBlock(name, skill) {
+                const box = document.createElement('div');
+                box.className = 'craft-skill';
+                const title = document.createElement('div');
+                title.textContent = name;
+                const level = document.createElement('div');
+                level.className = 'craft-level';
+                level.textContent = 'Level ' + skill.level;
+                const track = document.createElement('div');
+                track.className = 'craft-track';
+                const fill = document.createElement('div');
+                fill.className = 'craft-fill';
+                const need = xpToNextCraft(skill.level);
+                fill.style.width = (skill.level >= 300 ? 100 : Math.max(0, Math.min(100, (skill.xp / need) * 100))) + '%';
+                track.appendChild(fill);
+                box.appendChild(title);
+                box.appendChild(level);
+                box.appendChild(track);
+                return box;
+            }
             function renderCraftTrain(parent) {
                 const craft = character.craft || { sets: {}, recipes: {} };
                 const skills = character.craftSkill || {};
@@ -5910,10 +5940,7 @@
                     const next = [75, 150, 225].find(tier => !tiers.includes(tier));
                     const line = document.createElement('div');
                     line.className = 'spell-row';
-                    const label = document.createElement('div');
-                    const progress = skill.level >= 300 ? 'max' : skill.xp + '/' + xpToNextCraft(skill.level);
-                    label.textContent = set.name + '  ' + skill.level + '  ' + progress;
-                    line.appendChild(label);
+                    line.appendChild(craftSkillBlock(set.name, skill));
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.className = 'text-btn';
@@ -5949,11 +5976,7 @@
                 }
                 for (const [setId, rows] of Object.entries(groups)) {
                     const skill = skills[setId] || { level: 1, xp: 0, tiers: [0] };
-                    const head = document.createElement('div');
-                    head.style.margin = '8px 0 4px';
-                    const progress = skill.level >= 300 ? 'max' : skill.xp + '/' + xpToNextCraft(skill.level);
-                    head.textContent = ((craft.sets[setId] && craft.sets[setId].name) || setId) + '  ' + skill.level + '  ' + progress;
-                    body.appendChild(head);
+                    body.appendChild(craftSkillBlock((craft.sets[setId] && craft.sets[setId].name) || setId, skill));
                     rows.sort((a, b) => (a[1].craftLevel || 1) - (b[1].craftLevel || 1));
                     for (const [id, recipe] of rows) {
                         const line = document.createElement('div');

@@ -2077,8 +2077,8 @@ function grantCraftXp(player, recipe) {
     }
     if (skill.level >= CRAFT_CAP) skill.xp = 0;
     const name = (CRAFT_SETS[recipe.set] && CRAFT_SETS[recipe.set].name) || 'Craft';
-    if (raised) return name + ' is now ' + skill.level;
-    return name + ' +' + gain + '  ' + skill.xp + '/' + xpToNextCraft(skill.level);
+    if (raised) return name + ' is now level ' + skill.level;
+    return name + ' +' + gain;
 }
 
 function craftItem(player, id) {
