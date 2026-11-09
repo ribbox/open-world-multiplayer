@@ -1845,7 +1845,8 @@ function loadCharacter(prof) {
         for (const slot of EQUIP_SLOTS) next[slot] = prof.equipment[slot] ? copySlot(prof.equipment[slot]) : null;
         prof.equipment = next;
     }
-    if (prof.class !== 'warrior' && prof.class !== 'mage') prof.class = null;
+    if (!CLASS_KITS[prof.class]) prof.class = null;
+    if (!CLASS_KITS[prof.look]) prof.look = prof.class || '';
     prof.trained = Array.isArray(prof.trained) ? prof.trained.filter(id => SPELLS[id]) : [];
     if (prof.talents && prof.talents.cleave && !prof.trained.includes('cleave')) prof.trained.push('cleave');
     if (prof.talents && prof.talents.surge && !prof.trained.includes('arcane-surge')) prof.trained.push('arcane-surge');
@@ -1952,6 +1953,7 @@ function knownSpells(player) {
 function publicCharacter(player) {
     return {
         class: player.class,
+        look: player.look || player.class || '',
         equipment: player.equipment,
         trained: player.trained,
         talents: player.talents,
@@ -2185,6 +2187,7 @@ function chooseClass(player, className) {
     const kit = CLASS_KITS[className];
     if (!kit) return 'Unknown class';
     player.class = className;
+    player.look = player.look || className;
     player.trained = kit.trained.slice();
     player.talents = {};
     player.spellRanks = {};
@@ -2421,6 +2424,7 @@ function savePlayer(player) {
     prof.armor = player.armor;
     prof.legacyArmor = player.legacyArmor || 0;
     prof.class = player.class || null;
+    prof.look = player.look || player.class || '';
     prof.equipment = player.equipment;
     prof.trained = player.trained;
     prof.talents = player.talents;
@@ -2974,6 +2978,7 @@ wss.on('connection', (ws) => {
                 armor: 0,
                 legacyArmor: prof.legacyArmor || 0,
                 class: prof.class,
+                look: prof.look || prof.class || '',
                 equipment: Object.fromEntries(EQUIP_SLOTS.map(slot => [slot, prof.equipment[slot] ? copySlot(prof.equipment[slot]) : null])),
                 trained: prof.trained.slice(),
                 talents: { ...prof.talents },
@@ -2998,6 +3003,7 @@ wss.on('connection', (ws) => {
                 partyId: null
             };
             players.set(persistentId, player);
+            if (!player.class && CLASS_KITS[data.class]) chooseClass(player, data.class);
             refreshDerived(player);
             revealFog(player);
             sessionId = persistentId;

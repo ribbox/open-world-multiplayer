@@ -527,17 +527,38 @@
             background: rgba(255,255,255,0.04); border: 1px solid rgba(214,176,96,0.28);
             border-radius: 6px; color: inherit; text-align: left;
         }
-        .pick-play { flex: 1; min-width: 0; background: transparent; border: 0; color: inherit; text-align: left; cursor: pointer; padding: 0; }
-        .pick-play strong { display: block; font-size: 16px; }
-        .pick-play span { color: #c9c2b4; font-size: 12px; }
+        .pick-play { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: transparent; border: 0; color: inherit; text-align: left; cursor: pointer; padding: 0; }
+        .pick-play strong { display: block; font-size: 16px; color: #f4efe4; }
+        .pick-play span span { color: #c9c2b4; font-size: 12px; }
         .pick-del { border: 0; background: transparent; color: #e0a15a; cursor: pointer; font-size: 18px; line-height: 1; }
-        #pickNew { display: flex; gap: 6px; margin-top: 8px; }
+        .pick-face, .pick-class img, .pick-mini img {
+            object-fit: cover; background: #1a241c; border-radius: 4px;
+        }
+        .pick-face { width: 64px; height: 84px; flex: 0 0 auto; }
+        .pick-face.empty { background: #243028; }
+        .pick-minis { display: flex; gap: 4px; }
+        .pick-mini {
+            width: 36px; height: 48px; padding: 0; border: 1px solid rgba(214,176,96,0.28);
+            border-radius: 4px; background: transparent; cursor: pointer;
+        }
+        .pick-mini img { width: 100%; height: 100%; display: block; }
+        #pickClasses { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+        .pick-class {
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            padding: 6px; color: inherit; cursor: pointer;
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(214,176,96,0.28); border-radius: 6px;
+        }
+        .pick-class.on { border-color: #f1c40f; }
+        .pick-class img { width: 100%; aspect-ratio: 2 / 3; }
+        .pick-class span { font-size: 13px; }
+        #pickNew { display: block; margin-top: 10px; }
+        #pickCreate { display: flex; gap: 6px; }
         #pickName {
             flex: 1; min-width: 0; font-size: 16px; color: #f4efe4;
             background: rgba(255,255,255,0.08); border: 1px solid rgba(214,176,96,0.35);
             border-radius: 4px; padding: 8px;
         }
-        #pickNew button {
+        #pickNew button[type="submit"] {
             background: #e2c48a; color: #2b2108; border: 0; border-radius: 4px;
             font-weight: bold; cursor: pointer; padding: 8px 12px;
         }
@@ -653,11 +674,14 @@
     <div id="pick">
         <div id="pickCard">
             <h1>Characters</h1>
-            <p id="pickNote">Choose who to play. Each one keeps their own class, level, and bag.</p>
+            <p id="pickNote">Choose who to play. A new character picks a class here.</p>
             <div id="pickList"></div>
             <form id="pickNew">
-                <input id="pickName" maxlength="16" placeholder="New name" autocomplete="off">
-                <button type="submit">Create</button>
+                <div id="pickClasses"></div>
+                <div id="pickCreate">
+                    <input id="pickName" maxlength="16" placeholder="New name" autocomplete="off">
+                    <button type="submit">Create</button>
+                </div>
             </form>
         </div>
     </div>
@@ -1515,6 +1539,16 @@
 
             const stats = { level: 1, xp: 0, xpToNext: 50, hp: 20, maxHp: 20, mana: 10, maxMana: 10, absorb: 0, armor: 0, strength: 0, stamina: 0, intellect: 0 };
             const CLASS_LABEL = { warrior: 'Warrior', mage: 'Mage', hunter: 'Hunter', warlock: 'Warlock' };
+            const CLASS_IDS = ['warrior', 'mage', 'hunter', 'warlock'];
+            const LOOKS = {
+                warrior: '/portraits/warrior.jpg',
+                mage: '/portraits/mage.jpg',
+                hunter: '/portraits/hunter.jpg',
+                warlock: '/portraits/warlock.jpg'
+            };
+            function portraitOf(row) {
+                return LOOKS[(row && row.look)] || LOOKS[(row && row.class)] || '';
+            }
             function rememberCharacter() {
                 if (!persistentId) return;
                 const prev = roster.find(row => row.id === persistentId);
@@ -1522,9 +1556,10 @@
                     id: persistentId,
                     name: playerName || (prev && prev.name) || 'Player',
                     class: (character && character.class) || (prev && prev.class) || '',
+                    look: (character && character.look) || (prev && prev.look) || (character && character.class) || (prev && prev.class) || '',
                     level: stats.level || (prev && prev.level) || 1
                 };
-                if (prev && prev.name === next.name && prev.class === next.class && prev.level === next.level) return;
+                if (prev && prev.name === next.name && prev.class === next.class && prev.look === next.look && prev.level === next.level) return;
                 const index = roster.findIndex(row => row.id === persistentId);
                 if (index >= 0) roster[index] = next;
                 else roster.push(next);
@@ -5933,24 +5968,14 @@
 
                 if (!character.class) {
                     const note = document.createElement('p');
-                    note.textContent = 'Choose a class. This sets your weapon and your talent tree.';
+                    note.textContent = 'This character has no class. Return to the list and choose one.';
                     panel.appendChild(note);
-                    const row = document.createElement('div');
-                    row.className = 'row';
-                    for (const [id, name, text] of [
-                        ['warrior', 'Warrior', 'Strength and stamina. Melee attacks.'],
-                        ['mage', 'Mage', 'Intellect and stamina. Spells and barriers.'],
-                        ['hunter', 'Hunter', 'Strength and stamina. Ranged shots.'],
-                        ['warlock', 'Warlock', 'Intellect and stamina. Shadow and drain.']
-                    ]) {
-                        const button = document.createElement('button');
-                        button.type = 'button';
-                        button.className = 'class-pick';
-                        button.textContent = name + '\n' + text;
-                        button.addEventListener('click', () => sendCharacter('chooseClass', { class: id }));
-                        row.appendChild(button);
-                    }
-                    panel.appendChild(row);
+                    const back = document.createElement('button');
+                    back.type = 'button';
+                    back.className = 'text-btn';
+                    back.textContent = 'Characters';
+                    back.addEventListener('click', showPick);
+                    panel.appendChild(back);
                     updateStatsUI();
                     return;
                 }
@@ -6896,6 +6921,40 @@
                 document.getElementById('sheet').classList.remove('open');
             }
 
+            let chosenClass = '';
+
+            function renderClassChoices() {
+                const box = document.getElementById('pickClasses');
+                if (!box) return;
+                box.replaceChildren();
+                for (const id of CLASS_IDS) {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'pick-class' + (chosenClass === id ? ' on' : '');
+                    const img = document.createElement('img');
+                    img.src = LOOKS[id];
+                    img.alt = CLASS_LABEL[id];
+                    const label = document.createElement('span');
+                    label.textContent = CLASS_LABEL[id];
+                    button.append(img, label);
+                    button.addEventListener('click', () => {
+                        chosenClass = id;
+                        renderClassChoices();
+                    });
+                    box.appendChild(button);
+                }
+            }
+
+            function faceImage(row) {
+                const img = document.createElement('img');
+                img.className = 'pick-face';
+                img.alt = '';
+                const src = portraitOf(row);
+                if (src) img.src = src;
+                else img.classList.add('empty');
+                return img;
+            }
+
             function renderPick() {
                 const list = document.getElementById('pickList');
                 const form = document.getElementById('pickNew');
@@ -6906,12 +6965,15 @@
                     const play = document.createElement('button');
                     play.type = 'button';
                     play.className = 'pick-play';
+                    play.appendChild(faceImage(row));
+                    const words = document.createElement('span');
                     const title = document.createElement('strong');
                     title.textContent = row.name || 'Player';
                     const sub = document.createElement('span');
                     sub.textContent = (CLASS_LABEL[row.class] || 'No class yet') + ' · level ' + (row.level || 1);
-                    play.append(title, sub);
-                    play.addEventListener('click', () => playCharacter(row.id));
+                    words.append(title, sub);
+                    play.appendChild(words);
+                    if (row.class) play.addEventListener('click', () => playCharacter(row.id));
                     const del = document.createElement('button');
                     del.type = 'button';
                     del.className = 'pick-del';
@@ -6923,10 +6985,34 @@
                         storeRoster();
                         renderPick();
                     });
-                    line.append(play, del);
+                    line.append(play);
+                    if (!row.class) {
+                        const picks = document.createElement('div');
+                        picks.className = 'pick-minis';
+                        for (const id of CLASS_IDS) {
+                            const mini = document.createElement('button');
+                            mini.type = 'button';
+                            mini.className = 'pick-mini';
+                            mini.title = CLASS_LABEL[id];
+                            const img = document.createElement('img');
+                            img.src = LOOKS[id];
+                            img.alt = CLASS_LABEL[id];
+                            mini.appendChild(img);
+                            mini.addEventListener('click', () => {
+                                row.class = id;
+                                row.look = id;
+                                storeRoster();
+                                playCharacter(row.id);
+                            });
+                            picks.appendChild(mini);
+                        }
+                        line.appendChild(picks);
+                    }
+                    line.appendChild(del);
                     list.appendChild(line);
                 }
                 form.hidden = roster.length >= 8;
+                renderClassChoices();
             }
 
             function showPick() {
@@ -6966,12 +7052,17 @@
             document.getElementById('pickNew').addEventListener('submit', (event) => {
                 event.preventDefault();
                 if (roster.length >= 8) return;
+                if (!chosenClass) {
+                    document.getElementById('pickNote').textContent = 'Choose a class, then create the character.';
+                    return;
+                }
                 const input = document.getElementById('pickName');
                 const name = input.value.trim().slice(0, 16) || 'Player';
                 input.value = '';
                 const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-                roster.push({ id, name, class: '', level: 1 });
+                roster.push({ id, name, class: chosenClass, look: chosenClass, level: 1 });
                 storeRoster();
+                chosenClass = '';
                 playCharacter(id);
             });
             renderPick();
@@ -6989,7 +7080,8 @@
                 ws.onopen = () => {
                     console.log('Connected to multiplayer server');
                     showMessage('Connected to server');
-                    ws.send(JSON.stringify({ type: 'hello', persistentId, name: playerName }));
+                    const mine = roster.find(row => row.id === persistentId) || {};
+                    ws.send(JSON.stringify({ type: 'hello', persistentId, name: playerName, class: mine.class || '', look: mine.look || mine.class || '' }));
                 };
 
                 ws.onmessage = (ev) => {
