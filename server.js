@@ -823,6 +823,19 @@ function applyElite(npc, elite, baseHp) {
     npc.hp = npc.maxHp;
 }
 
+function publicGear(player) {
+    const gear = {};
+    const slots = ['head', 'shoulders', 'chest', 'legs', 'feet', 'cloak', 'offhand'];
+    for (const slot of slots) {
+        const piece = player.equipment && player.equipment[slot];
+        if (!piece) continue;
+        const style = piece.style === 'plate' || piece.style === 'leather' || piece.style === 'cloth' ? piece.style : '';
+        if (!style) continue;
+        gear[slot] = { style, level: piece.reqLevel || 1, magic: !!piece.magic };
+    }
+    return gear;
+}
+
 function publicPlayer(id, p) {
     return {
         id,
@@ -836,7 +849,8 @@ function publicPlayer(id, p) {
         hp: p.hp,
         maxHp: p.maxHp,
         ghost: !!p.ghost,
-        corpse: p.corpse || null
+        corpse: p.corpse || null,
+        gear: publicGear(p)
     };
 }
 
@@ -2243,6 +2257,13 @@ function equipItem(player, equipSlot, bagIndex) {
     if ((item.reqLevel || 1) > (player.level || 1)) return 'Requires level ' + (item.reqLevel || 1);
     if (!player.class) return 'Choose a class first';
     if (item.kind === 'weapon' && item.weapon !== CLASS_KITS[player.class].weapon.weapon) return 'Wrong class';
+    if (item.kind === 'armor' && item.slot !== 'neck' && item.slot !== 'cloak') {
+        const need = { warrior: 'plate', hunter: 'leather', mage: 'cloth', warlock: 'cloth' }[player.class];
+        if (item.style && need && item.style !== need) {
+            const who = player.class.charAt(0).toUpperCase() + player.class.slice(1);
+            return who + 's wear ' + need;
+        }
+    }
     const piece = copySlot(item);
     piece.qty = 1;
     item.qty -= 1;

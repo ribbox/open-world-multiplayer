@@ -216,6 +216,10 @@ function itemAbout(item) {
     if (stats.length) sentences.push(stats.join(', '));
     const req = Number(item.reqLevel) || 1;
     if (kind === 'armor' || kind === 'weapon') sentences.push(req > 1 ? 'Requires level ' + req : 'Anyone can equip it');
+    if (kind === 'armor' && item.style && item.slot !== 'neck' && item.slot !== 'cloak') {
+        const who = { plate: 'Warriors', leather: 'Hunters', cloth: 'Mages and warlocks' }[item.style];
+        if (who) sentences.push(who + ' can wear it');
+    }
     const made = materialsPhrase(item.cost);
     if (made) sentences.push('Made from ' + made);
     if (yesNo(item.loot) === 'yes') sentences.push('Also found in chests');

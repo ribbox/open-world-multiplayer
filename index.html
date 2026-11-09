@@ -700,7 +700,7 @@
         Enter: Talk. The open tab is the channel. /p is the party, /w Name whispers, /t whispers your target<br>
         Sounds play for combat, gathering, loot, quests, travel, chat, and the other events<br>
         C: Character sheet. Characters, under the map, returns to the select screen. Reset character is on the sheet and returns that one to level 1<br>
-        Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health<br>
+        Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health. Warriors wear plate, hunters wear leather, mages and warlocks wear cloth<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
         Spells and talents share one tree and spend talent points. The next node stays locked until the one before it is fully trained. A branch does not wait on the other branch<br>
         Hamstring, Wing Clip, Frost Bolt, and Curse slow. Execute, Kill Shot, and Soul Burn double damage under 35% health. Cleave, Multi-Shot, Whirlwind, Frost Nova, and Hellfire hit nearby foes. Drain Life returns the damage as health. Barrier soaks hits<br>
@@ -1173,6 +1173,191 @@
             loadManager.onError = (url) => {
                 console.warn('Asset failed', url);
             };
+            function pieceLook(piece) {
+                if (!piece) return null;
+                const style = piece.style === 'plate' || piece.style === 'leather' || piece.style === 'cloth' ? piece.style : '';
+                if (!style) return null;
+                return { style, level: piece.level || piece.reqLevel || 1, magic: !!piece.magic };
+            }
+            function armorColor(style, level, magic) {
+                const lv = level || 1;
+                if (style === 'plate') {
+                    if (lv >= 20) return 0xd7c08a;
+                    if (lv >= 14) return 0x8fb4c8;
+                    if (lv >= 8) return 0xcfd6e0;
+                    return 0x8d949c;
+                }
+                if (style === 'leather') {
+                    if (lv >= 20) return 0x4a2c20;
+                    if (lv >= 14) return 0x6a4030;
+                    if (lv >= 8) return 0x8a5a38;
+                    return 0x6e4b32;
+                }
+                if (magic && lv >= 14) return 0x5c48b8;
+                if (lv >= 20) return 0x2a3d74;
+                if (lv >= 14) return 0x345578;
+                if (lv >= 8) return 0x3e6080;
+                return 0x516888;
+            }
+            function armorMat(style, level, magic) {
+                const color = armorColor(style, level, magic);
+                return new THREE.MeshStandardMaterial({
+                    color,
+                    roughness: style === 'plate' ? 0.38 : style === 'leather' ? 0.7 : 0.82,
+                    metalness: style === 'plate' ? 0.62 : 0.04,
+                    emissive: magic ? color : 0x000000,
+                    emissiveIntensity: magic ? 0.25 : 0,
+                    side: THREE.DoubleSide
+                });
+            }
+            function putArmor(rig, mesh, x, y, z) {
+                mesh.position.set(x, y, z);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                rig.add(mesh);
+            }
+            function rememberBody(group, model) {
+                group.updateWorldMatrix(true, true);
+                const box = new THREE.Box3().setFromObject(model);
+                box.applyMatrix4(new THREE.Matrix4().copy(group.matrixWorld).invert());
+                if (box.isEmpty()) return;
+                group.userData.bodyBox = box;
+            }
+            function solidifyBody(model) {
+                let skin = 0xd39a6a;
+                model.traverse(obj => {
+                    if (!obj.isMesh || !obj.material) return;
+                    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+                    for (const mat of mats) {
+                        mat.side = THREE.DoubleSide;
+                        if (mat.name === 'skin' && mat.color) skin = mat.color.getHex();
+                    }
+                });
+                model.updateWorldMatrix(true, true);
+                const box = new THREE.Box3().setFromObject(model);
+                box.applyMatrix4(new THREE.Matrix4().copy(model.matrixWorld).invert());
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+                const fill = new THREE.Mesh(
+                    new THREE.SphereGeometry(1, 18, 14),
+                    new THREE.MeshStandardMaterial({ color: skin, roughness: 0.82 })
+                );
+                const girth = Math.max(0.05, Math.min(Math.abs(size.x), Math.abs(size.z)));
+                fill.scale.set(girth * 0.36, Math.abs(size.y) * 0.12, girth * 0.36);
+                fill.position.set(center.x, box.max.y - Math.abs(size.y) * 0.11, center.z);
+                fill.castShadow = true;
+                model.add(fill);
+            }
+            function clearArmor(group) {
+                const old = group.userData.armor;
+                if (!old) return;
+                group.remove(old);
+                old.traverse(obj => {
+                    if (obj.geometry) obj.geometry.dispose();
+                    if (obj.material && obj.material.dispose) obj.material.dispose();
+                });
+                group.userData.armor = null;
+            }
+            function fadeRig(rig, on) {
+                if (!rig) return;
+                rig.traverse(obj => {
+                    if (!obj.isMesh || !obj.material) return;
+                    obj.material.transparent = true;
+                    obj.material.opacity = on ? 0.35 : 1;
+                    obj.material.depthWrite = !on;
+                });
+            }
+            const VISUAL_SLOTS = ['head', 'shoulders', 'chest', 'legs', 'feet', 'cloak', 'offhand'];
+            function wearArmor(group, source) {
+                const gear = {};
+                for (const slot of VISUAL_SLOTS) {
+                    const look = pieceLook(source && source[slot]);
+                    if (look) gear[slot] = look;
+                }
+                const key = JSON.stringify(gear);
+                if (group.userData.armorKey === key && group.userData.armor) return;
+                group.userData.armorKey = key;
+                clearArmor(group);
+                const box = group.userData.bodyBox;
+                if (!box || !Object.keys(gear).length) return;
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+                const h = Math.abs(size.y) || 1.8;
+                const w = Math.abs(size.x) || 0.6;
+                const d = Math.abs(size.z) || 0.4;
+                const feet = Math.min(box.min.y, box.max.y);
+                const girth = Math.max(0.16, Math.min(w, d));
+                const yAt = (t) => feet + h * t;
+                const rig = new THREE.Group();
+                const chest = gear.chest;
+                if (chest) {
+                    const mat = armorMat(chest.style, chest.level, chest.magic);
+                    if (chest.style === 'cloth') {
+                        putArmor(rig, new THREE.Mesh(new THREE.CylinderGeometry(girth * 0.55, girth * 0.74, h * 0.5, 8), mat), center.x, yAt(0.48), center.z);
+                    } else if (chest.style === 'leather') {
+                        putArmor(rig, new THREE.Mesh(new THREE.BoxGeometry(w * 0.72, h * 0.24, d * 0.72), mat), center.x, yAt(0.64), center.z);
+                    } else {
+                        putArmor(rig, new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, h * 0.26, d * 0.64), mat), center.x, yAt(0.64), center.z);
+                        putArmor(rig, new THREE.Mesh(new THREE.BoxGeometry(w * 0.14, h * 0.2, d * 0.18), armorMat(chest.style, chest.level, chest.magic)), center.x, yAt(0.64), center.z + d * 0.28);
+                    }
+                }
+                const head = gear.head;
+                if (head) {
+                    const mat = armorMat(head.style, head.level, head.magic);
+                    if (head.style === 'cloth') putArmor(rig, new THREE.Mesh(new THREE.ConeGeometry(girth * 0.42, h * 0.18, 8), mat), center.x, yAt(0.9), center.z);
+                    else if (head.style === 'leather') putArmor(rig, new THREE.Mesh(new THREE.SphereGeometry(girth * 0.34, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), mat), center.x, yAt(0.86), center.z);
+                    else {
+                        const helm = new THREE.Mesh(new THREE.SphereGeometry(girth * 0.4, 14, 10), mat);
+                        helm.scale.y = 1.08;
+                        putArmor(rig, helm, center.x, yAt(0.88), center.z);
+                    }
+                }
+                const shoulders = gear.shoulders;
+                if (shoulders) {
+                    for (const side of [-1, 1]) {
+                        const mat = armorMat(shoulders.style, shoulders.level, shoulders.magic);
+                        let mesh;
+                        if (shoulders.style === 'plate') {
+                            mesh = new THREE.Mesh(new THREE.SphereGeometry(girth * 0.22, 10, 8), mat);
+                            mesh.scale.set(1.35, 0.65, 1.05);
+                        } else mesh = new THREE.Mesh(new THREE.BoxGeometry(girth * 0.28, h * 0.055, d * 0.38), mat);
+                        putArmor(rig, mesh, center.x + side * w * 0.4, yAt(0.76), center.z);
+                    }
+                }
+                if (gear.legs && !(chest && chest.style === 'cloth')) {
+                    for (const side of [-1, 1]) {
+                        const mat = armorMat(gear.legs.style, gear.legs.level, gear.legs.magic);
+                        putArmor(rig, new THREE.Mesh(new THREE.BoxGeometry(w * 0.22, h * 0.28, d * 0.38), mat), center.x + side * w * 0.16, yAt(0.3), center.z);
+                    }
+                }
+                if (gear.feet) {
+                    for (const side of [-1, 1]) {
+                        const mat = armorMat(gear.feet.style, gear.feet.level, gear.feet.magic);
+                        putArmor(rig, new THREE.Mesh(new THREE.BoxGeometry(w * 0.2, h * 0.07, d * 0.46), mat), center.x + side * w * 0.14, yAt(0.05), center.z + d * 0.05);
+                    }
+                }
+                if (gear.cloak) {
+                    const mat = armorMat(gear.cloak.style, gear.cloak.level, gear.cloak.magic);
+                    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.72, h * 0.55), mat);
+                    mesh.position.set(center.x, yAt(0.55), center.z - Math.max(d, girth) * 0.62);
+                    mesh.castShadow = true;
+                    rig.add(mesh);
+                }
+                if (gear.offhand) {
+                    const mat = armorMat(gear.offhand.style, gear.offhand.level, gear.offhand.magic);
+                    if (gear.offhand.style === 'plate') {
+                        const shield = new THREE.Mesh(new THREE.CylinderGeometry(girth * 0.28, girth * 0.28, 0.05, 12), mat);
+                        shield.rotation.x = Math.PI / 2;
+                        putArmor(rig, shield, center.x - w * 0.55, yAt(0.58), center.z + d * 0.12);
+                    } else {
+                        putArmor(rig, new THREE.Mesh(new THREE.OctahedronGeometry(girth * 0.16, 0), mat), center.x - w * 0.48, yAt(0.58), center.z + d * 0.16);
+                    }
+                }
+                group.add(rig);
+                group.userData.armor = rig;
+                if (group === characterGroup && ghost) fadeRig(rig, true);
+            }
+
             const loader = new GLTFLoader(loadManager);
             loader.load(
                 '/models/player.glb',
@@ -1184,7 +1369,10 @@
                     model.scale.setScalar(scale);
                     box.setFromObject(model);
                     model.position.y = -box.min.y;
+                    solidifyBody(model);
                     characterGroup.add(model);
+                    rememberBody(characterGroup, model);
+                    wearArmor(characterGroup, character.equipment);
                     playerModel = model;
                     playerTemplate = model;
                     playerClips = gltf.animations || [];
@@ -1731,6 +1919,10 @@
                     if (bonus.strength) lines.push('+' + bonus.strength + ' Strength');
                     if (bonus.stamina) lines.push('+' + bonus.stamina + ' Stamina');
                     if (bonus.intellect) lines.push('+' + bonus.intellect + ' Intellect');
+                    if (item.kind === 'armor' && item.style && item.slot !== 'neck' && item.slot !== 'cloak') {
+                        const who = { plate: 'Warriors', leather: 'Hunters', cloth: 'Mages and warlocks' }[item.style];
+                        if (who) lines.push(who + ' only');
+                    }
                     if ((item.reqLevel || 1) > 1) lines.push('Requires level ' + item.reqLevel);
                 }
                 if (item.qty > 1) lines.push('Quantity ' + item.qty);
@@ -5404,6 +5596,7 @@
                 if (document.getElementById('sheet').classList.contains('open')) renderSheet();
                 refreshOpenTalk();
                 rememberCharacter();
+                wearArmor(characterGroup, character.equipment);
             }
 
             function nearestCivilian(range) {
@@ -6734,6 +6927,7 @@
                 const model = cloneSkinned(playerTemplate);
                 tintModel(model, color);
                 group.add(model);
+                rememberBody(group, model);
                 if (playerClips.length) {
                     const remoteMixer = new THREE.AnimationMixer(model);
                     remoteMixer.clipAction(playerClips[0]).play();
@@ -6782,12 +6976,14 @@
 
             function upgradeRemotePlayers() {
                 for (const entry of remotePlayers.values()) {
-                    if (entry.mesh.userData.hasModel) continue;
-                    if (entry.mesh.userData.fallback) {
-                        entry.mesh.remove(entry.mesh.userData.fallback);
-                        entry.mesh.userData.fallback = null;
+                    if (!entry.mesh.userData.hasModel) {
+                        if (entry.mesh.userData.fallback) {
+                            entry.mesh.remove(entry.mesh.userData.fallback);
+                            entry.mesh.userData.fallback = null;
+                        }
+                        attachPlayerModel(entry.mesh, entry.data.color);
                     }
-                    attachPlayerModel(entry.mesh, entry.data.color);
+                    wearArmor(entry.mesh, entry.data.gear);
                 }
             }
 
@@ -6850,6 +7046,7 @@
                 myCorpse = corpse || myCorpse;
                 document.getElementById('ghostBanner').hidden = false;
                 setGhostLook(playerModel, true);
+                fadeRig(characterGroup.userData.armor, true);
                 if (myId && myCorpse) placeCorpse(myId, myCorpse, playerName, '#9ecbff');
             }
 
@@ -6859,6 +7056,7 @@
                 document.getElementById('ghostBanner').hidden = true;
                 document.getElementById('reclaimButton').hidden = true;
                 setGhostLook(playerModel, false);
+                fadeRig(characterGroup.userData.armor, false);
                 if (myId) removeCorpse(myId);
             }
 
@@ -6880,6 +7078,7 @@
                 }
                 entry.data = p;
                 entry.mesh.userData.playerId = p.id;
+                wearArmor(entry.mesh, p.gear);
                 setGhostLook(entry.mesh, !!p.ghost);
                 if (p.corpse) placeCorpse(p.id, p.corpse, p.name, p.color);
                 else if (p.id !== myId) removeCorpse(p.id);
