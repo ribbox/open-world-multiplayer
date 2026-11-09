@@ -509,6 +509,44 @@
             background: #102018; color: #fff; font-family: Arial, sans-serif;
         }
         #loading.done { display: none; }
+        #pick {
+            position: fixed; inset: 0; z-index: 110;
+            display: flex; align-items: center; justify-content: center;
+            background: #102018; color: #f4efe4; font-family: Arial, sans-serif;
+        }
+        #pick[hidden] { display: none; }
+        #pickCard {
+            width: min(440px, calc(100vw - 28px)); max-height: calc(100vh - 28px); overflow: auto;
+            background: rgba(16, 18, 24, 0.96); border: 1px solid rgba(214, 176, 96, 0.55);
+            border-radius: 10px; padding: 18px 16px 14px;
+        }
+        #pickCard h1 { margin: 0 0 6px; font-size: 22px; color: #f1c40f; }
+        #pickNote { margin: 0 0 12px; color: #c9c2b4; font-size: 13px; line-height: 1.4; }
+        .pick-row {
+            display: flex; gap: 8px; align-items: center; width: 100%; margin: 0 0 8px; padding: 8px 10px;
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(214,176,96,0.28);
+            border-radius: 6px; color: inherit; text-align: left;
+        }
+        .pick-play { flex: 1; min-width: 0; background: transparent; border: 0; color: inherit; text-align: left; cursor: pointer; padding: 0; }
+        .pick-play strong { display: block; font-size: 16px; }
+        .pick-play span { color: #c9c2b4; font-size: 12px; }
+        .pick-del { border: 0; background: transparent; color: #e0a15a; cursor: pointer; font-size: 18px; line-height: 1; }
+        #pickNew { display: flex; gap: 6px; margin-top: 8px; }
+        #pickName {
+            flex: 1; min-width: 0; font-size: 16px; color: #f4efe4;
+            background: rgba(255,255,255,0.08); border: 1px solid rgba(214,176,96,0.35);
+            border-radius: 4px; padding: 8px;
+        }
+        #pickNew button {
+            background: #e2c48a; color: #2b2108; border: 0; border-radius: 4px;
+            font-weight: bold; cursor: pointer; padding: 8px 12px;
+        }
+        #changeChar {
+            position: absolute; top: 202px; right: 12px; z-index: 12;
+            background: rgba(16, 18, 24, 0.82); color: #f4efe4;
+            border: 1px solid rgba(214, 176, 96, 0.45); border-radius: 4px;
+            font-size: 12px; padding: 5px 8px; cursor: pointer;
+        }
         #loadingCard { width: min(420px, 86vw); }
         #loadingTitle { font-size: 22px; margin-bottom: 16px; letter-spacing: 0.04em; }
         #loadingTrack {
@@ -612,6 +650,18 @@
             <div id="loadingLabel">Starting</div>
         </div>
     </div>
+    <div id="pick">
+        <div id="pickCard">
+            <h1>Characters</h1>
+            <p id="pickNote">Choose who to play. Each one keeps their own class, level, and bag.</p>
+            <div id="pickList"></div>
+            <form id="pickNew">
+                <input id="pickName" maxlength="16" placeholder="New name" autocomplete="off">
+                <button type="submit">Create</button>
+            </form>
+        </div>
+    </div>
+    <button type="button" id="changeChar" hidden>Characters</button>
     <div id="info">
         <button type="button" id="hideInfo" aria-label="Hide instructions">×</button>
         <strong>Open World Prototype</strong><br>
@@ -625,7 +675,7 @@
         P: Invite the targeted player. A party holds up to 5. A nearby member shares kill experience and quest credit<br>
         Enter: Talk. The open tab is the channel. /p is the party, /w Name whispers, /t whispers your target<br>
         Sounds play for combat, gathering, loot, quests, travel, chat, and the other events<br>
-        C: Character sheet. Reset character is on that page and returns you to level 1<br>
+        C: Character sheet. Characters, under the map, returns to the select screen. Reset character is on the sheet and returns that one to level 1<br>
         Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
         Spells and talents share one tree and spend talent points. The next node stays locked until the one before it is fully trained. A branch does not wait on the other branch<br>
@@ -1025,11 +1075,22 @@
             const resourceHits = new Map();
             const colliderById = new Map();
 
-            let persistentId = localStorage.getItem('ow-id');
-            if (!persistentId) {
-                persistentId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-                localStorage.setItem('ow-id', persistentId);
+            let persistentId = '';
+            let roster = [];
+            try {
+                const savedRoster = JSON.parse(localStorage.getItem('ow-roster') || '[]');
+                if (Array.isArray(savedRoster)) {
+                    roster = savedRoster.filter(row => row && typeof row.id === 'string' && /^[a-zA-Z0-9_-]{6,64}$/.test(row.id));
+                }
+            } catch { /* ignore a bad roster */ }
+            const previousId = localStorage.getItem('ow-id');
+            if (previousId && /^[a-zA-Z0-9_-]{6,64}$/.test(previousId) && !roster.some(row => row.id === previousId)) {
+                roster.unshift({ id: previousId, name: localStorage.getItem('ow-name') || 'Player', class: '', level: 1 });
             }
+            function storeRoster() {
+                localStorage.setItem('ow-roster', JSON.stringify(roster.slice(0, 8)));
+            }
+            storeRoster();
             let playerName = localStorage.getItem('ow-name') || 'Player';
             let gameSocket = null;
             const nameInput = document.getElementById('playerName');
@@ -1453,6 +1514,22 @@
             updateToolUI();
 
             const stats = { level: 1, xp: 0, xpToNext: 50, hp: 20, maxHp: 20, mana: 10, maxMana: 10, absorb: 0, armor: 0, strength: 0, stamina: 0, intellect: 0 };
+            const CLASS_LABEL = { warrior: 'Warrior', mage: 'Mage', hunter: 'Hunter', warlock: 'Warlock' };
+            function rememberCharacter() {
+                if (!persistentId) return;
+                const prev = roster.find(row => row.id === persistentId);
+                const next = {
+                    id: persistentId,
+                    name: playerName || (prev && prev.name) || 'Player',
+                    class: (character && character.class) || (prev && prev.class) || '',
+                    level: stats.level || (prev && prev.level) || 1
+                };
+                if (prev && prev.name === next.name && prev.class === next.class && prev.level === next.level) return;
+                const index = roster.findIndex(row => row.id === persistentId);
+                if (index >= 0) roster[index] = next;
+                else roster.push(next);
+                storeRoster();
+            }
             function updateStatsUI() {
                 document.getElementById('levelCount').textContent = stats.level;
                 document.getElementById('xpCount').textContent = stats.xp;
@@ -1518,6 +1595,7 @@
                     stats.intellect = data.stats.intellect || 0;
                 }
                 updateStatsUI();
+                rememberCharacter();
             }
 
             const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, baseSlots: 16, coins: 0, materials: {} };
@@ -5290,6 +5368,7 @@
                 renderBar();
                 if (document.getElementById('sheet').classList.contains('open')) renderSheet();
                 refreshOpenTalk();
+                rememberCharacter();
             }
 
             function nearestCivilian(range) {
@@ -6173,6 +6252,7 @@
 
             // Input
             document.addEventListener('keydown', (e) => {
+                if (!document.getElementById('pick').hidden) return;
                 if (!playReady) return;
                 if (e.key === 'Escape' && document.getElementById('questlog').classList.contains('open')) {
                     toggleQuestLog(false);
@@ -6785,12 +6865,123 @@
                 playerName = nameInput.value.trim().slice(0, 16) || 'Player';
                 nameInput.value = playerName;
                 localStorage.setItem('ow-name', playerName);
+                rememberCharacter();
                 if (gameSocket && gameSocket.readyState === WebSocket.OPEN) {
                     gameSocket.send(JSON.stringify({ type: 'rename', name: playerName }));
                 }
             });
 
+            let switching = false;
+            let freshEnter = false;
+
+            function wipeView() {
+                for (const [id, entry] of remotePlayers) {
+                    scene.remove(entry.mesh);
+                    remotePlayers.delete(id);
+                }
+                for (const id of [...corpseMarkers.keys()]) removeCorpse(id);
+                for (const id of [...worldChests.keys()]) removeChest(id);
+                quests = {};
+                renderQuestTracker();
+                explored.clear();
+                exploredZones.clear();
+                renderParty(null);
+                selectedNpcId = null;
+                targetRing.visible = false;
+                leaveGhost();
+                character = { class: null, equipment: {}, trained: [], talents: {}, points: 0, known: null, spells: {}, talentsDef: {} };
+                actionBar = defaultActionBar();
+                renderBar();
+                applyInventory({ slots: Array(16).fill(null), capacity: 16, bagSlots: 0, baseSlots: 16, coins: 0, materials: {} });
+                document.getElementById('sheet').classList.remove('open');
+            }
+
+            function renderPick() {
+                const list = document.getElementById('pickList');
+                const form = document.getElementById('pickNew');
+                list.replaceChildren();
+                for (const row of roster) {
+                    const line = document.createElement('div');
+                    line.className = 'pick-row';
+                    const play = document.createElement('button');
+                    play.type = 'button';
+                    play.className = 'pick-play';
+                    const title = document.createElement('strong');
+                    title.textContent = row.name || 'Player';
+                    const sub = document.createElement('span');
+                    sub.textContent = (CLASS_LABEL[row.class] || 'No class yet') + ' · level ' + (row.level || 1);
+                    play.append(title, sub);
+                    play.addEventListener('click', () => playCharacter(row.id));
+                    const del = document.createElement('button');
+                    del.type = 'button';
+                    del.className = 'pick-del';
+                    del.setAttribute('aria-label', 'Remove ' + (row.name || 'character'));
+                    del.textContent = '×';
+                    del.addEventListener('click', () => {
+                        if (!confirm('Remove ' + (row.name || 'this character') + ' from the list? The save stays on the server.')) return;
+                        roster = roster.filter(item => item.id !== row.id);
+                        storeRoster();
+                        renderPick();
+                    });
+                    line.append(play, del);
+                    list.appendChild(line);
+                }
+                form.hidden = roster.length >= 8;
+            }
+
+            function showPick() {
+                switching = true;
+                if (gameSocket) {
+                    const old = gameSocket;
+                    gameSocket = null;
+                    try { old.close(); } catch { /* already closed */ }
+                }
+                renderPick();
+                document.getElementById('pick').hidden = false;
+                document.getElementById('changeChar').hidden = true;
+                document.getElementById('sheet').classList.remove('open');
+            }
+
+            function playCharacter(id) {
+                const row = roster.find(item => item.id === id);
+                if (!row) return;
+                persistentId = row.id;
+                playerName = row.name || 'Player';
+                nameInput.value = playerName;
+                localStorage.setItem('ow-id', persistentId);
+                localStorage.setItem('ow-name', playerName);
+                document.getElementById('pick').hidden = true;
+                document.getElementById('changeChar').hidden = false;
+                switching = false;
+                freshEnter = true;
+                if (gameSocket) {
+                    const old = gameSocket;
+                    gameSocket = null;
+                    try { old.close(); } catch { /* already closed */ }
+                }
+                connectMultiplayer();
+            }
+
+            document.getElementById('changeChar').addEventListener('click', showPick);
+            document.getElementById('pickNew').addEventListener('submit', (event) => {
+                event.preventDefault();
+                if (roster.length >= 8) return;
+                const input = document.getElementById('pickName');
+                const name = input.value.trim().slice(0, 16) || 'Player';
+                input.value = '';
+                const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+                roster.push({ id, name, class: '', level: 1 });
+                storeRoster();
+                playCharacter(id);
+            });
+            renderPick();
+
             function connectMultiplayer() {
+                if (!persistentId) return;
+                if (freshEnter) {
+                    freshEnter = false;
+                    wipeView();
+                }
                 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const ws = new WebSocket(`${protocol}//${location.host}`);
                 gameSocket = ws;
@@ -7225,12 +7416,15 @@
                 ws.onclose = () => {
                     clearInterval(sendTimer);
                     if (gameSocket === ws) gameSocket = null;
+                    if (switching || gameSocket) return;
                     showMessage('Disconnected from server');
-                    setTimeout(connectMultiplayer, 3000);
+                    setTimeout(() => {
+                        if (!switching && !gameSocket && persistentId && document.getElementById('pick').hidden) connectMultiplayer();
+                    }, 3000);
                 };
             }
 
-            setTimeout(connectMultiplayer, 500);
+            document.getElementById('pick').hidden = false;
         } catch (err) {
             showError(err.message || err);
         }
