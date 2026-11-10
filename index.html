@@ -6533,6 +6533,14 @@
                 }
             }
 
+            function sellTitle(slot) {
+                let name = slot.name || 'Item';
+                if (slot.kind === 'health' && slot.amount) name += ' · restores ' + slot.amount;
+                else if (slot.kind === 'mana' && slot.amount) name += ' · restores ' + slot.amount;
+                else if (slot.kind === 'bomb' && slot.amount && !/\d/.test(slot.name || '')) name += ' · ' + slot.amount + ' damage';
+                return name + ' x' + (slot.qty || 1) + ' · ' + formatMoney(sellPrice(slot)) + ' each';
+            }
+
             function renderSellList(parent) {
                 const sellNote = document.createElement('p');
                 sellNote.textContent = nearestRole('shop')
@@ -6545,7 +6553,7 @@
                 (inventory.slots || []).forEach((slot, index) => {
                     if (!slot) return;
                     const group = slot.kind === 'junk' ? 0 : itemRarity(slot);
-                    offers.push({ group, name: slot.name + ' x' + slot.qty + ' · ' + formatMoney(sellPrice(slot)) + ' each', send: (all) => sendCharacter('sell', { slot: index, all }) });
+                    offers.push({ group, amount: slot.amount || 0, name: sellTitle(slot), send: (all) => sendCharacter('sell', { slot: index, all }) });
                 });
                 for (const [kind, name] of SUPPLY_KINDS) {
                     const qty = (inventory.materials && inventory.materials[kind]) || 0;
@@ -6553,7 +6561,7 @@
                     const group = itemRarity({ kind });
                     offers.push({ group, name: name + ' x' + qty + ' · ' + formatMoney(sellPrice({ kind })) + ' each', send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
                 }
-                offers.sort((a, b) => a.group - b.group || a.name.localeCompare(b.name));
+                offers.sort((a, b) => a.group - b.group || a.name.localeCompare(b.name) || (a.amount || 0) - (b.amount || 0));
                 if (!offers.length) {
                     const empty = document.createElement('p');
                     empty.textContent = 'Nothing to sell.';
