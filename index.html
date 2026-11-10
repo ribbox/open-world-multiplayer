@@ -1682,6 +1682,8 @@
                 const limbs = [];
                 for (const mesh of meshes) {
                     const src = mesh.geometry;
+                    const srcPos = src.attributes.position;
+                    if (!srcPos || srcPos.count > 80) continue;
                     const geo = cloneRestGeometry(src);
                     bakePositions(geo);
                     mesh.geometry = geo;
@@ -7226,16 +7228,6 @@
 
                 updateSwing(delta);
                 updatePoses(delta);
-                const walkX = characterGroup.position.x;
-                const walkZ = characterGroup.position.z;
-                const walkSpeed = Math.hypot(walkX - (characterGroup.userData.gx ?? walkX), walkZ - (characterGroup.userData.gz ?? walkZ)) / Math.max(delta, 0.016);
-                characterGroup.userData.gx = walkX;
-                characterGroup.userData.gz = walkZ;
-                if (characterGroup.userData.actor) {
-                    updateGait(characterGroup.userData.actor, delta, walkSpeed);
-                    const walker = characterGroup.userData.actor.userData.walker;
-                    if (walker) updateArmorGait(characterGroup, walker.phase, walker.amount);
-                }
                 updateShots(delta);
                 updateCombatFx(delta);
                 if (mixer) mixer.update(delta);
@@ -7278,18 +7270,7 @@
                     const inCaveBody = entry.mesh.position.x > 80000;
                     const gy = inCaveBody ? 0.2 : terrainHeight(entry.mesh.position.x, entry.mesh.position.z);
                     const reported = entry.data && typeof entry.data.y === 'number' ? entry.data.y : gy;
-                    const px = entry.mesh.position.x;
-                    const pz = entry.mesh.position.z;
-                    const rsp = Math.hypot(px - (entry.lx ?? px), pz - (entry.lz ?? pz)) / Math.max(delta, 0.016);
-                    entry.lx = px;
-                    entry.lz = pz;
                     entry.mesh.position.y = inCaveBody ? 0.2 : (reported > gy + 0.35 ? reported : gy);
-                    const actor = entry.mesh.userData.actor;
-                    if (actor) {
-                        updateGait(actor, delta, rsp);
-                        const walker = actor.userData.walker;
-                        if (walker) updateArmorGait(entry.mesh, walker.phase, walker.amount);
-                    }
                 }
                 if (selectedNpcId) refreshTargetFrame();
                 refreshCivilians(false);
