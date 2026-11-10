@@ -139,11 +139,6 @@ export function listRoads() {
     return designedRoads.map(road => ({ id: road.id, points: road.points, edges: road.edges }));
 }
 
-function staysDry(x, z) {
-    const road = roadAt(x, z, 8);
-    return !!(road && road.dist < 8);
-}
-
 function shapedHeight(x, z) {
     const dry = rawHeight(x, z, false);
     let h = rawHeight(x, z, true);
@@ -527,22 +522,7 @@ function pullInside(x, z, minInset) {
 
 function applyBoundary(x, z, h) {
     const inset = boundaryInset(x, z);
-    if (shape.edge === 'sea') {
-        const road = roadAt(x, z, 8);
-        const onPath = road && road.dist < 8;
-        if ((staysDry(x, z) && inset >= 0) || (onPath && inset > -5)) {
-            return Math.max(h, WATER_LEVEL + 1.05);
-        }
-        if (inset >= 8) return h;
-        if (inset >= 0) {
-            const t = (8 - inset) / 8;
-            const shore = WATER_LEVEL + 0.55;
-            return h * (1 - t * t) + shore * (t * t);
-        }
-        const t = Math.min(1, -inset / 9);
-        const deep = WATER_LEVEL - 1.6 - Math.min(10, -inset) * 0.2;
-        return (WATER_LEVEL - 0.15) * (1 - t) + deep * t;
-    }
+    if (shape.edge === 'sea') return h;
     if (inset < 42) {
         const u = Math.min(1, (42 - inset) / 42);
         const gentle = Math.min(u, 0.62);
