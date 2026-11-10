@@ -36,23 +36,8 @@ function hills(x, z) {
     return Math.max(WATER_LEVEL + 1.6, n);
 }
 
-function riverBed(x, z, h) {
-    const center = 78 + Math.sin(z * 0.02) * 36 + Math.sin(z * 0.0055) * 14;
-    const dist = Math.abs(x - center);
-    const depth = Math.min(1.6, Math.max(0, h - (WATER_LEVEL + 0.2)));
-    if (depth <= 0.15) return h;
-    const span = Math.max(5, depth / (shape.maxSlope * 0.62));
-    if (dist >= span) return h;
-    const t = 1 - dist / span;
-    const s = t * t * (3 - 2 * t);
-    return h - depth * s;
-}
-
-function rawHeight(x, z, carve = true) {
+function rawHeight(x, z) {
     let h = hills(x, z);
-    if (carve) {
-        h = riverBed(x, z, h);
-    }
     const dist = Math.hypot(x, z);
     const flat = Math.min(1, Math.max(0, (dist - 12) / 28));
     h = h * flat + 0.9 * (1 - flat);
@@ -104,7 +89,7 @@ function rebuildRoads() {
         }
         const last = curve[curve.length - 1];
         dense.push({ x: last[0], z: last[1], y: 0 });
-        for (const point of dense) point.y = rawHeight(point.x, point.z, false);
+        for (const point of dense) point.y = rawHeight(point.x, point.z);
         limitRoadGrade(dense);
         roadSamples.push(dense);
     }
@@ -140,8 +125,8 @@ export function listRoads() {
 }
 
 function shapedHeight(x, z) {
-    const dry = rawHeight(x, z, false);
-    let h = rawHeight(x, z, true);
+    const dry = rawHeight(x, z);
+    let h = dry;
     const road = roadAt(x, z);
     if (road && road.dist < ROAD_SHOULDER) {
         const edge = road.dist <= ROAD_BED ? 1 : 1 - (road.dist - ROAD_BED) / (ROAD_SHOULDER - ROAD_BED);
@@ -522,7 +507,19 @@ function pullInside(x, z, minInset) {
 
 function applyBoundary(x, z, h) {
     const inset = boundaryInset(x, z);
-    if (shape.edge === 'sea') return h;
+    if (shape.edge === 'sea') {
+        const bed = WATER_LEVEL - 2.2;
+        const drop = Math.max(0.4, h - bed);
+        const reach = Math.max(16, drop / (shape.maxSlope * 0.55));
+        if (inset >= reach) return h;
+        if (inset >= 0) {
+            const t = 1 - inset / reach;
+            const s = t * t * (3 - 2 * t);
+            return h * (1 - s) + bed * s;
+        }
+        const t = Math.min(1, -inset / 14);
+        return bed * (1 - t) + (bed - 1.4) * t;
+    }
     if (inset < 42) {
         const u = Math.min(1, (42 - inset) / 42);
         const gentle = Math.min(u, 0.62);
