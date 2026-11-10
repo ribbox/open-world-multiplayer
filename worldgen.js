@@ -172,38 +172,32 @@ function staysDry(x, z) {
     return !!(road && road.dist < 14);
 }
 
-function zoneEdgeDistance(x, z, reach) {
-    let best = Infinity;
+function closestZoneEdge(x, z, reach) {
+    let best = null;
     for (const zone of designedZones) {
         if (x < zone.minX - reach || x > zone.maxX + reach || z < zone.minZ - reach || z > zone.maxZ + reach) continue;
         const samples = zone.samples || zone.points;
         for (let i = 0, j = samples.length - 1; i < samples.length; j = i++) {
-            const dist = distToSeg(x, z, samples[j], samples[i]);
-            if (dist < best) best = dist;
+            const a = samples[j];
+            const b = samples[i];
+            const dx = b[0] - a[0];
+            const dz = b[1] - a[1];
+            const len2 = dx * dx + dz * dz || 1;
+            let t = ((x - a[0]) * dx + (z - a[1]) * dz) / len2;
+            if (t < 0) t = 0;
+            else if (t > 1) t = 1;
+            const px = a[0] + dx * t;
+            const pz = a[1] + dz * t;
+            const dist = Math.hypot(x - px, z - pz);
+            if (dist < reach && (!best || dist < best.dist)) best = { dist, x: px, z: pz };
         }
     }
     return best;
 }
 
-// Rivers and lakes stop at a zone border. A hard stop leaves a ditch on the
-// line itself, and the walls are too steep to climb. Ease the cut so the
-// bank stays within the slope you can walk.
 function shapedHeight(x, z) {
     const dry = rawHeight(x, z, false);
-    let h = dry;
-    if (!staysDry(x, z)) {
-        h = rawHeight(x, z, true);
-        const drop = dry - h;
-        if (drop > 0.3 && designedZones.length) {
-            const grade = Math.max(0.25, shape.maxSlope * 0.85);
-            const reach = Math.min(80, Math.max(12, drop / grade));
-            const edge = zoneEdgeDistance(x, z, reach);
-            if (edge < reach) {
-                const cap = dry - grade * edge;
-                if (h < cap) h = cap;
-            }
-        }
-    }
+    let h = staysDry(x, z) ? dry : rawHeight(x, z, true);
     const road = roadAt(x, z);
     if (road && road.dist < ROAD_SHOULDER) {
         const edge = road.dist <= ROAD_BED ? 1 : 1 - (road.dist - ROAD_BED) / (ROAD_SHOULDER - ROAD_BED);
@@ -212,22 +206,29 @@ function shapedHeight(x, z) {
         const bed = Math.max(road.y, dry - shape.maxSlope * span);
         h = h * (1 - blend) + bed * blend;
     }
+    if (designedZones.length && !staysDry(x, z)) {
+        const delta = dry - h;
+        if (Math.abs(delta) > 0.15) {
+            const span = 128;
+            const edge = closestZoneEdge(x, z, span);
+            if (edge) {
+                const t = edge.dist / span;
+                const s = t * t * (3 - 2 * t);
+                h = dry * (1 - s) + h * s;
+            }
+        }
+    }
     return applyBoundary(x, z, h);
 }
 
+const heightCache = new Map();
+
 export function terrainHeight(x, z) {
+    const key = Math.round(x * 50) * 131071 + Math.round(z * 50);
+    const hit = heightCache.get(key);
+    if (hit !== undefined) return hit;
     const h = shapedHeight(x, z);
-    const dry = rawHeight(x, z, false);
-    if (dry - h < 0.45) return h;
-    // Fill a narrow ditch. A real slope or a wide river still has one low side.
-    const step = 2.6;
-    const allow = shape.maxSlope * step * 0.9;
-    const east = shapedHeight(x + step, z);
-    const west = shapedHeight(x - step, z);
-    const north = shapedHeight(x, z + step);
-    const south = shapedHeight(x, z - step);
-    const across = Math.max(Math.min(east, west), Math.min(north, south));
-    if (across - h > allow) return across - allow;
+    heightCache.set(key, h);
     return h;
 }
 
@@ -841,6 +842,7 @@ function pointInPoly(x, z, points) {
 }
 
 export function applyWorldConfig(config) {
+    heightCache.clear();
     const bounds = config && config.bounds && typeof config.bounds === 'object' ? config.bounds : {};
     const half = Number(bounds.half);
     shape.half = Number.isFinite(half) ? Math.max(200, Math.min(2000, half)) : 900;

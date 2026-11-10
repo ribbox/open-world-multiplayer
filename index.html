@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Open World Prototype - External Model</title>
+    <link rel="icon" href="data:,">
     <style>
         body { margin: 0; overflow: hidden; background: #87CEEB; font-family: Arial, sans-serif; }
         #info {
@@ -1188,6 +1189,7 @@
                 paintLoading(url);
             };
             loadManager.onLoad = () => {
+                if (!assetsStarted) return;
                 loadAssetsReady = true;
                 loadDone = loadTotal;
                 paintLoading();
@@ -1387,6 +1389,31 @@
             }
 
             const loader = new GLTFLoader(loadManager);
+            const queuedLoads = [];
+            let assetsStarted = false;
+            const startLoad = loader.load.bind(loader);
+            loader.load = (...args) => {
+                if (!assetsStarted) {
+                    queuedLoads.push(args);
+                    return;
+                }
+                startLoad(...args);
+            };
+            function startAssetLoads() {
+                if (assetsStarted) return;
+                assetsStarted = true;
+                loadAssetsReady = false;
+                playReady = false;
+                const cover = document.getElementById('loading');
+                if (cover) {
+                    cover.classList.remove('done');
+                    cover.classList.remove('counting');
+                }
+                const label = document.getElementById('loadingLabel');
+                if (label) label.textContent = 'Loading the world';
+                const batch = queuedLoads.splice(0);
+                for (const args of batch) startLoad(...args);
+            }
             loader.load(
                 '/models/player.glb',
                 (gltf) => {
@@ -1450,7 +1477,7 @@
             }
             function rockReady() {
                 rockLoads -= 1;
-                if (rockLoads <= 0 && loadedChunks.size) reloadChunks();
+                if (rockLoads <= 0 && loadedChunks.size) dressChunks();
             }
             loader.load('/models/rock.glb', (gltf) => {
                 rockTemplate = fitProp(gltf.scene);
@@ -1503,8 +1530,12 @@
                 };
                 return mat;
             }
+            let groundTimer = 0;
             function refreshGround() {
-                if (loadedChunks.size) reloadChunks();
+                clearTimeout(groundTimer);
+                groundTimer = setTimeout(() => {
+                    if (loadedChunks.size) reloadChunks();
+                }, 400);
             }
             loader.load('/models/terrain-grass.glb', (gltf) => {
                 let source = null;
@@ -1533,11 +1564,11 @@
             let gatherTreeTemplate = null;
             loader.load('/models/tree.glb', (gltf) => {
                 treeTemplate = fitProp(gltf.scene);
-                refreshGround();
+                dressChunks();
             }, undefined, (err) => console.warn('Tree model failed', err));
             loader.load('/models/gather-tree.glb', (gltf) => {
                 gatherTreeTemplate = fitProp(gltf.scene);
-                refreshGround();
+                dressChunks();
             }, undefined, (err) => console.warn('Gather tree model failed', err));
             loader.load('/models/mine-rock.glb', (gltf) => {
                 mineTemplate = fitProp(gltf.scene);
@@ -3517,16 +3548,26 @@
                 const edge = worldBounds();
                 const wx = cx * chunkSize;
                 const wz = cz * chunkSize;
-                if (wx < edge.min - chunkSize || wx > edge.max + chunkSize || wz < edge.min - chunkSize || wz > edge.max + chunkSize) return;
+                if (wx < edge.min - chunkSize || wx > edge.max + chunkSize || wz < edge.min - chunkSize || wz > edge.max + chunkSize) return false;
                 const key = `${cx},${cz}`;
-                if (loadedChunks.has(key)) return;
+                if (loadedChunks.has(key)) return false;
 
                 const group = new THREE.Group();
                 group.position.set(cx * chunkSize, 0, cz * chunkSize);
                 addTerrain(group, cx, cz);
 
                 const colliders = [];
+                const placed = new Set();
+                placeChunkProps(cx, cz, group, colliders, placed);
+
+                scene.add(group);
+                loadedChunks.set(key, { group, colliders, placed });
+                return true;
+            }
+
+            function placeChunkProps(cx, cz, group, colliders, placed) {
                 for (const item of chunkResources(cx, cz)) {
+                    if (placed.has(item.id)) continue;
                     const hits = resourceHits.has(item.id) ? resourceHits.get(item.id) : item.hits;
                     const scenery = item.type === 'boulder' || item.type === 'plain-tree' || item.type === 'plain-rock';
                     if (!scenery && hits <= 0) continue;
@@ -3534,12 +3575,11 @@
                     const meshes = [];
                     if (item.type === 'tree' || item.type === 'plain-tree') {
                         const template = item.type === 'tree' ? (gatherTreeTemplate || treeTemplate) : treeTemplate;
-                        if (template) {
-                            const scale = item.type === 'tree' ? 4.4 : 4.6 + Math.abs(Math.sin(item.x * 0.17 + item.z)) * 1.3;
-                            const tree = placeProp(template, item, scale);
-                            group.add(tree);
-                            meshes.push(tree);
-                        }
+                        if (!template) continue;
+                        const scale = item.type === 'tree' ? 4.4 : 4.6 + Math.abs(Math.sin(item.x * 0.17 + item.z)) * 1.3;
+                        const tree = placeProp(template, item, scale);
+                        group.add(tree);
+                        meshes.push(tree);
                     } else if (item.type === 'herb') {
                         const stem = new THREE.Mesh(
                             new THREE.CylinderGeometry(0.06, 0.08, 0.55, 6),
@@ -3576,14 +3616,7 @@
                         group.add(rock);
                         meshes.push(rock);
                     } else {
-                        const rock = new THREE.Mesh(
-                            new THREE.BoxGeometry(item.sx, item.sy, item.sz),
-                            new THREE.MeshLambertMaterial({ color: 0x696969 })
-                        );
-                        rock.position.set(item.px, terrainHeight(item.x, item.z) + item.sy / 2, item.pz);
-                        rock.castShadow = true;
-                        group.add(rock);
-                        meshes.push(rock);
+                        continue;
                     }
 
                     const collider = {
@@ -3598,12 +3631,25 @@
                         parent: group
                     };
                     colliders.push(collider);
+                    allColliders.push(collider);
                     colliderById.set(item.id, collider);
+                    placed.add(item.id);
                 }
+            }
 
-                scene.add(group);
-                loadedChunks.set(key, { group, colliders });
-                colliders.forEach(c => allColliders.push(c));
+            const dressQueue = [];
+            function dressChunks() {
+                dressQueue.length = 0;
+                for (const key of loadedChunks.keys()) dressQueue.push(key);
+            }
+            function pumpDress() {
+                if (!dressQueue.length) return;
+                const key = dressQueue.shift();
+                const data = loadedChunks.get(key);
+                if (!data) return;
+                if (!data.placed) data.placed = new Set(data.colliders.map(item => item.id));
+                const [cx, cz] = key.split(',').map(Number);
+                placeChunkProps(cx, cz, data.group, data.colliders, data.placed);
             }
 
             const roadRibbonMat = new THREE.MeshLambertMaterial({
@@ -5343,9 +5389,13 @@
                 const pz = characterGroup.position.z;
                 const currentCX = Math.floor(px / chunkSize);
                 const currentCZ = Math.floor(pz / chunkSize);
+                let built = 0;
                 for (let dx = -2; dx <= 2; dx++) {
                     for (let dz = -2; dz <= 2; dz++) {
-                        generateChunk(currentCX + dx, currentCZ + dz);
+                        if (generateChunk(currentCX + dx, currentCZ + dz)) {
+                            built += 1;
+                            if (built >= 2) return;
+                        }
                     }
                 }
                 if (Math.random() < 0.05) unloadDistantChunks(px, pz);
@@ -7496,7 +7546,10 @@
                 }
                 camera.lookAt(camTarget);
 
-                if (!activeCave) updateChunks();
+                if (!activeCave) {
+                    updateChunks();
+                    pumpDress();
+                }
                 renderer.render(scene, camera);
             }
             animate();
@@ -7864,6 +7917,7 @@
                 document.getElementById('changeChar').hidden = false;
                 switching = false;
                 freshEnter = true;
+                startAssetLoads();
                 if (gameSocket) {
                     const old = gameSocket;
                     gameSocket = null;
