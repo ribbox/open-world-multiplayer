@@ -116,7 +116,7 @@ const CIVILIANS = [
     { id: 'mira', name: 'Mira', role: 'shop', title: 'Shop assistant', tint: '#f1c40f', x: 10, z: 4, text: 'I buy what you carry and sell potions and crafting skills. Bring coins.' },
     { id: 'bram', name: 'Bram', role: 'trainer', title: 'Trainer', tint: '#5dade2', x: -10, z: 4, text: 'Choose a class, then train your spells with me. I also teach crafting tiers.' },
     { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' },
-    { id: 'holt', name: 'Holt', role: 'inn', title: 'Innkeeper', tint: '#e67e22', x: GLADE_INN.x, z: GLADE_INN.z, text: 'I keep the inn. You can set your spawn here. I also have a spare sack if you clear some wolves.' },
+    { id: 'holt', name: 'Holt', role: 'inn', title: 'Innkeeper', tint: '#e67e22', x: GLADE_INN.x, z: GLADE_INN.z, text: 'I keep the inn. Set your rest here, then press H to return. I also have a spare sack if you clear some wolves.' },
     { id: 'nessa', name: 'Nessa', role: 'bank', title: 'Banker', tint: '#f4d03f', x: GLADE_INN.x + 3.2, z: GLADE_INN.z + 1.2, text: 'The vault is only here, in the main settlement. I will hold what you do not want to carry.' },
     { id: 'wren', name: 'Wren', role: 'quest', title: 'Fen watcher', tint: '#5dade2', x: 160, z: 30, text: 'The chapel drowned, but the prior did not. Clear the fen, then take a party of four through the portal.' }
 ];
@@ -181,7 +181,7 @@ function rebuildCivilians() {
     for (const zone of listDesignedZones()) {
         zone.camps.forEach((camp, index) => {
             if (!campStanding(camp.x, camp.z)) return;
-            pushCampRole(CIVILIANS, camp, zone, index, 'inn', 'Innkeeper', '#e67e22', 'I keep the inn in ' + zone.name + '. You can set your spawn here.');
+            pushCampRole(CIVILIANS, camp, zone, index, 'inn', 'Innkeeper', '#e67e22', 'I keep the inn in ' + zone.name + '. Set your rest here, then press H to return.');
             pushCampRole(CIVILIANS, camp, zone, index, 'shop', 'Shop', '#f1c40f', 'I buy and sell in ' + zone.name + '.');
             pushCampRole(CIVILIANS, camp, zone, index, 'trainer', 'Trainer', '#5dade2', 'I train spells in ' + zone.name + '.');
             pushCampRole(CIVILIANS, camp, zone, index, 'quest', 'Quest giver', '#2ecc71', 'I keep the road through ' + zone.name + '.');
@@ -3970,7 +3970,49 @@ wss.on('connection', (ws) => {
             }
             player.spawn = { x: civ.x, z: civ.z, name: civ.name };
             savePlayer(player);
-            send(ws, { type: 'spawn', ok: true, spawn: player.spawn, note: 'Spawn set to ' + civ.name });
+            send(ws, { type: 'spawn', ok: true, spawn: player.spawn, note: 'Rest set to ' + civ.name + '. Press H to return here.' });
+            return;
+        }
+
+        if (data.type === 'hearth') {
+            if (player.ghost) {
+                send(ws, { type: 'hearth', ok: false, reason: 'You are a ghost' });
+                return;
+            }
+            if (Date.now() < (player.combatUntil || 0)) {
+                send(ws, { type: 'hearth', ok: false, reason: 'You are in combat' });
+                return;
+            }
+            const home = player.spawn;
+            if (!home || !Number.isFinite(home.x) || !Number.isFinite(home.z)) {
+                send(ws, { type: 'hearth', ok: false, reason: 'Set your rest with an innkeeper' });
+                return;
+            }
+            const instId = player.instanceId || '';
+            if (player.dungeonId || instId) {
+                player.instanceId = '';
+                player.dungeonId = '';
+                for (const hz of hazards.values()) {
+                    if (hz.instanceId === instId) send(ws, { type: 'hazard', id: hz.id, on: false });
+                }
+                if (instId) clearInstanceIfEmpty(instId);
+            }
+            player.x = home.x;
+            player.z = home.z;
+            player.y = terrainHeight(player.x, player.z);
+            savePlayer(player);
+            const revealed = revealFog(player);
+            send(ws, {
+                type: 'hearth',
+                ok: true,
+                x: player.x,
+                y: player.y,
+                z: player.z,
+                name: home.name || 'the inn',
+                add: revealed
+            });
+            send(ws, { type: 'npcs', npcs: visibleNpcs(player) });
+            refreshSight(player);
             return;
         }
 

@@ -172,15 +172,63 @@ function staysDry(x, z) {
     return !!(road && road.dist < 14);
 }
 
-export function terrainHeight(x, z) {
-    let h = rawHeight(x, z, !staysDry(x, z));
+function zoneEdgeDistance(x, z, reach) {
+    let best = Infinity;
+    for (const zone of designedZones) {
+        if (x < zone.minX - reach || x > zone.maxX + reach || z < zone.minZ - reach || z > zone.maxZ + reach) continue;
+        const samples = zone.samples || zone.points;
+        for (let i = 0, j = samples.length - 1; i < samples.length; j = i++) {
+            const dist = distToSeg(x, z, samples[j], samples[i]);
+            if (dist < best) best = dist;
+        }
+    }
+    return best;
+}
+
+// Rivers and lakes stop at a zone border. A hard stop leaves a ditch on the
+// line itself, and the walls are too steep to climb. Ease the cut so the
+// bank stays within the slope you can walk.
+function shapedHeight(x, z) {
+    const dry = rawHeight(x, z, false);
+    let h = dry;
+    if (!staysDry(x, z)) {
+        h = rawHeight(x, z, true);
+        const drop = dry - h;
+        if (drop > 0.3 && designedZones.length) {
+            const grade = Math.max(0.25, shape.maxSlope * 0.85);
+            const reach = Math.min(80, Math.max(12, drop / grade));
+            const edge = zoneEdgeDistance(x, z, reach);
+            if (edge < reach) {
+                const cap = dry - grade * edge;
+                if (h < cap) h = cap;
+            }
+        }
+    }
     const road = roadAt(x, z);
     if (road && road.dist < ROAD_SHOULDER) {
         const edge = road.dist <= ROAD_BED ? 1 : 1 - (road.dist - ROAD_BED) / (ROAD_SHOULDER - ROAD_BED);
         const blend = edge * edge * (3 - 2 * edge);
-        h = h * (1 - blend) + road.y * blend;
+        const span = Math.max(0.8, ROAD_SHOULDER - road.dist);
+        const bed = Math.max(road.y, dry - shape.maxSlope * span);
+        h = h * (1 - blend) + bed * blend;
     }
     return applyBoundary(x, z, h);
+}
+
+export function terrainHeight(x, z) {
+    const h = shapedHeight(x, z);
+    const dry = rawHeight(x, z, false);
+    if (dry - h < 0.45) return h;
+    // Fill a narrow ditch. A real slope or a wide river still has one low side.
+    const step = 2.6;
+    const allow = shape.maxSlope * step * 0.9;
+    const east = shapedHeight(x + step, z);
+    const west = shapedHeight(x - step, z);
+    const north = shapedHeight(x, z + step);
+    const south = shapedHeight(x, z - step);
+    const across = Math.max(Math.min(east, west), Math.min(north, south));
+    if (across - h > allow) return across - allow;
+    return h;
 }
 
 // Same sequence the client uses to place trees and rocks.
@@ -723,7 +771,7 @@ export function zoneCampPlan(zx, zz) {
     let innName = CAMP_NAMES[(h >>> 12) % CAMP_NAMES.length];
     if (innName === shopName || innName === trainName || innName === questName) innName = CAMP_NAMES[(h + 11) % CAMP_NAMES.length];
     const folk = [];
-    folk.push({ id: 'inn-' + zx + '-' + zz, name: innName, role: 'inn', title: 'Innkeeper', tint: '#e67e22', text: 'I keep the inn in ' + place + '. You can set your spawn here.' });
+    folk.push({ id: 'inn-' + zx + '-' + zz, name: innName, role: 'inn', title: 'Innkeeper', tint: '#e67e22', text: 'I keep the inn in ' + place + '. Set your rest here, then press H to return.' });
     if (roll === 0 || roll === 3) {
         folk.push({ id: 'shop-' + zx + '-' + zz, name: shopName, role: 'shop', title: 'Shop', tint: '#f1c40f', text: 'I buy goods and sell crafting skills in ' + place + '.' });
     }
@@ -820,6 +868,10 @@ export function applyWorldConfig(config) {
             points,
             edges,
             samples: curvePoints(points, edges, true),
+            minX: Infinity,
+            maxX: -Infinity,
+            minZ: Infinity,
+            maxZ: -Infinity,
             mob: MOB_IDS.includes(zone.mob) ? zone.mob : 'boar',
             level: Math.max(1, Math.min(30, Math.round(Number(zone.level) || 1))),
             hp: Math.max(0, Math.min(500, Math.round(Number(zone.hp) || 0))),
@@ -830,6 +882,12 @@ export function applyWorldConfig(config) {
             camps: [],
             nodes: []
         };
+        for (const point of entry.samples) {
+            if (point[0] < entry.minX) entry.minX = point[0];
+            if (point[0] > entry.maxX) entry.maxX = point[0];
+            if (point[1] < entry.minZ) entry.minZ = point[1];
+            if (point[1] > entry.maxZ) entry.maxZ = point[1];
+        }
         for (const camp of (Array.isArray(zone.camps) ? zone.camps : []).slice(0, 6)) {
             const x = Number(camp.x);
             const z = Number(camp.z);

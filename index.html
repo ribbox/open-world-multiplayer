@@ -708,6 +708,7 @@
         W/S or the arrow keys: Forward / Back<br>
         A/D or Left/Right: Turn. The camera follows behind unless you are holding the right mouse button<br>
         Space: Jump &nbsp; Shift: Sprint<br>
+        H: Return to the inn where you set your rest. Stand still for a moment. Moving or combat cancels it<br>
         1-8: Action bar &nbsp; [ ]: Change page. A slot darkens while that action cools down<br>
         Right-click a slot to assign a trained action<br>
         E: Gather if something is close, otherwise attack your target<br>
@@ -4052,8 +4053,33 @@
 
             let ghost = false;
             let boundSpawn = null;
+            let hearth = null;
             let myCorpse = null;
             const corpseMarkers = new Map();
+
+            function cancelHearth(why) {
+                if (!hearth) return;
+                hearth = null;
+                if (why) showMessage(why);
+            }
+
+            function beginHearth() {
+                if (ghost) {
+                    showMessage('You are a ghost');
+                    return;
+                }
+                if (keys.w || keys.a || keys.s || keys.d || keys.space || arrows.up || arrows.down || arrows.left || arrows.right) {
+                    showMessage('Stand still to return to your inn');
+                    return;
+                }
+                if (!boundSpawn || !Number.isFinite(boundSpawn.x) || !Number.isFinite(boundSpawn.z)) {
+                    showMessage('Set your rest with an innkeeper');
+                    return;
+                }
+                if (hearth) return;
+                hearth = { until: performance.now() + 3000, left: 4 };
+                showMessage('Returning to ' + (boundSpawn.name || 'the inn') + '…');
+            }
 
             function tryAttack(ability) {
                 const action = ACTIONS[ability];
@@ -6533,9 +6559,12 @@
                     button.type = 'button';
                     button.className = 'text-btn gold-btn';
                     const here = boundSpawn && entry.group && Math.hypot(boundSpawn.x - entry.group.position.x, boundSpawn.z - entry.group.position.z) < 1.5;
-                    button.textContent = here ? 'This is your spawn' : 'Set spawn here';
+                    button.textContent = here ? 'This is your rest' : 'Set rest here';
                     button.addEventListener('click', () => sendCharacter('setSpawn', { id: entry.id }));
                     parent.appendChild(button);
+                    const hint = document.createElement('div');
+                    hint.textContent = 'Press H anywhere to return to this inn. Stand still until you arrive.';
+                    parent.appendChild(hint);
                 } else if (tab === 'vault') renderVault(parent);
                 else if (tab === 'quests') renderQuestOffers(parent, entry);
             }
@@ -7042,6 +7071,11 @@
                 if (k === 'p') inviteTarget();
                 if (k === 'r') tryReclaim();
                 if (k === 'm') toggleWorldMap();
+                if (k === 'h') {
+                    if (!e.repeat) beginHearth();
+                    return;
+                }
+                if (hearth) cancelHearth('Hearth interrupted');
             });
             document.addEventListener('keyup', (e) => {
                 const k = e.key.toLowerCase();
@@ -7158,6 +7192,25 @@
                     playerModel.rotation.z = damp(playerModel.rotation.z, lean, 8, delta);
                 }
 
+                if (hearth && (turnInput || moving || keys.space)) cancelHearth('Hearth interrupted');
+                if (hearth) {
+                    turnInput = 0;
+                    yawRate = 0;
+                    const left = Math.max(1, Math.ceil((hearth.until - performance.now()) / 1000));
+                    if (left !== hearth.left) {
+                        hearth.left = left;
+                        clearTimeout(showMessage.timer);
+                        const el = document.getElementById('message');
+                        el.textContent = 'Returning to ' + ((boundSpawn && boundSpawn.name) || 'the inn') + '… ' + left;
+                        el.style.display = 'block';
+                    }
+                }
+                if (hearth && performance.now() >= hearth.until) {
+                    hearth = null;
+                    if (gameSocket && gameSocket.readyState === WebSocket.OPEN) gameSocket.send(JSON.stringify({ type: 'hearth' }));
+                    else showMessage('Not connected');
+                }
+
                 const angle = characterGroup.rotation.y;
                 const forward = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
                 let moveSpeed = baseSpeed * (keys.shift ? sprintMultiplier : 1);
@@ -7169,7 +7222,7 @@
                 if (keys.w || arrows.up) move.add(forward);
                 if (keys.s || arrows.down) move.sub(forward);
 
-                if (move.lengthSq() > 0) {
+                if (move.lengthSq() > 0 && !hearth) {
                     move.normalize().multiplyScalar(moveSpeed * delta);
                     const nextX = feetX + move.x;
                     const nextZ = feetZ + move.z;
@@ -7953,6 +8006,7 @@
                         if (Object.prototype.hasOwnProperty.call(data, 'party')) renderParty(data.party);
                         if (data.ok !== false) document.getElementById('partyPrompt').hidden = true;
                     } else if (data.type === 'hurt') {
+                        if (hearth) cancelHearth('Hearth interrupted');
                         applyStats(data);
                         showHurt();
                         if (data.absorbed && !data.damage) {
@@ -7966,11 +8020,29 @@
                         }
                         if (data.attackerId) selectNpc(data.attackerId);
                     } else if (data.type === 'spawn') {
-                        if (!data.ok) showMessage(data.reason || 'Cannot set spawn');
+                        if (!data.ok) showMessage(data.reason || 'Cannot set rest');
                         else {
                             boundSpawn = data.spawn;
                             closeTalk();
-                            showMessage(data.note || 'Spawn set');
+                            showMessage(data.note || 'Rest set');
+                        }
+                    } else if (data.type === 'hearth') {
+                        hearth = null;
+                        if (!data.ok) {
+                            showMessage(data.reason || 'Cannot return');
+                            sfx('deny');
+                        } else {
+                            const x = Number.isFinite(data.x) ? data.x : 0;
+                            const z = Number.isFinite(data.z) ? data.z : 0;
+                            if (activeCave) leaveDungeonView();
+                            clearHazards();
+                            characterGroup.position.set(x, terrainHeight(x, z), z);
+                            verticalVelocity = 0;
+                            onGround = true;
+                            for (const key of data.add || []) rememberFog(key);
+                            revealHere(x, z);
+                            showMessage('You return to ' + (data.name || 'the inn'));
+                            sfx('portal');
                         }
                     } else if (data.type === 'died') {
                         const x = Number.isFinite(data.x) ? data.x : 0;
