@@ -38,14 +38,13 @@ function hills(x, z) {
 function riverBed(x, z, h) {
     const center = 78 + Math.sin(z * 0.02) * 36 + Math.sin(z * 0.0055) * 14;
     const dist = Math.abs(x - center);
-    const bed = WATER_LEVEL + 0.02;
-    const drop = h - bed;
-    if (drop <= 0.15) return h;
-    const span = drop / (shape.maxSlope / 1.85);
+    const depth = Math.min(1.6, Math.max(0, h - (WATER_LEVEL + 0.2)));
+    if (depth <= 0.15) return h;
+    const span = Math.max(5, depth / (shape.maxSlope * 0.62));
     if (dist >= span) return h;
     const t = 1 - dist / span;
     const s = t * t * (3 - 2 * t);
-    return h * (1 - s) + bed * s;
+    return h - depth * s;
 }
 
 function rawHeight(x, z, carve = true) {
@@ -165,13 +164,8 @@ export function listRoads() {
 }
 
 function staysDry(x, z) {
-    for (const zone of designedZones) {
-        for (const camp of zone.camps || []) {
-            if ((camp.x - x) ** 2 + (camp.z - z) ** 2 < 28 * 28) return true;
-        }
-    }
-    const road = roadAt(x, z, 14);
-    return !!(road && road.dist < 14);
+    const road = roadAt(x, z, 8);
+    return !!(road && road.dist < 8);
 }
 
 function shapedHeight(x, z) {
