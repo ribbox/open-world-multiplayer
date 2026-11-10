@@ -51,6 +51,7 @@
         }
         #itemTip[hidden] { display: none; }
         #itemTip .tip-name { font-weight: bold; font-size: 13px; margin-bottom: 2px; }
+        #itemTip .tip-block { color: #e74c3c; }
         #coinLine, #sheetCoins { display: flex; gap: 12px; flex-wrap: wrap; }
         #coinLine { justify-content: flex-end; }
         .money-gold { color: #f1c40f; }
@@ -2174,36 +2175,47 @@
             }
             function itemTipLines(item) {
                 const lines = [];
+                const push = (text, block) => lines.push({ text, block: !!block });
                 if (!item) return lines;
-                if (item.kind === 'health') lines.push('Restores ' + (item.amount || 0) + ' health');
-                else if (item.kind === 'mana') lines.push('Restores ' + (item.amount || 0) + ' mana');
-                else if (item.kind === 'bomb') lines.push('Deals ' + (item.amount || 0) + ' damage');
+                if (item.kind === 'health') push('Restores ' + (item.amount || 0) + ' health');
+                else if (item.kind === 'mana') push('Restores ' + (item.amount || 0) + ' mana');
+                else if (item.kind === 'bomb') push('Deals ' + (item.amount || 0) + ' damage');
                 else if (item.kind === 'armor') {
                     const style = STYLE_NAMES[item.style] || 'Armor';
-                    lines.push(style + ' armor' + (item.magic ? ' · magic' : ''));
-                    if (SLOT_NAMES[item.slot]) lines.push(SLOT_NAMES[item.slot]);
-                    lines.push('Armor +' + (item.armor || 0));
+                    const mine = { warrior: 'plate', hunter: 'leather', mage: 'cloth', warlock: 'cloth' }[character.class];
+                    const wrongStyle = !!(item.style && mine && item.slot !== 'neck' && item.slot !== 'cloak' && item.style !== mine);
+                    push(style + ' armor' + (item.magic ? ' · magic' : ''), wrongStyle);
+                    if (SLOT_NAMES[item.slot]) push(SLOT_NAMES[item.slot]);
+                    push('Armor +' + (item.armor || 0));
                 } else if (item.kind === 'weapon') {
                     const names = { sword: 'Sword', staff: 'Staff', bow: 'Bow', wand: 'Wand' };
-                    lines.push((item.magic ? 'Magic ' : '') + (names[item.weapon] || 'Weapon'));
-                    if (SLOT_NAMES[item.slot]) lines.push(SLOT_NAMES[item.slot]);
-                    if (item.armor) lines.push('Armor +' + item.armor);
-                } else if (item.kind === 'bag') lines.push('Adds ' + (item.slots || 0) + ' slots');
-                else if (item.kind === 'recipe') lines.push('Pattern · click to learn');
-                else if (item.kind === 'quest') lines.push('Quest item');
-                else if (item.kind === 'junk') lines.push('Junk');
+                    const mine = { warrior: 'sword', hunter: 'bow', mage: 'staff', warlock: 'wand' }[character.class];
+                    const wrongWeapon = !!(item.weapon && mine && item.weapon !== mine);
+                    push((item.magic ? 'Magic ' : '') + (names[item.weapon] || 'Weapon'), wrongWeapon);
+                    if (SLOT_NAMES[item.slot]) push(SLOT_NAMES[item.slot]);
+                    if (item.armor) push('Armor +' + item.armor);
+                } else if (item.kind === 'bag') push('Adds ' + (item.slots || 0) + ' slots');
+                else if (item.kind === 'recipe') push('Pattern · click to learn');
+                else if (item.kind === 'quest') push('Quest item');
+                else if (item.kind === 'junk') push('Junk');
                 if (item.kind === 'armor' || item.kind === 'weapon') {
                     const bonus = item.stats || {};
-                    if (bonus.strength) lines.push('+' + bonus.strength + ' Strength');
-                    if (bonus.stamina) lines.push('+' + bonus.stamina + ' Stamina');
-                    if (bonus.intellect) lines.push('+' + bonus.intellect + ' Intellect');
+                    if (bonus.strength) push('+' + bonus.strength + ' Strength');
+                    if (bonus.stamina) push('+' + bonus.stamina + ' Stamina');
+                    if (bonus.intellect) push('+' + bonus.intellect + ' Intellect');
                     if (item.kind === 'armor' && item.style && item.slot !== 'neck' && item.slot !== 'cloak') {
                         const who = { plate: 'Warriors', leather: 'Hunters', cloth: 'Mages and warlocks' }[item.style];
-                        if (who) lines.push(who + ' only');
+                        const mine = { warrior: 'plate', hunter: 'leather', mage: 'cloth', warlock: 'cloth' }[character.class];
+                        if (who) push(who + ' only', !!(mine && item.style !== mine));
                     }
-                    if ((item.reqLevel || 1) > 1) lines.push('Requires level ' + item.reqLevel);
+                    if (item.kind === 'weapon' && item.weapon) {
+                        const who = { sword: 'Warriors', bow: 'Hunters', staff: 'Mages', wand: 'Warlocks' }[item.weapon];
+                        const mine = { warrior: 'sword', hunter: 'bow', mage: 'staff', warlock: 'wand' }[character.class];
+                        if (who) push(who + ' only', !!(mine && item.weapon !== mine));
+                    }
+                    if ((item.reqLevel || 1) > 1) push('Requires level ' + item.reqLevel, (item.reqLevel || 1) > (stats.level || 1));
                 }
-                if (item.qty > 1) lines.push('Quantity ' + item.qty);
+                if (item.qty > 1) push('Quantity ' + item.qty);
                 return lines;
             }
             function hideItemTip() {
@@ -2256,7 +2268,8 @@
                 tip.appendChild(mark);
                 for (const line of itemTipLines(item)) {
                     const row = document.createElement('div');
-                    row.textContent = line;
+                    row.textContent = line.text;
+                    if (line.block) row.className = 'tip-block';
                     tip.appendChild(row);
                 }
                 for (const line of extra || []) {
