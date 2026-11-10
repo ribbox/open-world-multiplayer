@@ -1095,6 +1095,10 @@
             const characterGroup = new THREE.Group();
             characterGroup.position.y = terrainHeight(0, 0);
             scene.add(characterGroup);
+            const actorPivot = new THREE.Group();
+            characterGroup.add(actorPivot);
+            characterGroup.userData.pivot = actorPivot;
+            characterGroup.userData.actor = actorPivot;
             const caveLamp = new THREE.PointLight(0xffc080, 0, 16, 1.6);
             caveLamp.position.set(0, 1.5, 0.2);
             characterGroup.add(caveLamp);
@@ -1291,7 +1295,7 @@
                     if (look) gear[slot] = look;
                 }
                 const key = JSON.stringify(gear);
-                if (group.userData.armorKey === key && group.userData.armor) return;
+                if (group.userData.armorKey === key && group.userData.armor && group.userData.armor.parent === (group.userData.pivot || group)) return;
                 group.userData.armorKey = key;
                 clearArmor(group);
                 const box = group.userData.bodyBox;
@@ -1371,13 +1375,7 @@
                     }
                 }
                 group.userData.armor = rig;
-                const actor = group.userData.actor;
-                if (actor && actor.parent === group) {
-                    const fit = actor.scale.x || 1;
-                    rig.scale.setScalar(1 / fit);
-                    rig.position.y = -(actor.position.y || 0) / fit;
-                    actor.add(rig);
-                } else group.add(rig);
+                (group.userData.pivot || group).add(rig);
                 if (group === characterGroup && ghost) fadeRig(rig, true);
             }
 
@@ -1393,17 +1391,11 @@
                     box.setFromObject(model);
                     model.position.y = -box.min.y;
                     solidifyBody(model);
-                    characterGroup.add(model);
+                    actorPivot.add(model);
                     rememberBody(characterGroup, model);
-                    characterGroup.userData.actor = model;
-                    model.userData.restY = model.position.y;
-                    const fit = model.scale.x || 1;
-                    for (const tool of [axe, pickaxe, sword, staff, bow, wand]) {
-                        tool.position.multiplyScalar(1 / fit);
-                        model.add(tool);
-                    }
+                    actorPivot.userData.restY = 0;
                     wearArmor(characterGroup, character.equipment);
-                    playerModel = model;
+                    playerModel = actorPivot;
                     playerTemplate = model;
                     playerClips = gltf.animations || [];
                     upgradeRemotePlayers();
@@ -1881,7 +1873,7 @@
                 root.rotation.z = options.tilt || 0;
                 root.userData.rest = root.rotation.clone();
                 root.visible = false;
-                characterGroup.add(root);
+                actorPivot.add(root);
                 loader.load(url, (gltf) => {
                     const model = gltf.scene;
                     model.updateWorldMatrix(true, true);
@@ -1916,7 +1908,7 @@
             const axe = holdTool('/models/simple_axe.glb', { length: 0.95, x: 0.34, y: 0.92, z: 0.28, tilt: -0.45 });
             const pickaxe = holdTool('/models/pick_axe.glb', { length: 1.05, x: 0.34, y: 0.9, z: 0.26, tilt: -0.5 });
             const sword = holdTool('/models/stylized_emerald_sword.glb', { length: 1.05, x: 0.26, y: 0.95, z: 0.2, tilt: -0.2, spinZ: Math.PI / 2 - 0.802 });
-            const staff = holdTool('/models/wizards_staff.glb', { length: 1.45, x: 0.2, y: 0.82, z: 0.16, tilt: -0.4 });
+            const staff = holdTool('/models/wizards_staff.glb', { length: 1.35, x: 0.32, y: 0.78, z: 0.1, tilt: -0.12 });
             const wand = holdTool('/models/wizards_staff.glb', { length: 0.85, x: 0.28, y: 0.95, z: 0.18, tilt: -0.7, tint: 0x6b3fa0 });
             function holdShape(build, options) {
                 const root = new THREE.Group();
@@ -1924,7 +1916,7 @@
                 root.rotation.z = options.tilt || 0;
                 root.userData.rest = root.rotation.clone();
                 root.visible = false;
-                characterGroup.add(root);
+                actorPivot.add(root);
                 root.add(build());
                 return root;
             }
@@ -7433,10 +7425,13 @@
                 if (!playerTemplate) return false;
                 const model = cloneSkinned(playerTemplate);
                 tintModel(model, color);
-                group.add(model);
+                const pivot = new THREE.Group();
+                group.add(pivot);
+                pivot.add(model);
+                group.userData.pivot = pivot;
+                group.userData.actor = pivot;
+                pivot.userData.restY = 0;
                 rememberBody(group, model);
-                group.userData.actor = model;
-                model.userData.restY = model.position.y;
                 if (playerClips.length) {
                     const remoteMixer = new THREE.AnimationMixer(model);
                     remoteMixer.clipAction(playerClips[0]).play();
