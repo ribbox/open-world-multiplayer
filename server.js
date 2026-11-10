@@ -1640,27 +1640,45 @@ function startCooldown(player, key, ms, now) {
     player.cds[key] = now + ms;
 }
 
-const BAR_PAGES = 4;
+const BAR_PAGES = 3;
 const BAR_SLOTS = 8;
 const ACTION_IDS = new Set(['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind', 'staff', 'arcane-bolt', 'frost-bolt', 'arcane-surge', 'mend', 'barrier', 'frost-nova', 'bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot', 'wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn', 'gather', 'health', 'mana', 'bomb']);
+const BAR_UTILITY = new Set(['gather', 'health', 'mana', 'bomb']);
 
-function defaultActionBar() {
-    return [
-        ['sword', 'power-strike', 'gather', null, null, null, null, null],
-        ['staff', 'arcane-bolt', 'mend', null, null, null, null, null],
-        ['bow', 'aimed-shot', 'gather', null, null, null, null, null],
-        ['wand', 'shadow-bolt', 'drain-life', null, null, null, null, null]
-    ];
+function blankActionBar() {
+    return Array.from({ length: BAR_PAGES }, () => Array(BAR_SLOTS).fill(null));
 }
 
-function sanitizeActionBar(pages) {
-    const bar = defaultActionBar();
-    if (!Array.isArray(pages)) return bar;
-    for (let p = 0; p < BAR_PAGES; p++) {
-        const row = pages[p];
-        if (!Array.isArray(row)) continue;
-        for (let i = 0; i < BAR_SLOTS; i++) {
-            bar[p][i] = ACTION_IDS.has(row[i]) ? row[i] : null;
+function defaultActionBar(className) {
+    const bar = blankActionBar();
+    const kit = CLASS_KITS[className];
+    const attack = kit && kit.trained && kit.trained[0];
+    if (attack) bar[0][0] = attack;
+    return bar;
+}
+
+function actionAllowed(player, id) {
+    if (!id || !ACTION_IDS.has(id)) return false;
+    if (BAR_UTILITY.has(id)) return true;
+    if (!player || !player.class) return false;
+    return knownSpells(player).includes(id);
+}
+
+function sanitizeActionBar(pages, player) {
+    if (!Array.isArray(pages)) return defaultActionBar(player && player.class);
+    const bar = blankActionBar();
+    const extra = [];
+    pages.forEach((row, page) => {
+        if (!Array.isArray(row)) return;
+        row.forEach((id, index) => {
+            if (!actionAllowed(player, id)) return;
+            if (page < BAR_PAGES && index < BAR_SLOTS && !bar[page][index]) bar[page][index] = id;
+            else extra.push(id);
+        });
+    });
+    for (let page = 0; page < BAR_PAGES && extra.length; page++) {
+        for (let index = 0; index < BAR_SLOTS && extra.length; index++) {
+            if (!bar[page][index]) bar[page][index] = extra.shift();
         }
     }
     return bar;
@@ -2007,8 +2025,18 @@ function loadCharacter(prof) {
     if (!CLASS_KITS[prof.class]) prof.class = null;
     if (!CLASS_KITS[prof.look]) prof.look = prof.class || '';
     prof.trained = Array.isArray(prof.trained) ? prof.trained.filter(id => SPELLS[id]) : [];
-    if (prof.talents && prof.talents.cleave && !prof.trained.includes('cleave')) prof.trained.push('cleave');
-    if (prof.talents && prof.talents.surge && !prof.trained.includes('arcane-surge')) prof.trained.push('arcane-surge');
+    const rawRanks = prof.spellRanks && typeof prof.spellRanks === 'object' ? { ...prof.spellRanks } : {};
+    if (prof.talents && typeof prof.talents === 'object') {
+        for (const [id, rank] of Object.entries(prof.talents)) {
+            const node = TREE[id];
+            if (!node || !node.spell || node.class !== prof.class) continue;
+            const maxRank = (SPELLS[node.spell] && SPELLS[node.spell].maxRank) || 1;
+            const value = Math.max(0, Math.min(maxRank, Math.round(Number(rank) || 0)));
+            if (!value) continue;
+            if (!prof.trained.includes(node.spell)) prof.trained.push(node.spell);
+            rawRanks[node.spell] = Math.max(Number(rawRanks[node.spell]) || 0, value);
+        }
+    }
     const talents = {};
     if (prof.talents && typeof prof.talents === 'object') {
         for (const [id, rank] of Object.entries(prof.talents)) {
@@ -2019,7 +2047,6 @@ function loadCharacter(prof) {
     }
     prof.talents = talents;
     const ranks = {};
-    const rawRanks = prof.spellRanks && typeof prof.spellRanks === 'object' ? prof.spellRanks : {};
     for (const id of prof.trained) {
         const maxRank = (SPELLS[id] && SPELLS[id].maxRank) || 1;
         ranks[id] = Math.max(1, Math.min(maxRank, Number(rawRanks[id]) || 1));
@@ -2074,14 +2101,21 @@ function refreshDerived(player) {
 }
 
 function talentPoints(player) {
+    return Math.max(0, (player.level || 1) - 1 - ranksSpent(player));
+}
+
+function ranksSpent(player) {
+    if (!player.class || !CLASS_KITS[player.class]) return 0;
+    const free = new Set(CLASS_KITS[player.class].trained);
     let spent = 0;
-    const free = new Set((CLASS_KITS[player.class] && CLASS_KITS[player.class].trained) || []);
-    for (const [id, rank] of Object.entries(player.spellRanks || {})) {
-        const value = Math.max(0, Number(rank) || 0);
-        spent += free.has(id) ? Math.max(0, value - 1) : value;
+    for (const [id, node] of Object.entries(TREE)) {
+        if (node.class !== player.class) continue;
+        const rank = nodeRank(player, id);
+        if (!rank) continue;
+        if (node.spell && free.has(node.spell)) spent += Math.max(0, rank - 1);
+        else spent += rank;
     }
-    spent += Object.values(player.talents || {}).reduce((sum, rank) => sum + (Number(rank) || 0), 0);
-    return Math.max(0, (player.level || 1) - 1 - spent);
+    return spent;
 }
 
 function nodeRank(player, id) {
@@ -2351,6 +2385,7 @@ function chooseClass(player, className) {
     player.talents = {};
     player.spellRanks = {};
     for (const id of player.trained) player.spellRanks[id] = 1;
+    player.actionbar = defaultActionBar(className);
     player.equipment.weapon = copySlot(kit.weapon);
     refreshDerived(player);
     savePlayer(player);
@@ -2376,13 +2411,39 @@ function spendNode(player, id) {
             return 'Requires ' + name + ' fully trained';
         }
     }
+    const before = talentPoints(player);
     if (node.spell) {
         if (!player.spellRanks) player.spellRanks = {};
         if (!player.trained.includes(node.spell)) player.trained.push(node.spell);
         player.spellRanks[node.spell] = rank + 1;
+        if (player.talents) delete player.talents[id];
     } else {
         player.talents[id] = rank + 1;
     }
+    if (before - talentPoints(player) !== 1) {
+        if (node.spell) {
+            if (rank <= 0) {
+                player.trained = player.trained.filter(spell => spell !== node.spell);
+                delete player.spellRanks[node.spell];
+            } else player.spellRanks[node.spell] = rank;
+        } else if (rank <= 0) delete player.talents[id];
+        else player.talents[id] = rank;
+        return 'Could not spend that point';
+    }
+    refreshDerived(player);
+    savePlayer(player);
+    return null;
+}
+
+function resetTalents(player) {
+    if (!player.class || !CLASS_KITS[player.class]) return 'Choose a class first';
+    if (ranksSpent(player) <= 0) return 'Nothing to reset';
+    const kit = CLASS_KITS[player.class];
+    player.trained = kit.trained.slice();
+    player.talents = {};
+    player.spellRanks = {};
+    for (const id of player.trained) player.spellRanks[id] = 1;
+    player.actionbar = sanitizeActionBar(player.actionbar, player);
     refreshDerived(player);
     savePlayer(player);
     return null;
@@ -3315,7 +3376,7 @@ wss.on('connection', (ws) => {
             prof.armor = prof.armor || 0;
             loadInventory(prof);
             loadCharacter(prof);
-            prof.actionbar = sanitizeActionBar(prof.actionbar);
+            prof.actionbar = sanitizeActionBar(prof.actionbar, prof);
 
             const existing = players.get(persistentId);
             if (existing && existing.ws !== ws) {
@@ -4285,7 +4346,7 @@ wss.on('connection', (ws) => {
         }
 
         if (data.type === 'actionbar') {
-            player.actionbar = sanitizeActionBar(data.pages);
+            player.actionbar = sanitizeActionBar(data.pages, player);
             save.players[player.persistentId].actionbar = player.actionbar;
             scheduleSave();
             send(ws, { type: 'actionbar', pages: player.actionbar });
@@ -4313,7 +4374,7 @@ wss.on('connection', (ws) => {
             normalizeBags(player);
             normalizeBank(player);
             normalizeSlots(player);
-            player.actionbar = defaultActionBar();
+            player.actionbar = defaultActionBar(null);
             player.legacyArmor = 0;
             player.ghost = false;
             player.corpse = null;
@@ -4354,7 +4415,7 @@ wss.on('connection', (ws) => {
 
         if (data.type === 'chooseClass') {
             const error = chooseClass(player, data.class);
-            send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), actionbar: player.actionbar, inventory: inventoryOf(player), ...statsOf(player) });
             return;
         }
 
@@ -4370,8 +4431,24 @@ wss.on('connection', (ws) => {
         }
 
         if (data.type === 'talent') {
+            placePlayer(player, data);
+            if (player.dungeonId || !nearRole(player, 'trainer')) {
+                send(ws, { type: 'character', ok: false, reason: 'See a trainer', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+                return;
+            }
             const error = spendTalent(player, data.id);
-            send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : 'Trained', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'resetTalents') {
+            placePlayer(player, data);
+            if (player.dungeonId || !nearRole(player, 'trainer')) {
+                send(ws, { type: 'character', ok: false, reason: 'See a trainer', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+                return;
+            }
+            const error = resetTalents(player);
+            send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : 'Talents reset. The points are yours again.', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
             return;
         }
 

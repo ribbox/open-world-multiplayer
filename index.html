@@ -719,7 +719,7 @@
         C: Character sheet. Characters, under the map, returns to the select screen. Reset character is on the sheet and returns that one to level 1<br>
         Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health. Warriors wear plate, hunters wear leather, mages and warlocks wear cloth<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
-        Spells and talents share one tree and spend talent points. The next node stays locked until the one before it is fully trained. A branch does not wait on the other branch<br>
+        Spells and talents share one tree. The sheet is only for looking. Talk to a trainer to spend points or to reset them and spend again. The next node stays locked until the one before it is fully trained. A branch does not wait on the other branch<br>
         Hamstring, Wing Clip, Frost Bolt, and Curse slow. Execute, Kill Shot, and Soul Burn double damage under 35% health. Cleave, Multi-Shot, Whirlwind, Frost Nova, and Hellfire hit nearby foes. Drain Life returns the damage as health. Barrier soaks hits<br>
         The bar is your level and experience. Armor and stats are on the character sheet<br>
         Camps are safe. Creatures walk out, and you cannot attack while you are inside. The camp name appears when you enter<br>
@@ -1973,15 +1973,13 @@
                 mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion. Shares a 12s wait with health potions.' },
                 bomb: { name: 'Explosives', short: 'Bomb', kind: 'explosive', item: 'bomb', hint: 'Throw a bomb at the targeted hostile. 4s.' }
             };
-            const BAR_PAGES = 4;
+            const BAR_PAGES = 3;
             const BAR_SLOTS = 8;
             function defaultActionBar() {
-                return [
-                    ['sword', 'power-strike', 'gather', null, null, null, null, null],
-                    ['staff', 'arcane-bolt', 'mend', null, null, null, null, null],
-                    ['bow', 'aimed-shot', 'gather', null, null, null, null, null],
-                    ['wand', 'shadow-bolt', 'drain-life', null, null, null, null, null]
-                ];
+                const bar = Array.from({ length: BAR_PAGES }, () => Array(BAR_SLOTS).fill(null));
+                const attack = { warrior: 'sword', mage: 'staff', hunter: 'bow', warlock: 'wand' }[character && character.class];
+                if (attack) bar[0][0] = attack;
+                return bar;
             }
             let equippedWeapon = 'sword';
             let currentTool = 'sword';
@@ -4460,8 +4458,33 @@
             }
 
             function spellKnown(id) {
-                if (!character.class || !character.known) return true;
-                return character.known.includes(id);
+                return !!(character.known && character.known.includes(id));
+            }
+
+            function barAllowed(id) {
+                const action = ACTIONS[id];
+                if (!action) return false;
+                if (action.kind === 'potion' || action.kind === 'explosive' || action.kind === 'gather') return true;
+                return spellKnown(id);
+            }
+
+            function fitActionBar(pages) {
+                const bar = defaultActionBar().map(row => row.map(() => null));
+                const extra = [];
+                (Array.isArray(pages) ? pages : []).forEach((row, page) => {
+                    if (!Array.isArray(row)) return;
+                    row.forEach((id, index) => {
+                        if (!barAllowed(id)) return;
+                        if (page < BAR_PAGES && index < BAR_SLOTS && !bar[page][index]) bar[page][index] = id;
+                        else extra.push(id);
+                    });
+                });
+                for (let page = 0; page < BAR_PAGES && extra.length; page++) {
+                    for (let index = 0; index < BAR_SLOTS && extra.length; index++) {
+                        if (!bar[page][index]) bar[page][index] = extra.shift();
+                    }
+                }
+                return bar;
             }
 
             function useAction(id) {
@@ -5941,7 +5964,7 @@
                 root.textContent = '';
                 const row = actionBar[barPage] || [];
                 for (let i = 0; i < BAR_SLOTS; i++) {
-                    const id = row[i];
+                    const id = row[i] && barAllowed(row[i]) ? row[i] : null;
                     const action = id ? ACTIONS[id] : null;
                     const button = document.createElement('button');
                     button.type = 'button';
@@ -5973,7 +5996,9 @@
                             actionBar[barPage][i] = actionBar[barPage][from];
                             actionBar[barPage][from] = next;
                         } else if (data.indexOf('action:') === 0) {
-                            actionBar[barPage][i] = data.slice(7) || null;
+                            const id = data.slice(7);
+                            if (!barAllowed(id)) return;
+                            actionBar[barPage][i] = id;
                         }
                         renderBar();
                         saveActionBar();
@@ -5991,13 +6016,12 @@
                 picker.style.left = Math.max(8, rect.left) + 'px';
                 picker.style.top = 'auto';
                 picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+                const classGroup = { warrior: 'Warrior', mage: 'Mage', hunter: 'Hunter', warlock: 'Warlock' }[character.class];
                 for (const [title, ids] of PICKER_GROUPS) {
-                    const heading = document.createElement('div');
-                    heading.className = 'group';
-                    heading.textContent = title;
-                    picker.appendChild(heading);
+                    if (title !== 'Field' && title !== 'Potions' && title !== 'Explosives' && title !== classGroup) continue;
+                    const choices = [];
                     for (const id of ids) {
-                        if (ACTIONS[id].kind !== 'potion' && ACTIONS[id].kind !== 'explosive' && !spellKnown(id)) continue;
+                        if (!barAllowed(id)) continue;
                         const choice = document.createElement('button');
                         choice.type = 'button';
                         choice.className = 'icon-btn';
@@ -6016,8 +6040,14 @@
                             renderBar();
                             saveActionBar();
                         });
-                        picker.appendChild(choice);
+                        choices.push(choice);
                     }
+                    if (!choices.length) continue;
+                    const heading = document.createElement('div');
+                    heading.className = 'group';
+                    heading.textContent = title;
+                    picker.appendChild(heading);
+                    for (const choice of choices) picker.appendChild(choice);
                 }
                 const clear = document.createElement('button');
                 clear.type = 'button';
@@ -6071,6 +6101,10 @@
             function applyCharacter(data) {
                 if (!data) return;
                 character = data;
+                const nextBar = fitActionBar(actionBar);
+                const changed = JSON.stringify(nextBar) !== JSON.stringify(actionBar);
+                actionBar = nextBar;
+                if (barPage >= BAR_PAGES) barPage = 0;
                 const worn = wornWeapon();
                 if (worn && currentTool !== 'axe' && currentTool !== 'pickaxe') {
                     equippedWeapon = worn;
@@ -6078,6 +6112,7 @@
                     updateToolUI();
                 }
                 renderBar();
+                if (changed) saveActionBar();
                 if (document.getElementById('sheet').classList.contains('open')) renderSheet();
                 refreshOpenTalk();
                 rememberCharacter();
@@ -6552,7 +6587,7 @@
             function renderService(parent, entry, tab) {
                 if (tab === 'buy') renderBuyList(parent);
                 else if (tab === 'sell') renderSellList(parent);
-                else if (tab === 'talents' || tab === 'spells') renderTalentList(parent);
+                else if (tab === 'talents' || tab === 'spells') renderTalentList(parent, true);
                 else if (tab === 'craft') renderCraftTrain(parent);
                 else if (tab === 'rest') {
                     const button = document.createElement('button');
@@ -6688,7 +6723,7 @@
                 panel.appendChild(views);
 
                 if (sheetTab === 'talents') {
-                    renderTalentList(panel);
+                    renderTalentList(panel, false);
                     updateStatsUI();
                     return;
                 }
@@ -6775,7 +6810,7 @@
                 if (node.spell) return ((character.spells || {})[node.spell] && character.spells[node.spell].name) || node.spell;
                 return node.name || 'Talent';
             }
-            function renderTalentList(body) {
+            function renderTalentList(body, editable) {
                 if (!character.class) {
                     const note = document.createElement('p');
                     note.textContent = 'Choose a class before spending talent points.';
@@ -6783,8 +6818,9 @@
                     return;
                 }
                 const tree = character.tree || {};
+                const points = character.points || 0;
                 const note = document.createElement('p');
-                note.textContent = (character.points || 0) + (character.points === 1 ? ' point' : ' points');
+                note.textContent = points + (points === 1 ? ' point' : ' points') + (editable ? '. Click a talent to train it.' : '. Talk to a trainer to spend or reset.');
                 body.appendChild(note);
                 const kidsOf = {};
                 const roots = [];
@@ -6803,7 +6839,7 @@
                     const max = treeNodeMax(node);
                     const parent = node.requires ? tree[node.requires] : null;
                     const open = !parent || treeNodeRank(node.requires, parent) >= treeNodeMax(parent);
-                    const canSpend = open && rank < max && character.points > 0;
+                    const canSpend = !!editable && open && rank < max && points > 0;
                     const wrap = document.createElement('div');
                     wrap.className = 't-wrap';
                     const card = document.createElement('button');
@@ -6828,6 +6864,9 @@
                     } else if (node.text) lines.push(node.text);
                     if (rank >= max) lines.push('Fully trained');
                     else if (canSpend) lines.push(rank > 0 ? 'Click to improve' : 'Click to learn');
+                    else if (!open) lines.push('Locked');
+                    else if (!editable) lines.push('A trainer teaches this');
+                    else lines.push('No points left');
                     wrap.addEventListener('mouseenter', (e) => showPlainTip(treeNodeName(node), lines, e));
                     wrap.addEventListener('mousemove', moveItemTip);
                     wrap.addEventListener('mouseleave', hideItemTip);
@@ -6845,6 +6884,17 @@
                 holder.className = 'talent-tree';
                 for (const id of roots.sort(byName)) holder.appendChild(renderBranch(id));
                 body.appendChild(holder);
+                if (!editable) return;
+                const reset = document.createElement('button');
+                reset.type = 'button';
+                reset.className = 'text-btn';
+                reset.textContent = 'Reset talents';
+                reset.style.marginTop = '10px';
+                reset.addEventListener('click', () => {
+                    if (!confirm('Reset your talents? The points come back. Your starting skill stays.')) return;
+                    sendCharacter('resetTalents');
+                });
+                body.appendChild(reset);
             }
 
             function haveKind(kind) {
@@ -7907,10 +7957,7 @@
                             renderQuestTracker();
                         }
                         if (data.chests) data.chests.forEach(addChest);
-                        if (Array.isArray(data.actionbar)) {
-                            actionBar = data.actionbar;
-                            renderBar();
-                        }
+                        if (Array.isArray(data.actionbar)) actionBar = data.actionbar;
                         if (data.character) applyCharacter(data.character);
                         if (Array.isArray(data.fog)) {
                             explored.clear();
@@ -8205,6 +8252,7 @@
                     } else if (data.type === 'character') {
                         if (data.inventory) applyInventory(data.inventory);
                         applyStats(data);
+                        if (Array.isArray(data.actionbar)) actionBar = data.actionbar;
                         if (data.character) applyCharacter(data.character);
                         sfx(data.ok === false ? 'deny' : (data.quiet ? null : 'click'));
                         if (data.quiet && data.ok !== false) { /* arranged the bag */ }
@@ -8212,13 +8260,10 @@
                     } else if (data.type === 'reset') {
                         if (data.inventory) applyInventory(data.inventory);
                         applyStats(data);
+                        if (Array.isArray(data.actionbar)) actionBar = data.actionbar;
                         if (data.character) applyCharacter(data.character);
                         quests = data.quests || {};
                         renderQuestTracker();
-                        if (Array.isArray(data.actionbar)) {
-                            actionBar = data.actionbar;
-                            renderBar();
-                        }
                         explored.clear();
                         exploredZones.clear();
                         for (const key of data.fog || []) rememberFog(key);
