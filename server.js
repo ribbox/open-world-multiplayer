@@ -117,7 +117,8 @@ const CIVILIANS = [
     { id: 'bram', name: 'Bram', role: 'trainer', title: 'Trainer', tint: '#5dade2', x: -10, z: 4, text: 'Choose a class, then train your spells with me. I also teach crafting tiers.' },
     { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' },
     { id: 'holt', name: 'Holt', role: 'inn', title: 'Innkeeper', tint: '#e67e22', x: GLADE_INN.x, z: GLADE_INN.z, text: 'I keep the inn. You can set your spawn here. I also have a spare sack if you clear some wolves.' },
-    { id: 'nessa', name: 'Nessa', role: 'bank', title: 'Banker', tint: '#f4d03f', x: GLADE_INN.x + 3.2, z: GLADE_INN.z + 1.2, text: 'The vault is only here, in the main settlement. I will hold what you do not want to carry.' }
+    { id: 'nessa', name: 'Nessa', role: 'bank', title: 'Banker', tint: '#f4d03f', x: GLADE_INN.x + 3.2, z: GLADE_INN.z + 1.2, text: 'The vault is only here, in the main settlement. I will hold what you do not want to carry.' },
+    { id: 'wren', name: 'Wren', role: 'quest', title: 'Fen watcher', tint: '#5dade2', x: 160, z: 30, text: 'The chapel drowned, but the prior did not. Clear the fen, then take a party of four through the portal.' }
 ];
 
 function pushCampRole(list, camp, zone, index, role, title, tint, text) {
@@ -162,7 +163,7 @@ function mapSpawn() {
 }
 
 function rebuildCivilians() {
-    const home = CIVILIANS.filter(civ => civ.id === 'mira' || civ.id === 'bram' || civ.id === 'sela' || civ.id === 'holt' || civ.id === 'nessa');
+    const home = CIVILIANS.filter(civ => civ.id === 'mira' || civ.id === 'bram' || civ.id === 'sela' || civ.id === 'holt' || civ.id === 'nessa' || civ.id === 'wren');
     CIVILIANS.length = 0;
     if (!customMap()) CIVILIANS.push(...home);
     if (!customMap()) {
@@ -557,11 +558,81 @@ function installQuests(list) {
             rewardQty: 1,
             designed: false
         };
+        Object.assign(QUESTS, storyQuests());
     }
     for (const quest of list || []) {
         QUESTS[quest.id] = { ...quest, designed: true, guardHp: 0, guardMax: 0 };
     }
     bindQuestGivers();
+}
+
+function storyQuests() {
+    return {
+        'fen-wolves': {
+            id: 'fen-wolves',
+            name: 'Wolves of the Fen',
+            text: 'Kill 5 wolves east of the river. Wren waits by the drowned chapel.',
+            custom: true,
+            type: 'kill',
+            mob: 'wolf',
+            kind: 'wolf',
+            count: 5,
+            coins: 25,
+            xp: 70,
+            minLevel: 2,
+            giver: 'Wren',
+            requires: 'Boar Tusks',
+            item: '',
+            named: '',
+            rewardKind: '',
+            rewardName: '',
+            rewardQty: 1,
+            designed: false
+        },
+        'chapel-spiders': {
+            id: 'chapel-spiders',
+            name: 'What Crawled Out',
+            text: 'Kill 4 moss spiders. They came out of the chapel.',
+            custom: true,
+            type: 'kill',
+            mob: 'spider',
+            kind: 'spider',
+            count: 4,
+            coins: 30,
+            xp: 80,
+            minLevel: 2,
+            giver: 'Wren',
+            requires: 'Wolves of the Fen',
+            item: '',
+            named: '',
+            rewardKind: '',
+            rewardName: '',
+            rewardQty: 1,
+            designed: false
+        },
+        prior: {
+            id: 'prior',
+            name: 'The Drowned Prior',
+            text: 'Enter the Drowned Chapel with up to three allies and kill the Drowned Prior.',
+            custom: true,
+            type: 'named',
+            mob: 'cultist',
+            kind: 'cultist',
+            count: 1,
+            coins: 80,
+            xp: 160,
+            minLevel: 3,
+            giver: 'Wren',
+            requires: 'What Crawled Out',
+            item: '',
+            named: 'Drowned Prior',
+            dungeonId: 'chapel',
+            rewardKind: 'bag',
+            rewardName: 'Traveler Pack',
+            rewardQty: 1,
+            designed: false
+        }
+    };
 }
 
 function giverOf(quest) {
@@ -1202,8 +1273,11 @@ function becomeGhost(player, now) {
     let corpse = { x: player.x, z: player.z };
     if (player.dungeonId) {
         const cave = dungeonById(player.dungeonId);
+        const instId = player.instanceId || '';
         player.dungeonId = '';
+        player.instanceId = '';
         if (cave) corpse = { x: cave.portal.x + 3, z: cave.portal.z };
+        if (instId) clearInstanceIfEmpty(instId);
     }
     player.corpse = corpse;
     const home = player.spawn || mapSpawn();
@@ -1218,6 +1292,7 @@ function becomeGhost(player, now) {
     if (revealed.length) send(player.ws, { type: 'fog', add: revealed });
     send(player.ws, { type: 'died', x: player.x, y: 0, z: player.z, corpse: player.corpse, ...statsOf(player) });
     broadcast({ type: 'ghost', ...publicPlayer(player.persistentId, player) });
+    refreshSight(player);
     savePlayer(player);
 }
 
@@ -1229,6 +1304,7 @@ function dungeonThreat(npc) {
     for (const player of players.values()) {
         if (player.hp <= 0 || player.ghost) continue;
         if (player.dungeonId !== npc.dungeonId) continue;
+        if ((player.instanceId || '') !== (npc.instanceId || '')) continue;
         if (dungeonTravel(cave, player.x, player.z) < 5) continue;
         const dx = player.x - npc.x;
         const dz = player.z - npc.z;
@@ -1393,6 +1469,7 @@ function partyMembersNear(player) {
         const member = id === player.persistentId ? player : players.get(id);
         if (!member || member.ghost || member.hp <= 0) continue;
         if ((member.dungeonId || '') !== (player.dungeonId || '')) continue;
+        if ((member.instanceId || '') !== (player.instanceId || '')) continue;
         if (Math.hypot(member.x - player.x, member.z - player.z) > PARTY_RANGE) continue;
         near.push(member);
     }
@@ -2890,6 +2967,7 @@ function publicChest(chest) {
 }
 
 function spawnChest(npc, owners) {
+    if (npc.chapel) return spawnChapelChests(npc, owners);
     const items = rollLoot(npc.level, npc.loot);
     const list = Array.isArray(owners) ? owners : [owners];
     const seen = new Set();
@@ -2913,6 +2991,53 @@ function spawnChest(npc, owners) {
     chests.set(chest.id, chest);
     broadcast({ type: 'chest', chest: publicChest(chest) });
     return chest;
+}
+
+function chapelPiece(player) {
+    const style = { warrior: 'plate', hunter: 'leather', mage: 'cloth', warlock: 'cloth' }[player.class] || 'leather';
+    const slot = ['head', 'chest', 'legs'][(player.level + (player.persistentId || '').length) % 3];
+    const names = {
+        plate: { head: 'Chapel Helm', chest: 'Chapel Breastplate', legs: 'Chapel Greaves' },
+        leather: { head: 'Chapel Cap', chest: 'Chapel Jerkin', legs: 'Chapel Leggings' },
+        cloth: { head: 'Chapel Hood', chest: 'Chapel Robe', legs: 'Chapel Pants' }
+    };
+    const magic = player.class === 'warlock' || player.class === 'mage';
+    const focus = style === 'cloth' ? 'intellect' : 'strength';
+    return {
+        kind: 'armor',
+        name: names[style][slot],
+        qty: 1,
+        armor: style === 'plate' ? 3 : style === 'leather' ? 2 : 1,
+        weapon: '',
+        slot,
+        style,
+        magic: magic && style === 'cloth',
+        amount: 0,
+        stats: { [focus]: 3, stamina: 2 },
+        reqLevel: 4
+    };
+}
+
+function spawnChapelChests(npc, owners) {
+    const list = (Array.isArray(owners) ? owners : [owners]).filter(Boolean);
+    let first = null;
+    list.forEach((owner, index) => {
+        const items = [chapelPiece(owner), { kind: 'health', name: 'Health potion', qty: 1, amount: 30 }];
+        if (Math.random() < 0.45) items.push(makeBag(Math.random() < 0.3 ? 'deep-pack' : 'traveler-pack'));
+        const chest = {
+            id: 'c' + (chestSeq++),
+            x: npc.x + (index - (list.length - 1) / 2) * 0.8,
+            z: npc.z,
+            level: npc.level,
+            items,
+            ownerId: owner.persistentId,
+            spawnedAt: Date.now()
+        };
+        chests.set(chest.id, chest);
+        send(owner.ws, { type: 'chest', chest: publicChest(chest) });
+        if (owner === list[0]) first = chest;
+    });
+    return first;
 }
 
 function questMatchesMob(quest, npc) {
@@ -3104,6 +3229,9 @@ function tickNpcs() {
         npc.rotY = Math.atan2(dx, dz);
     }
 
+    tickChapelBosses(now);
+    tickHazards(now);
+
     for (const player of players.values()) {
         if (!player.ghost) {
             const intellect = (player.stats && player.stats.intellect) || 0;
@@ -3138,11 +3266,7 @@ function tickNpcs() {
 
     if (now - lastNpcBroadcast > 100) {
         lastNpcBroadcast = now;
-        const living = [];
-        for (const npc of npcs.values()) {
-            if (npc.alive) living.push(publicNpc(npc));
-        }
-        if (wss.clients.size) broadcast({ type: 'npcs', npcs: living });
+        for (const player of players.values()) send(player.ws, { type: 'npcs', npcs: visibleNpcs(player) });
     }
     syncPartyVitals();
     syncQuestActors(now);
@@ -3202,13 +3326,21 @@ wss.on('connection', (ws) => {
             const spawn = readSpawn(prof);
             prof.spawn = spawn;
             const cave = dungeonById(prof.dungeonId);
+            const inside = cave && !cave.instanced;
+            const kicked = cave && cave.instanced ? { x: cave.portal.x + 3, z: cave.portal.z } : null;
+            if (kicked) {
+                prof.dungeonId = '';
+                prof.dungeonX = 0;
+                prof.dungeonZ = 0;
+            }
             const player = {
                 ws,
                 persistentId,
-                dungeonId: cave ? cave.id : '',
-                x: cave ? Number(prof.dungeonX) || spawn.x : spawn.x,
-                y: cave ? 0.2 : 0,
-                z: cave ? Number(prof.dungeonZ) || spawn.z : spawn.z,
+                dungeonId: inside ? cave.id : '',
+                instanceId: '',
+                x: inside ? Number(prof.dungeonX) || spawn.x : (kicked ? kicked.x : spawn.x),
+                y: inside ? 0.2 : 0,
+                z: inside ? Number(prof.dungeonZ) || spawn.z : (kicked ? kicked.z : spawn.z),
                 rotY: 0,
                 tool: 'axe',
                 name: prof.name,
@@ -3268,24 +3400,25 @@ wss.on('connection', (ws) => {
                 color: player.color,
                 inventory: inventoryOf(player),
                 stats: statsOf(player),
-                npcs: Array.from(npcs.values()).filter(n => n.alive).map(publicNpc),
+                npcs: visibleNpcs(player),
                 civilians: CIVILIANS.map(publicCivilian),
                 camps: campSites(),
                 spawn: player.spawn,
                 quests: player.quests,
                 questDefs: publicQuests(),
-                chests: Array.from(chests.values()).map(publicChest),
+                chests: Array.from(chests.values()).filter(chest => !chest.ownerId || chest.ownerId === persistentId).map(publicChest),
                 actionbar: player.actionbar,
                 character: publicCharacter(player),
                 resources: save.resources,
                 fog: Array.from(player.explored),
                 dungeons: listDungeons(),
                 dungeon: player.dungeonId ? { id: player.dungeonId, x: player.x, y: 0.2, z: player.z } : null,
+                place: kicked,
                 players: Array.from(players.entries())
-                    .filter(([pid]) => pid !== persistentId)
+                    .filter(([pid, p]) => pid !== persistentId && sameView(player, p))
                     .map(([pid, p]) => publicPlayer(pid, p))
             });
-            broadcast({ type: 'join', ...publicPlayer(persistentId, player) }, ws);
+            broadcastSeen(player, { type: 'join', ...publicPlayer(persistentId, player) });
             return;
         }
 
@@ -3318,7 +3451,7 @@ wss.on('connection', (ws) => {
                     if (Math.hypot(player.x - data.x, player.z - data.z) > 0.45) {
                         send(ws, { type: 'teleport', x: player.x, y: 0.2, z: player.z, add: [], quiet: true });
                     }
-                    broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
+                    broadcastSeen(player, { type: 'update', ...publicPlayer(sessionId, player) });
                     return;
                 }
             }
@@ -3336,7 +3469,7 @@ wss.on('connection', (ws) => {
             if (typeof data.rotY === 'number') player.rotY = data.rotY;
             if (data.tool === 'axe' || data.tool === 'pickaxe' || data.tool === 'sword' || data.tool === 'staff') player.tool = data.tool;
             const revealed = revealFog(player);
-            broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
+            broadcastSeen(player, { type: 'update', ...publicPlayer(sessionId, player) });
             if (revealed.length) send(ws, { type: 'fog', add: revealed });
             return;
         }
@@ -3352,7 +3485,7 @@ wss.on('connection', (ws) => {
             player.z = edge.z;
             player.y = terrainHeight(player.x, player.z);
             const revealed = revealFog(player);
-            broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
+            broadcastSeen(player, { type: 'update', ...publicPlayer(sessionId, player) });
             send(ws, { type: 'teleport', x: player.x, y: player.y, z: player.z, add: revealed });
             return;
         }
@@ -3367,6 +3500,11 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'dungeon', ok: false, reason: 'Too far from the portal' });
                 return;
             }
+            if (cave.instanced) {
+                const error = enterChapel(player, cave);
+                if (error) send(ws, { type: 'dungeon', ok: false, reason: error });
+                return;
+            }
             const samples = cave.samples && cave.samples.length ? cave.samples : cave.points;
             const spot = dungeonWorld(cave, samples[0][0], samples[0][1]);
             player.dungeonId = cave.id;
@@ -3375,7 +3513,7 @@ wss.on('connection', (ws) => {
             player.y = 0.2;
             savePlayer(player);
             send(ws, { type: 'dungeon', ok: true, action: 'enter', id: cave.id, x: spot.x, y: 0.2, z: spot.z });
-            broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
+            broadcastSeen(player, { type: 'update', ...publicPlayer(sessionId, player) });
             return;
         }
 
@@ -3383,7 +3521,18 @@ wss.on('connection', (ws) => {
             const cave = dungeonById(player.dungeonId);
             if (!cave) {
                 player.dungeonId = '';
+                player.instanceId = '';
                 send(ws, { type: 'dungeon', ok: false, reason: 'You are not inside' });
+                return;
+            }
+            if (player.instanceId || cave.instanced) {
+                const samples = cave.samples && cave.samples.length ? cave.samples : cave.points;
+                const mouth = dungeonWorld(cave, samples[0][0], samples[0][1]);
+                if (Math.hypot(player.x - mouth.x, player.z - mouth.z) > 4.5) {
+                    send(ws, { type: 'dungeon', ok: false, reason: 'The portal is at the entrance' });
+                    return;
+                }
+                leaveChapel(player);
                 return;
             }
             const samples = cave.samples && cave.samples.length ? cave.samples : cave.points;
@@ -3398,7 +3547,7 @@ wss.on('connection', (ws) => {
             player.y = terrainHeight(player.x, player.z);
             savePlayer(player);
             send(ws, { type: 'dungeon', ok: true, action: 'exit', x: player.x, y: player.y, z: player.z });
-            broadcast({ type: 'update', ...publicPlayer(sessionId, player) }, ws);
+            broadcastSeen(player, { type: 'update', ...publicPlayer(sessionId, player) });
             return;
         }
 
@@ -3593,7 +3742,7 @@ wss.on('connection', (ws) => {
                 return;
             }
             const npc = npcs.get(data.targetId);
-            if (!npc || !npc.alive) {
+            if (!npc || !npc.alive || (npc.instanceId || '') !== (player.instanceId || '')) {
                 player.mana += cost;
                 noteMana(player);
                 send(ws, { type: 'attackResult', ok: false, reason: 'No target', ...statsOf(player) });
@@ -3623,6 +3772,7 @@ wss.on('connection', (ws) => {
                 for (const other of npcs.values()) {
                     if (other === npc || !other.alive) continue;
                     if ((other.dungeonId || '') !== (player.dungeonId || '')) continue;
+                    if ((other.instanceId || '') !== (player.instanceId || '')) continue;
                     if (Math.hypot(other.x - ox, other.z - oz) > spec.aoe) continue;
                     victims.push(other);
                     if (victims.length >= 6) break;
@@ -3780,6 +3930,10 @@ wss.on('connection', (ws) => {
             if (typeof data.z === 'number') player.z = data.z;
             if (Math.hypot(player.x - chest.x, player.z - chest.z) > 2.6) {
                 send(ws, { type: 'lootResult', ok: false, reason: 'Too far' });
+                return;
+            }
+            if (chest.ownerId && chest.ownerId !== player.persistentId) {
+                send(ws, { type: 'lootResult', ok: false, reason: 'That chest is not yours' });
                 return;
             }
             const { taken, leftover, quested } = giveLoot(player, chest.items);
@@ -4018,7 +4172,7 @@ wss.on('connection', (ws) => {
                     return;
                 }
                 const npc = npcs.get(data.targetId);
-                if (!npc || !npc.alive) {
+                if (!npc || !npc.alive || (npc.instanceId || '') !== (player.instanceId || '')) {
                     send(ws, { type: 'useResult', ok: false, reason: 'Select a hostile target' });
                     return;
                 }
@@ -4152,7 +4306,7 @@ wss.on('connection', (ws) => {
                 character: publicCharacter(player),
                 ...statsOf(player)
             });
-            broadcast({ type: 'update', ...publicPlayer(player.persistentId, player) }, ws);
+            broadcastSeen(player, { type: 'update', ...publicPlayer(player.persistentId, player) });
             return;
         }
 
@@ -4595,9 +4749,229 @@ function retreatAlong(samples, back) {
     return samples[0];
 }
 
+const instances = new Map();
+const hazards = new Map();
+let instanceSeq = 1;
+
+function sameView(a, b) {
+    if (!a || !b) return false;
+    if ((a.instanceId || '') !== (b.instanceId || '')) return false;
+    if (a.instanceId) return true;
+    return (a.dungeonId || '') === (b.dungeonId || '');
+}
+
+function visibleNpcs(player) {
+    const list = [];
+    for (const npc of npcs.values()) {
+        if (!npc.alive) continue;
+        if (npc.instanceId) {
+            if (npc.instanceId === player.instanceId) list.push(publicNpc(npc));
+        } else if (!player.instanceId) list.push(publicNpc(npc));
+    }
+    return list;
+}
+
+function broadcastSeen(source, data) {
+    for (const other of players.values()) {
+        if (other === source || other.ws === source.ws) continue;
+        if (!sameView(source, other)) continue;
+        send(other.ws, data);
+    }
+}
+
+function refreshSight(player) {
+    for (const [id, other] of players) {
+        if (other === player) continue;
+        const see = sameView(player, other);
+        send(player.ws, see ? { type: 'join', ...publicPlayer(id, other) } : { type: 'leave', id });
+        send(other.ws, see ? { type: 'join', ...publicPlayer(player.persistentId, player) } : { type: 'leave', id: player.persistentId });
+    }
+}
+
+function tellInstance(instanceId, data) {
+    for (const player of players.values()) {
+        if (player.instanceId === instanceId) send(player.ws, data);
+    }
+}
+
+function clearInstanceIfEmpty(instanceId) {
+    if (!instanceId) return;
+    for (const player of players.values()) {
+        if (player.instanceId === instanceId) return;
+    }
+    for (const [id, npc] of npcs) {
+        if (npc.instanceId === instanceId) npcs.delete(id);
+    }
+    for (const [id, hz] of hazards) {
+        if (hz.instanceId === instanceId) hazards.delete(id);
+    }
+    instances.delete(instanceId);
+}
+
+function makeChapelNpc(inst, cave, local, extra) {
+    const world = dungeonWorld(cave, local[0], local[1]);
+    const kind = NPC_KINDS[extra.kind] || NPC_KINDS.cultist;
+    const npc = {
+        id: inst.id + '-' + extra.tag,
+        instanceId: inst.id,
+        dungeonId: cave.id,
+        pinned: true,
+        chapel: true,
+        boss: !!extra.boss,
+        questId: extra.questId || '',
+        x: world.x,
+        z: world.z,
+        homeX: world.x,
+        homeZ: world.z,
+        zx: 0,
+        zz: 0,
+        kind: kind.id,
+        name: extra.name,
+        tint: extra.tint || kind.tint,
+        loot: 'boss',
+        level: extra.level,
+        alive: true,
+        aggroId: null,
+        attackAt: 0
+    };
+    applyElite(npc, !!extra.elite, 0);
+    pickWander(npc);
+    npcs.set(npc.id, npc);
+    return npc;
+}
+
+function spawnChapel(inst, cave) {
+    const samples = cave.samples && cave.samples.length ? cave.samples : cave.points;
+    const spots = [0.28, 0.46, 0.62, 0.74];
+    spots.forEach((t, index) => {
+        const at = Math.min(samples.length - 2, Math.max(1, Math.round(t * (samples.length - 1))));
+        makeChapelNpc(inst, cave, samples[at], { tag: 'trash-' + index, kind: 'cultist', name: 'Drowned Acolyte', level: 5 });
+    });
+    makeChapelNpc(inst, cave, samples[samples.length - 1], {
+        tag: 'prior',
+        kind: 'cultist',
+        name: 'Drowned Prior',
+        level: 7,
+        elite: true,
+        boss: true,
+        questId: 'prior',
+        tint: '#6c3483'
+    });
+}
+
+function chapelMouth(cave) {
+    const samples = cave.samples && cave.samples.length ? cave.samples : cave.points;
+    return dungeonWorld(cave, samples[0][0], samples[0][1]);
+}
+
+function enterChapel(player, cave) {
+    let inst = null;
+    if (player.partyId) {
+        for (const row of instances.values()) {
+            if (row.dungeonId === cave.id && row.partyId === player.partyId) inst = row;
+        }
+    }
+    if (inst) {
+        let inside = 0;
+        for (const other of players.values()) if (other.instanceId === inst.id) inside += 1;
+        if (inside >= 4) return 'That run already has four players';
+    } else {
+        inst = { id: 'i' + (instanceSeq++), dungeonId: cave.id, partyId: player.partyId || '' };
+        instances.set(inst.id, inst);
+        spawnChapel(inst, cave);
+    }
+    const spot = chapelMouth(cave);
+    player.dungeonId = cave.id;
+    player.instanceId = inst.id;
+    player.x = spot.x;
+    player.z = spot.z;
+    player.y = 0.2;
+    savePlayer(player);
+    send(player.ws, {
+        type: 'dungeon',
+        ok: true,
+        action: 'enter',
+        id: cave.id,
+        x: spot.x,
+        y: 0.2,
+        z: spot.z,
+        note: 'The Drowned Chapel. Up to four in a party. Move out of the black water.'
+    });
+    send(player.ws, { type: 'npcs', npcs: visibleNpcs(player) });
+    refreshSight(player);
+    return null;
+}
+
+function leaveChapel(player) {
+    const cave = dungeonById(player.dungeonId);
+    const instId = player.instanceId || '';
+    player.instanceId = '';
+    player.dungeonId = '';
+    if (cave) {
+        player.x = cave.portal.x + 3;
+        player.z = cave.portal.z;
+        player.y = terrainHeight(player.x, player.z);
+    }
+    savePlayer(player);
+    send(player.ws, { type: 'dungeon', ok: true, action: 'exit', x: player.x, y: player.y, z: player.z });
+    send(player.ws, { type: 'npcs', npcs: visibleNpcs(player) });
+    for (const hz of hazards.values()) {
+        if (hz.instanceId === instId) send(player.ws, { type: 'hazard', id: hz.id, on: false });
+    }
+    refreshSight(player);
+    clearInstanceIfEmpty(instId);
+}
+
+function tickHazards(now) {
+    for (const [id, hz] of hazards) {
+        if (now <= hz.until) continue;
+        hazards.delete(id);
+        tellInstance(hz.instanceId, { type: 'hazard', id, on: false });
+    }
+    for (const player of players.values()) {
+        if (!player.instanceId || player.hp <= 0 || player.ghost) continue;
+        for (const hz of [...hazards.values()]) {
+            if (hz.instanceId !== player.instanceId || now > hz.until) continue;
+            if (Math.hypot(player.x - hz.x, player.z - hz.z) > hz.r) continue;
+            if (now < (player.poolUntil || 0)) continue;
+            player.poolUntil = now + 800;
+            player.hp = Math.max(0, player.hp - 6);
+            enterCombat(player, now);
+            send(player.ws, { type: 'hurt', damage: 6, absorbed: 0, attacker: 'Black water', ...statsOf(player) });
+            if (player.hp <= 0) becomeGhost(player, now);
+        }
+    }
+}
+
+function tickChapelBosses(now) {
+    for (const npc of npcs.values()) {
+        if (!npc.chapel || !npc.boss || !npc.alive) continue;
+        const ratio = npc.maxHp > 0 ? npc.hp / npc.maxHp : 1;
+        if (!npc.puddle && ratio <= 0.7) {
+            npc.puddle = true;
+            const hz = { id: npc.id + '-pool', instanceId: npc.instanceId, x: npc.x, z: npc.z, r: 3.3, until: now + 16000 };
+            hazards.set(hz.id, hz);
+            tellInstance(npc.instanceId, { type: 'hazard', id: hz.id, x: hz.x, z: hz.z, r: hz.r, on: true });
+            tellInstance(npc.instanceId, { type: 'note', text: 'Black water spreads. Move out of it.' });
+        }
+        if (!npc.adds && ratio <= 0.45) {
+            npc.adds = true;
+            const cave = dungeonById(npc.dungeonId);
+            const inst = instances.get(npc.instanceId);
+            if (cave && inst) {
+                const end = dungeonLocal(cave, npc.x, npc.z);
+                makeChapelNpc(inst, cave, [end.x + 2.2, end.z - 2], { tag: 'add-a-' + now, kind: 'cultist', name: 'Drowned Acolyte', level: 5 });
+                makeChapelNpc(inst, cave, [end.x - 2.2, end.z - 2], { tag: 'add-b-' + now, kind: 'cultist', name: 'Drowned Acolyte', level: 5 });
+                tellInstance(npc.instanceId, { type: 'note', text: 'The prior calls two acolytes.' });
+            }
+        }
+    }
+}
+
 function spawnDungeonMobs() {
     for (const brief of listDungeons()) {
         const dungeon = dungeonById(brief.id) || brief;
+        if (dungeon.instanced) continue;
         const samples = dungeon.samples && dungeon.samples.length ? dungeon.samples : dungeon.points;
         if (!samples || !samples.length) continue;
         let travel = 0;

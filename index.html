@@ -721,7 +721,7 @@
         Setup downloads quests and items, or copies them so you can paste into cell A1<br>
         Character sheet Craft tab makes gear. A shop sells health and mana potions, and has Buy and Sell tabs<br>
         100 coins make 1 silver, and 100 silver make 1 gold. Drag an item in the bag to move it. Bags go in the bag slots and add room. Nessa's bank is only in the main settlement<br>
-        Farther zones hold stronger creatures with their own loot<br>
+        The Drowned Chapel is east of the river. Wren's quests lead there. A party of four can enter. Move out of the black water<br>
         You can learn 2 crafting skills from a shop assistant. Making items raises the skill. A trainer teaches the next tier at 75, 150, and 225<br>
         Gather herbs by hand and sulfur with a pickaxe<br>
         M: World map. Scroll or +/− to zoom. Right-click a spot to mark it. The minimap points the way<br>
@@ -1383,6 +1383,8 @@
                     solidifyBody(model);
                     characterGroup.add(model);
                     rememberBody(characterGroup, model);
+                    characterGroup.userData.actor = model;
+                    model.userData.restY = model.position.y;
                     wearArmor(characterGroup, character.equipment);
                     playerModel = model;
                     playerTemplate = model;
@@ -2250,6 +2252,71 @@
             let swinging = false;
             let swingTime = 0;
             const swingDuration = 0.6;
+
+            function startPose(id, kind) {
+                const model = id === myId ? characterGroup.userData.actor : (remotePlayers.get(id) && remotePlayers.get(id).mesh.userData.actor);
+                if (!model) return;
+                model.userData.pose = { kind, time: 0 };
+            }
+            function updatePoses(delta) {
+                const models = [];
+                if (characterGroup.userData.actor) models.push(characterGroup.userData.actor);
+                for (const entry of remotePlayers.values()) if (entry.mesh.userData.actor) models.push(entry.mesh.userData.actor);
+                for (const model of models) {
+                    const pose = model.userData.pose;
+                    const restY = model.userData.restY || 0;
+                    if (!pose) continue;
+                    pose.time += delta;
+                    const swing = Math.sin(Math.min(pose.time / 0.55, 1) * Math.PI);
+                    if (pose.kind === 'cast') {
+                        model.rotation.x = -0.38 * swing;
+                        model.position.y = restY + 0.05 * swing;
+                        model.position.z = 0;
+                    } else {
+                        model.rotation.x = 0.42 * swing;
+                        model.position.y = restY;
+                        model.position.z = 0.16 * swing;
+                    }
+                    if (pose.time >= 0.55) {
+                        model.userData.pose = null;
+                        model.rotation.x = 0;
+                        model.position.y = restY;
+                        model.position.z = 0;
+                    }
+                }
+            }
+            const hazardMeshes = new Map();
+            function syncHazard(data) {
+                const prior = hazardMeshes.get(data.id);
+                if (!data.on) {
+                    if (prior) {
+                        scene.remove(prior);
+                        prior.geometry.dispose();
+                        prior.material.dispose();
+                        hazardMeshes.delete(data.id);
+                    }
+                    return;
+                }
+                let mesh = prior;
+                if (!mesh) {
+                    mesh = new THREE.Mesh(
+                        new THREE.CircleGeometry(data.r || 3.2, 28),
+                        new THREE.MeshBasicMaterial({ color: 0x140818, transparent: true, opacity: 0.78, side: THREE.DoubleSide, depthWrite: false })
+                    );
+                    mesh.rotation.x = -Math.PI / 2;
+                    scene.add(mesh);
+                    hazardMeshes.set(data.id, mesh);
+                }
+                mesh.position.set(data.x, 0.28, data.z);
+            }
+            function clearHazards() {
+                for (const mesh of hazardMeshes.values()) {
+                    scene.remove(mesh);
+                    mesh.geometry.dispose();
+                    mesh.material.dispose();
+                }
+                hazardMeshes.clear();
+            }
 
             function playSwing() {
                 if (swinging) return false;
@@ -6908,6 +6975,7 @@
                 }
 
                 updateSwing(delta);
+                updatePoses(delta);
                 updateShots(delta);
                 updateCombatFx(delta);
                 if (mixer) mixer.update(delta);
@@ -7092,6 +7160,8 @@
                 tintModel(model, color);
                 group.add(model);
                 rememberBody(group, model);
+                group.userData.actor = model;
+                model.userData.restY = model.position.y;
                 if (playerClips.length) {
                     const remoteMixer = new THREE.AnimationMixer(model);
                     remoteMixer.clipAction(playerClips[0]).play();
@@ -7474,7 +7544,12 @@
                             bootWorld = { ...base, dungeons: data.dungeons };
                             rebuildOverworldPortals();
                         }
-                        if (data.dungeon && data.dungeon.id) {
+                        if (data.place && Number.isFinite(data.place.x)) {
+                            leaveDungeonView();
+                            characterGroup.position.set(data.place.x, terrainHeight(data.place.x, data.place.z), data.place.z);
+                            verticalVelocity = 0;
+                            onGround = true;
+                        } else if (data.dungeon && data.dungeon.id) {
                             enterDungeonView(data.dungeon.id);
                             characterGroup.position.set(data.dungeon.x, 0.2, data.dungeon.z);
                             verticalVelocity = 0;
@@ -7699,7 +7774,11 @@
                             showMessage([xp, ready].filter(Boolean).join(' · '));
                         }
                     } else if (data.type === 'cast') {
+                        const magic = /bolt|surge|mend|barrier|frost|hellfire|shadow|curse|soul|drain|nova|staff|wand/.test(data.ability || '');
+                        if (data.casterId) startPose(data.casterId, magic ? 'cast' : 'attack');
                         launchCast(data);
+                    } else if (data.type === 'hazard') {
+                        syncHazard(data);
                     } else if (data.type === 'chest') {
                         addChest(data.chest);
                     } else if (data.type === 'chestGone') {
@@ -7841,11 +7920,12 @@
                             characterGroup.position.set(data.x, 0.2, data.z);
                             verticalVelocity = 0;
                             onGround = true;
-                            showMessage('You step through the portal');
+                            showMessage(data.note || 'You step through the portal');
                             sfx('portal');
                         } else if (data.action === 'exit') {
                             characterGroup.position.set(data.x, data.y, data.z);
                             leaveDungeonView();
+                            clearHazards();
                             verticalVelocity = 0;
                             onGround = true;
                             showMessage('You leave the cavern');

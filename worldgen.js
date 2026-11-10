@@ -937,6 +937,37 @@ function loadDungeons(config) {
             index: designedDungeons.length
         });
     }
+    ensureStoryDungeon();
+}
+
+function ensureStoryDungeon() {
+    if (customMap()) return;
+    if (designedDungeons.some(dungeon => dungeon.id === 'chapel')) return;
+    const points = [[0, 0], [0, 16], [5, 28], [5, 42], [0, 54]];
+    const edges = ['line', 'line', 'line', 'line'];
+    const props = [
+        { type: 'pillar', x: -2.2, z: 8 },
+        { type: 'pillar', x: 2.2, z: 8 },
+        { type: 'root', x: -2.3, z: 22 },
+        { type: 'rock', x: 2.3, z: 34 },
+        { type: 'pillar', x: -2.2, z: 46 },
+        { type: 'pillar', x: 2.2, z: 46 }
+    ];
+    designedDungeons.push({
+        id: 'chapel',
+        name: 'Drowned Chapel',
+        mob: 'cultist',
+        level: 6,
+        elite: true,
+        endName: 'Drowned Prior',
+        instanced: true,
+        portal: { x: 168, z: 24 },
+        points,
+        edges,
+        props,
+        samples: curvePoints(points, edges, false),
+        index: designedDungeons.length
+    });
 }
 
 export function listDungeons() {
@@ -947,6 +978,7 @@ export function listDungeons() {
         level: dungeon.level,
         elite: dungeon.elite,
         endName: dungeon.endName,
+        instanced: !!dungeon.instanced,
         portal: { x: dungeon.portal.x, z: dungeon.portal.z },
         points: dungeon.points,
         edges: dungeon.edges,
