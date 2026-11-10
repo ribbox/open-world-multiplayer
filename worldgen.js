@@ -35,13 +35,30 @@ function hills(x, z) {
         + Math.sin(x * 0.046) * Math.sin(z * 0.041) * 1.3;
 }
 
-function riverMask(x, z) {
+function riverBed(x, z, h) {
     const center = 78 + Math.sin(z * 0.02) * 36 + Math.sin(z * 0.0055) * 14;
-    const width = 7;
-    const d = Math.abs(x - center);
-    if (d >= width) return 0;
-    const t = 1 - d / width;
-    return t * t;
+    const dist = Math.abs(x - center);
+    const bed = WATER_LEVEL + 0.02;
+    const drop = h - bed;
+    if (drop <= 0.15) return h;
+    const span = drop / (shape.maxSlope / 1.85);
+    if (dist >= span) return h;
+    const t = 1 - dist / span;
+    const s = t * t * (3 - 2 * t);
+    return h * (1 - s) + bed * s;
+}
+
+function rawHeight(x, z, carve = true) {
+    let h = hills(x, z);
+    if (carve) {
+        h = riverBed(x, z, h);
+        const lake = lakeDepth(x, z);
+        if (lake > 0) h = Math.min(h, WATER_LEVEL - Math.min(lake, 1.2));
+    }
+    const dist = Math.hypot(x, z);
+    const flat = Math.min(1, Math.max(0, (dist - 12) / 28));
+    h = h * flat + 0.9 * (1 - flat);
+    return h;
 }
 
 function lakeDepth(x, z) {
@@ -65,20 +82,6 @@ function lakeDepth(x, z) {
         }
     }
     return depth;
-}
-
-function rawHeight(x, z, carve = true) {
-    let h = hills(x, z);
-    if (carve) {
-        const river = riverMask(x, z);
-        if (river > 0) h = h * (1 - river) + (WATER_LEVEL - 1.7) * river;
-        const lake = lakeDepth(x, z);
-        if (lake > 0) h = Math.min(h, WATER_LEVEL - lake);
-    }
-    const dist = Math.hypot(x, z);
-    const flat = Math.min(1, Math.max(0, (dist - 12) / 28));
-    h = h * flat + 0.9 * (1 - flat);
-    return h;
 }
 
 const ROAD_BED = 1.55;
@@ -173,7 +176,7 @@ function staysDry(x, z) {
 
 function shapedHeight(x, z) {
     const dry = rawHeight(x, z, false);
-    let h = staysDry(x, z) ? dry : rawHeight(x, z, true);
+    let h = rawHeight(x, z, true);
     const road = roadAt(x, z);
     if (road && road.dist < ROAD_SHOULDER) {
         const edge = road.dist <= ROAD_BED ? 1 : 1 - (road.dist - ROAD_BED) / (ROAD_SHOULDER - ROAD_BED);
