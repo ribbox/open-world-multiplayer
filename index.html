@@ -1221,10 +1221,15 @@
                     side: THREE.DoubleSide
                 });
             }
-            function putArmor(rig, mesh, x, y, z) {
+            function putArmor(rig, mesh, x, y, z, gait) {
                 mesh.position.set(x, y, z);
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
+                if (gait) {
+                    mesh.userData.gait = gait;
+                    mesh.userData.gaitRest = mesh.position.clone();
+                    mesh.userData.gaitRotX = mesh.rotation.x;
+                }
                 rig.add(mesh);
             }
             function rememberBody(group, model) {
@@ -1332,19 +1337,19 @@
                             mesh = new THREE.Mesh(new THREE.SphereGeometry(girth * 0.22, 10, 8), mat);
                             mesh.scale.set(1.35, 0.65, 1.05);
                         } else mesh = new THREE.Mesh(new THREE.BoxGeometry(girth * 0.28, h * 0.055, d * 0.38), mat);
-                        putArmor(rig, mesh, center.x + side * w * 0.4, yAt(0.76), center.z);
+                        putArmor(rig, mesh, center.x + side * w * 0.4, yAt(0.76), center.z, { kind: 'arm', side, pivotY: yAt(0.72), pivotZ: center.z });
                     }
                 }
                 if (gear.legs && !(chest && chest.style === 'cloth')) {
                     for (const side of [-1, 1]) {
                         const mat = armorMat(gear.legs.style, gear.legs.level, gear.legs.magic);
-                        putArmor(rig, new THREE.Mesh(new THREE.BoxGeometry(w * 0.22, h * 0.28, d * 0.38), mat), center.x + side * w * 0.16, yAt(0.3), center.z);
+                        putArmor(rig, new THREE.Mesh(new THREE.BoxGeometry(w * 0.22, h * 0.28, d * 0.38), mat), center.x + side * w * 0.16, yAt(0.3), center.z, { kind: 'leg', side, pivotY: yAt(0.5), pivotZ: center.z });
                     }
                 }
                 if (gear.feet) {
                     for (const side of [-1, 1]) {
                         const mat = armorMat(gear.feet.style, gear.feet.level, gear.feet.magic);
-                        putArmor(rig, new THREE.Mesh(new THREE.BoxGeometry(w * 0.2, h * 0.07, d * 0.46), mat), center.x + side * w * 0.14, yAt(0.05), center.z + d * 0.05);
+                        putArmor(rig, new THREE.Mesh(new THREE.BoxGeometry(w * 0.2, h * 0.07, d * 0.46), mat), center.x + side * w * 0.14, yAt(0.05), center.z + d * 0.05, { kind: 'foot', side, pivotY: yAt(0.2), pivotZ: center.z });
                     }
                 }
                 if (gear.cloak) {
@@ -1596,12 +1601,229 @@
                 model.position.y -= grounded.min.y;
                 model.position.x -= (grounded.min.x + grounded.max.x) / 2;
                 model.position.z -= (grounded.min.z + grounded.max.z) / 2;
+                model.userData.foot = model.position.y;
+            }
+            function plantFeet(model) {
+                model.updateWorldMatrix(true, true);
+                const box = new THREE.Box3().setFromObject(model);
+                if (box.isEmpty()) return;
+                model.position.y -= box.min.y;
+                model.userData.foot = model.position.y;
+            }
+            const CREATURE_HEIGHT = {
+                boar: 0.9, wolf: 1.05, spider: 0.62, wisp: 0.9,
+                bandit: 1.7, ogre: 2.15, knight: 1.85, cultist: 1.75,
+                shop: 1.7, trainer: 1.7, quest: 1.7
+            };
+            const gaitRests = new Map();
+            function cloneRestGeometry(geo) {
+                let rest = gaitRests.get(geo.uuid);
+                if (!rest) {
+                    rest = geo.clone();
+                    gaitRests.set(geo.uuid, rest);
+                    gaitRests.set(rest.uuid, rest);
+                }
+                return rest.clone();
+            }
+            function prepareWalker(root) {
+                if (!root || root.userData.walker) return;
+                const meshes = [];
+                root.updateWorldMatrix(true, true);
+                root.traverse(obj => { if (obj.isMesh && obj.geometry && obj.geometry.attributes.position) meshes.push(obj); });
+                if (!meshes.length) return;
+                let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+                for (const mesh of meshes) {
+                    const pos = mesh.geometry.attributes.position;
+                    for (let i = 0; i < pos.count; i++) {
+                        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+                        if (x < minX) minX = x; if (x > maxX) maxX = x;
+                        if (y < minY) minY = y; if (y > maxY) maxY = y;
+                        if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+                    }
+                }
+                const height = Math.max(0.001, maxY - minY);
+                const width = Math.max(0.001, maxX - minX);
+                const depth = Math.max(0.001, maxZ - minZ);
+                const human = height > Math.max(width, depth) * 1.05;
+                let hasLeg = false;
+                for (const mesh of meshes) {
+                    const pos = mesh.geometry.attributes.position;
+                    let bMinY = Infinity, bMaxY = -Infinity, bMinX = Infinity, bMaxX = -Infinity;
+                    for (let i = 0; i < pos.count; i++) {
+                        const x = pos.getX(i), y = pos.getY(i);
+                        if (y < bMinY) bMinY = y; if (y > bMaxY) bMaxY = y;
+                        if (x < bMinX) bMinX = x; if (x > bMaxX) bMaxX = x;
+                    }
+                    const mh = bMaxY - bMinY;
+                    const mw = bMaxX - bMinX;
+                    if (bMinY <= minY + height * 0.08 && mh > height * 0.18 && mh < height * 0.72 && mw < width * 0.72) hasLeg = true;
+                }
+                const extra = !human && hasLeg ? height * 0.32 : 0;
+                const limbs = [];
+                for (const mesh of meshes) {
+                    const src = mesh.geometry;
+                    const geo = cloneRestGeometry(src);
+                    mesh.geometry = geo;
+                    const pos = geo.attributes.position;
+                    let bMinX = Infinity, bMinY = Infinity, bMinZ = Infinity, bMaxX = -Infinity, bMaxY = -Infinity, bMaxZ = -Infinity;
+                    for (let i = 0; i < pos.count; i++) {
+                        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+                        if (x < bMinX) bMinX = x; if (x > bMaxX) bMaxX = x;
+                        if (y < bMinY) bMinY = y; if (y > bMaxY) bMaxY = y;
+                        if (z < bMinZ) bMinZ = z; if (z > bMaxZ) bMaxZ = z;
+                    }
+                    const mh = bMaxY - bMinY;
+                    const mw = bMaxX - bMinX;
+                    const nearFoot = bMinY <= minY + height * 0.08;
+                    const leg = nearFoot && mh > height * 0.18 && mh < height * 0.72 && mw < width * 0.72;
+                    if (!human && extra) {
+                        for (let i = 0; i < pos.count; i++) {
+                            const y = pos.getY(i);
+                            if (leg) {
+                                const t = (y - bMinY) / (mh || 1);
+                                pos.setY(i, bMinY + t * (mh + extra));
+                            } else pos.setY(i, y + extra);
+                        }
+                        if (leg) bMaxY += extra;
+                        else { bMinY += extra; bMaxY += extra; }
+                    }
+                    const rest = new Float32Array(pos.array);
+                    pos.needsUpdate = true;
+                    const cx = (bMinX + bMaxX) / 2;
+                    const cz = (bMinZ + bMaxZ) / 2;
+                    const sideArm = human && Math.abs(cx) > width * 0.2 && bMinY > minY + height * 0.4 && mh < height * 0.62 && mw < width * 0.55;
+                    const spans = mh > height * 0.62;
+                    let kind = '';
+                    if (leg) kind = 'leg';
+                    else if (sideArm) kind = 'arm';
+                    else if (spans) kind = 'body';
+                    limbs.push({ mesh, rest, kind, minY: bMinY, maxY: bMaxY, cx, cz });
+                }
+                root.userData.walker = { limbs, human, minY, height, halfW: width * 0.5, midX: (minX + maxX) / 2, phase: Math.random() * Math.PI * 2, amount: 0 };
+            }
+            function stepWalker(root, phase, amount) {
+                const walker = root && root.userData.walker;
+                if (!walker) return;
+                const hipCut = walker.minY + walker.height * (walker.human ? 0.47 : 0.46);
+                const kneeCut = walker.minY + walker.height * (walker.human ? 0.24 : 0.22);
+                const shoulderCut = walker.minY + walker.height * 0.74;
+                for (const limb of walker.limbs) {
+                    const pos = limb.mesh.geometry.attributes.position;
+                    const rest = limb.rest;
+                    if (limb.kind !== 'leg' && limb.kind !== 'arm' && limb.kind !== 'body') continue;
+                    const count = pos.count;
+                    for (let i = 0; i < count; i++) {
+                        const x = rest[i * 3];
+                        let y = rest[i * 3 + 1];
+                        let z = rest[i * 3 + 2];
+                        const y0 = y;
+                        if (limb.kind === 'leg' || limb.kind === 'arm') {
+                            const off = limb.kind === 'arm'
+                                ? (limb.cx < 0 ? Math.PI : 0)
+                                : (walker.human ? (limb.cx < 0 ? 0 : Math.PI) : ((limb.cx < 0) === (limb.cz > 0) ? 0 : Math.PI));
+                            const swing = Math.sin(phase + off) * (limb.kind === 'leg' ? 0.75 : 0.5) * amount;
+                            const lift = Math.max(0, Math.sin(phase + off));
+                            const hipY = limb.maxY;
+                            const dy = y - hipY;
+                            const dz = z - limb.cz;
+                            const c = Math.cos(swing);
+                            const s = Math.sin(swing);
+                            y = hipY + dy * c - dz * s;
+                            z = limb.cz + dy * s + dz * c;
+                            const kneeY = (limb.minY + limb.maxY) * 0.52;
+                            if (y < kneeY) {
+                                const bend = lift * (limb.kind === 'leg' ? 1.05 : 0.55) * amount;
+                                const dy2 = y - kneeY;
+                                const dz2 = z - limb.cz;
+                                const c2 = Math.cos(bend);
+                                const s2 = Math.sin(bend);
+                                y = kneeY + dy2 * c2 - dz2 * s2;
+                                z = limb.cz + dy2 * s2 + dz2 * c2;
+                            }
+                            if (limb.kind === 'leg' && y < limb.minY) y = limb.minY;
+                        } else {
+                            const left = x < (walker.midX || 0);
+                            const off = left ? 0 : Math.PI;
+                            if (y0 < hipCut) {
+                                const swing = Math.sin(phase + off) * 0.7 * amount;
+                                const lift = Math.max(0, Math.sin(phase + off));
+                                const dy = y - hipCut;
+                                const c = Math.cos(swing);
+                                const s = Math.sin(swing);
+                                y = hipCut + dy * c - z * s;
+                                z = dy * s + z * c;
+                                if (y < kneeCut) {
+                                    const bend = lift * 1.05 * amount;
+                                    const dy2 = y - kneeCut;
+                                    const c2 = Math.cos(bend);
+                                    const s2 = Math.sin(bend);
+                                    const zz = z;
+                                    y = kneeCut + dy2 * c2 - zz * s2;
+                                    z = dy2 * s2 + zz * c2;
+                                }
+                                if (y < walker.minY) y = walker.minY;
+                            } else if (walker.human && y0 < shoulderCut && y0 > hipCut && Math.abs(x) > (walker.halfW || 0.2) * 0.62) {
+                                const swing = Math.sin(phase + off + Math.PI) * 0.55 * amount;
+                                const lift = Math.max(0, Math.sin(phase + off + Math.PI));
+                                const dy = y - shoulderCut;
+                                const c = Math.cos(swing);
+                                const s = Math.sin(swing);
+                                y = shoulderCut + dy * c - z * s;
+                                z = dy * s + z * c;
+                                const elbow = (shoulderCut + hipCut) * 0.5;
+                                if (y < elbow) {
+                                    const bend = lift * 0.7 * amount;
+                                    const dy2 = y - elbow;
+                                    const c2 = Math.cos(bend);
+                                    const s2 = Math.sin(bend);
+                                    const zz = z;
+                                    y = elbow + dy2 * c2 - zz * s2;
+                                    z = dy2 * s2 + zz * c2;
+                                }
+                            }
+                        }
+                        pos.setXYZ(i, x, y, z);
+                    }
+                    pos.needsUpdate = true;
+                }
+            }
+            function updateGait(root, delta, speed) {
+                if (!root) return;
+                prepareWalker(root);
+                const walker = root.userData.walker;
+                if (!walker) return;
+                const moving = speed > 0.35;
+                walker.amount += ((moving ? 1 : 0) - walker.amount) * Math.min(1, delta * 8);
+                if (walker.amount > 0.02) walker.phase += delta * (5.5 + Math.min(speed, 5));
+                stepWalker(root, walker.phase, walker.amount);
+            }
+            function updateArmorGait(group, phase, amount) {
+                const rig = group && group.userData.armor;
+                if (!rig) return;
+                rig.traverse(mesh => {
+                    const gait = mesh.userData.gait;
+                    const rest = mesh.userData.gaitRest;
+                    if (!gait || !rest) return;
+                    const off = gait.side < 0 ? 0 : Math.PI;
+                    const arm = gait.kind === 'arm';
+                    const swing = Math.sin(phase + (arm ? off + Math.PI : off)) * (arm ? 0.55 : 0.7) * amount;
+                    const lift = Math.max(0, Math.sin(phase + off)) * (gait.kind === 'foot' ? 0.1 : gait.kind === 'leg' ? 0.03 : 0) * amount;
+                    const bend = Math.max(0, Math.sin(phase + (arm ? off + Math.PI : off))) * (gait.kind === 'foot' ? 0.95 : gait.kind === 'leg' ? 0.4 : 0.3) * amount;
+                    const pivotY = gait.pivotY;
+                    const pivotZ = gait.pivotZ;
+                    const c = Math.cos(swing);
+                    const s = Math.sin(swing);
+                    const dy = rest.y - pivotY;
+                    const dz = rest.z - pivotZ;
+                    mesh.position.set(rest.x, pivotY + dy * c - dz * s + lift, pivotZ + dy * s + dz * c);
+                    mesh.rotation.x = (mesh.userData.gaitRotX || 0) + swing + bend;
+                });
             }
             for (const kind of NPC_MODEL_KINDS) {
                 loader.load(
                     NPC_FILES[kind] || ('/models/' + kind + '.glb'),
                     (gltf) => {
-                        if (kind === 'boar') groundCreature(gltf.scene, 0.85);
+                        groundCreature(gltf.scene, CREATURE_HEIGHT[kind] || 1.4);
                         npcModels.set(kind, gltf.scene);
                         finishNpcModels();
                     },
@@ -4437,6 +4659,7 @@
                 if (!body) return;
                 if (civ.role === 'inn') tintHostile(body, civ.tint || '#e67e22', 0.55);
                 if (civ.role === 'bank') tintHostile(body, civ.tint || '#f4d03f', 0.45);
+                plantFeet(body);
                 const group = new THREE.Group();
                 body.updateWorldMatrix(true, true);
                 const bounds = new THREE.Box3().setFromObject(body);
@@ -4796,14 +5019,15 @@
                     if (!body) return;
                     const group = new THREE.Group();
                     const rank = (0.9 + Math.min(12, state.level || 1) * 0.05) * (state.elite ? 1.28 : 1);
-                    body.scale.setScalar(rank);
+                    body.scale.multiplyScalar(rank);
+                    plantFeet(body);
                     if (state.elite) tintHostile(body, '#f1c40f', 0.28);
                     body.updateWorldMatrix(true, true);
                     const bounds = new THREE.Box3().setFromObject(body);
                     group.add(body);
                     group.userData.body = body;
                     group.userData.labelY = bounds.max.y + 0.22;
-                    group.userData.bobAmp = state.kind === 'wisp' ? 0.16 : 0.035;
+                    group.userData.bobAmp = state.kind === 'wisp' ? 0.12 : 0;
                     group.position.set(state.x, state.dungeonId ? 0.2 : 0, state.z);
                     scene.add(group);
                     entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, name: state.name || 'Hostile', level: -1, hp: -1, maxHp: state.maxHp || 1, elite: !!state.elite, dungeonId: state.dungeonId || '', bob: Math.random() * Math.PI * 2 };
@@ -6976,6 +7200,16 @@
 
                 updateSwing(delta);
                 updatePoses(delta);
+                const walkX = characterGroup.position.x;
+                const walkZ = characterGroup.position.z;
+                const walkSpeed = Math.hypot(walkX - (characterGroup.userData.gx ?? walkX), walkZ - (characterGroup.userData.gz ?? walkZ)) / Math.max(delta, 0.016);
+                characterGroup.userData.gx = walkX;
+                characterGroup.userData.gz = walkZ;
+                if (characterGroup.userData.actor) {
+                    updateGait(characterGroup.userData.actor, delta, walkSpeed);
+                    const walker = characterGroup.userData.actor.userData.walker;
+                    if (walker) updateArmorGait(characterGroup, walker.phase, walker.amount);
+                }
                 updateShots(delta);
                 updateCombatFx(delta);
                 if (mixer) mixer.update(delta);
@@ -6987,12 +7221,18 @@
                     entry.group.rotation.y = entry.rotY;
                     if (!entry.dying) entry.group.position.y = entry.dungeonId ? 0.2 : terrainHeight(entry.group.position.x, entry.group.position.z);
                     const body = entry.group.userData.body;
-                    if (body) body.position.y = Math.sin(performance.now() * 0.004 + (entry.bob || 0)) * (entry.group.userData.bobAmp || 0);
+                    const moved = Math.hypot(entry.group.position.x - (entry.gx ?? entry.group.position.x), entry.group.position.z - (entry.gz ?? entry.group.position.z));
+                    entry.gx = entry.group.position.x;
+                    entry.gz = entry.group.position.z;
+                    if (body) {
+                        updateGait(body, delta, moved / Math.max(delta, 0.016));
+                        body.position.y = (body.userData.foot || 0) + Math.sin(performance.now() * 0.004 + (entry.bob || 0)) * (entry.group.userData.bobAmp || 0);
+                    }
                 }
                 for (const entry of worldCivs.values()) {
                     entry.group.position.y = entry.dungeonId ? 0.2 : terrainHeight(entry.group.position.x, entry.group.position.z);
                     const body = entry.group.userData.body;
-                    if (body) body.position.y = Math.sin(performance.now() * 0.003 + (entry.bob || 0)) * (entry.group.userData.bobAmp || 0);
+                    if (body) body.position.y = (body.userData.foot || 0) + Math.sin(performance.now() * 0.003 + (entry.bob || 0)) * (entry.group.userData.bobAmp || 0);
                     const mark = entry.group.userData.questMark;
                     if (mark && mark.visible) mark.position.y = (entry.group.userData.labelY || 2.2) + 0.72 + Math.sin(performance.now() * 0.004 + entry.bob) * 0.05;
                 }
@@ -7012,7 +7252,18 @@
                     const inCaveBody = entry.mesh.position.x > 80000;
                     const gy = inCaveBody ? 0.2 : terrainHeight(entry.mesh.position.x, entry.mesh.position.z);
                     const reported = entry.data && typeof entry.data.y === 'number' ? entry.data.y : gy;
+                    const px = entry.mesh.position.x;
+                    const pz = entry.mesh.position.z;
+                    const rsp = Math.hypot(px - (entry.lx ?? px), pz - (entry.lz ?? pz)) / Math.max(delta, 0.016);
+                    entry.lx = px;
+                    entry.lz = pz;
                     entry.mesh.position.y = inCaveBody ? 0.2 : (reported > gy + 0.35 ? reported : gy);
+                    const actor = entry.mesh.userData.actor;
+                    if (actor) {
+                        updateGait(actor, delta, rsp);
+                        const walker = actor.userData.walker;
+                        if (walker) updateArmorGait(entry.mesh, walker.phase, walker.amount);
+                    }
                 }
                 if (selectedNpcId) refreshTargetFrame();
                 refreshCivilians(false);
