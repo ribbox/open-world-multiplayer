@@ -1625,6 +1625,26 @@
                 }
                 return rest.clone();
             }
+            function bakePositions(geo) {
+                const src = geo.getAttribute('position');
+                if (!src) return;
+                const arr = new Float32Array(src.count * 3);
+                for (let i = 0; i < src.count; i++) {
+                    arr[i * 3] = src.getX(i);
+                    arr[i * 3 + 1] = src.getY(i);
+                    arr[i * 3 + 2] = src.getZ(i);
+                }
+                geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+                const normal = geo.getAttribute('normal');
+                if (!normal) return;
+                const na = new Float32Array(normal.count * 3);
+                for (let i = 0; i < normal.count; i++) {
+                    na[i * 3] = normal.getX(i);
+                    na[i * 3 + 1] = normal.getY(i);
+                    na[i * 3 + 2] = normal.getZ(i);
+                }
+                geo.setAttribute('normal', new THREE.BufferAttribute(na, 3));
+            }
             function prepareWalker(root) {
                 if (!root || root.userData.walker) return;
                 const meshes = [];
@@ -1663,6 +1683,7 @@
                 for (const mesh of meshes) {
                     const src = mesh.geometry;
                     const geo = cloneRestGeometry(src);
+                    bakePositions(geo);
                     mesh.geometry = geo;
                     const pos = geo.attributes.position;
                     let bMinX = Infinity, bMinY = Infinity, bMinZ = Infinity, bMaxX = -Infinity, bMaxY = -Infinity, bMaxZ = -Infinity;
@@ -1687,7 +1708,12 @@
                         if (leg) bMaxY += extra;
                         else { bMinY += extra; bMaxY += extra; }
                     }
-                    const rest = new Float32Array(pos.array);
+                    const rest = new Float32Array(pos.count * 3);
+                    for (let i = 0; i < pos.count; i++) {
+                        rest[i * 3] = pos.getX(i);
+                        rest[i * 3 + 1] = pos.getY(i);
+                        rest[i * 3 + 2] = pos.getZ(i);
+                    }
                     pos.needsUpdate = true;
                     const cx = (bMinX + bMaxX) / 2;
                     const cz = (bMinZ + bMaxZ) / 2;
