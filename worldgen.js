@@ -162,7 +162,6 @@ export function listRoads() {
 }
 
 function staysDry(x, z) {
-    if (typeof designedZoneAt === 'function' && designedZoneAt(x, z)) return true;
     for (const zone of designedZones) {
         for (const camp of zone.camps || []) {
             if ((camp.x - x) ** 2 + (camp.z - z) ** 2 < 28 * 28) return true;
@@ -170,29 +169,6 @@ function staysDry(x, z) {
     }
     const road = roadAt(x, z, 14);
     return !!(road && road.dist < 14);
-}
-
-function closestZoneEdge(x, z, reach) {
-    let best = null;
-    for (const zone of designedZones) {
-        if (x < zone.minX - reach || x > zone.maxX + reach || z < zone.minZ - reach || z > zone.maxZ + reach) continue;
-        const samples = zone.samples || zone.points;
-        for (let i = 0, j = samples.length - 1; i < samples.length; j = i++) {
-            const a = samples[j];
-            const b = samples[i];
-            const dx = b[0] - a[0];
-            const dz = b[1] - a[1];
-            const len2 = dx * dx + dz * dz || 1;
-            let t = ((x - a[0]) * dx + (z - a[1]) * dz) / len2;
-            if (t < 0) t = 0;
-            else if (t > 1) t = 1;
-            const px = a[0] + dx * t;
-            const pz = a[1] + dz * t;
-            const dist = Math.hypot(x - px, z - pz);
-            if (dist < reach && (!best || dist < best.dist)) best = { dist, x: px, z: pz };
-        }
-    }
-    return best;
 }
 
 function shapedHeight(x, z) {
@@ -205,18 +181,6 @@ function shapedHeight(x, z) {
         const span = Math.max(0.8, ROAD_SHOULDER - road.dist);
         const bed = Math.max(road.y, dry - shape.maxSlope * span);
         h = h * (1 - blend) + bed * blend;
-    }
-    if (designedZones.length && !staysDry(x, z)) {
-        const delta = dry - h;
-        if (Math.abs(delta) > 0.15) {
-            const span = 128;
-            const edge = closestZoneEdge(x, z, span);
-            if (edge) {
-                const t = edge.dist / span;
-                const s = t * t * (3 - 2 * t);
-                h = dry * (1 - s) + h * s;
-            }
-        }
     }
     return applyBoundary(x, z, h);
 }
