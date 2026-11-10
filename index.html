@@ -1267,7 +1267,7 @@
             function clearArmor(group) {
                 const old = group.userData.armor;
                 if (!old) return;
-                group.remove(old);
+                if (old.parent) old.parent.remove(old);
                 old.traverse(obj => {
                     if (obj.geometry) obj.geometry.dispose();
                     if (obj.material && obj.material.dispose) obj.material.dispose();
@@ -1354,8 +1354,9 @@
                 }
                 if (gear.cloak) {
                     const mat = armorMat(gear.cloak.style, gear.cloak.level, gear.cloak.magic);
-                    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.72, h * 0.55), mat);
-                    mesh.position.set(center.x, yAt(0.55), center.z - Math.max(d, girth) * 0.62);
+                    const torso = Math.min(w * 0.7, Math.max(d * 1.35, 0.36));
+                    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(torso, h * 0.5), mat);
+                    mesh.position.set(center.x, yAt(0.58), center.z - d * 0.62);
                     mesh.castShadow = true;
                     rig.add(mesh);
                 }
@@ -1369,8 +1370,14 @@
                         putArmor(rig, new THREE.Mesh(new THREE.OctahedronGeometry(girth * 0.16, 0), mat), center.x - w * 0.48, yAt(0.58), center.z + d * 0.16);
                     }
                 }
-                group.add(rig);
                 group.userData.armor = rig;
+                const actor = group.userData.actor;
+                if (actor && actor.parent === group) {
+                    const fit = actor.scale.x || 1;
+                    rig.scale.setScalar(1 / fit);
+                    rig.position.y = -(actor.position.y || 0) / fit;
+                    actor.add(rig);
+                } else group.add(rig);
                 if (group === characterGroup && ghost) fadeRig(rig, true);
             }
 
@@ -1390,6 +1397,11 @@
                     rememberBody(characterGroup, model);
                     characterGroup.userData.actor = model;
                     model.userData.restY = model.position.y;
+                    const fit = model.scale.x || 1;
+                    for (const tool of [axe, pickaxe, sword, staff, bow, wand]) {
+                        tool.position.multiplyScalar(1 / fit);
+                        model.add(tool);
+                    }
                     wearArmor(characterGroup, character.equipment);
                     playerModel = model;
                     playerTemplate = model;
@@ -1872,11 +1884,16 @@
                 characterGroup.add(root);
                 loader.load(url, (gltf) => {
                     const model = gltf.scene;
-                    if (options.spinZ) model.rotation.z = options.spinZ;
                     model.updateWorldMatrix(true, true);
                     let box = new THREE.Box3().setFromObject(model);
                     const size = box.getSize(new THREE.Vector3());
-                    const long = Math.max(size.x, size.y, size.z, 0.001);
+                    if (size.z > size.y && size.z >= size.x) model.rotation.x = -Math.PI / 2;
+                    else if (size.x > size.y && size.x >= size.z) model.rotation.z = Math.PI / 2;
+                    if (options.spinZ) model.rotation.z += options.spinZ;
+                    model.updateWorldMatrix(true, true);
+                    box = new THREE.Box3().setFromObject(model);
+                    const fitted = box.getSize(new THREE.Vector3());
+                    const long = Math.max(fitted.x, fitted.y, fitted.z, 0.001);
                     model.scale.multiplyScalar(options.length / long);
                     model.updateWorldMatrix(true, true);
                     box = new THREE.Box3().setFromObject(model);
