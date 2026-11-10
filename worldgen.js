@@ -28,11 +28,12 @@ function mulberry32(seed) {
 }
 
 function hills(x, z) {
-    return 4.2
+    const n = 4.2
         + Math.sin(x * 0.021) * Math.cos(z * 0.018) * 3.4
         + Math.sin((x * 0.65 + z) * 0.011) * 5.4
         + Math.cos(x * 0.006 - z * 0.009) * 4.2
         + Math.sin(x * 0.046) * Math.sin(z * 0.041) * 1.3;
+    return Math.max(WATER_LEVEL + 1.6, n);
 }
 
 function riverBed(x, z, h) {
@@ -51,36 +52,11 @@ function rawHeight(x, z, carve = true) {
     let h = hills(x, z);
     if (carve) {
         h = riverBed(x, z, h);
-        const lake = lakeDepth(x, z);
-        if (lake > 0) h = Math.min(h, WATER_LEVEL - Math.min(lake, 1.2));
     }
     const dist = Math.hypot(x, z);
     const flat = Math.min(1, Math.max(0, (dist - 12) / 28));
     h = h * flat + 0.9 * (1 - flat);
     return h;
-}
-
-function lakeDepth(x, z) {
-    const cell = 240;
-    const cx = Math.floor(x / cell);
-    const cz = Math.floor(z / cell);
-    let depth = 0;
-    for (let ix = cx - 1; ix <= cx + 1; ix++) {
-        for (let iz = cz - 1; iz <= cz + 1; iz++) {
-            const rand = mulberry32(chunkSeed(ix + 401, iz - 77));
-            const roll = rand();
-            const lx = (ix + 0.5) * cell + (rand() - 0.5) * 50;
-            const lz = (iz + 0.5) * cell + (rand() - 0.5) * 50;
-            const radius = 16 + rand() * 18;
-            if (roll > 0.55) continue;
-            if (Math.hypot(lx, lz) < 60) continue;
-            const d = Math.hypot(x - lx, z - lz);
-            if (d >= radius) continue;
-            const bowl = 1 - d / radius;
-            depth = Math.max(depth, bowl * bowl * 4.8);
-        }
-    }
-    return depth;
 }
 
 const ROAD_BED = 1.55;
