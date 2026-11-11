@@ -1530,11 +1530,12 @@
                     shader.uniforms.sandOn = sandOnUniform;
                     shader.uniforms.waterLevel = { value: WATER_LEVEL };
                     shader.vertexShader = shader.vertexShader
-                        .replace('#include <common>', '#include <common>\nattribute float biome;\nvarying float vBiome;\nvarying float vGroundY;')
-                        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvBiome = biome;\nvGroundY = position.y;');
+                        .replace('#include <common>', '#include <common>\nattribute float biome;\nattribute float warmth;\nvarying float vBiome;\nvarying float vWarmth;\nvarying float vGroundY;')
+                        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvBiome = biome;\nvWarmth = warmth;\nvGroundY = position.y;');
                     shader.fragmentShader = shader.fragmentShader
-                        .replace('#include <common>', '#include <common>\nvarying float vBiome;\nvarying float vGroundY;\nuniform sampler2D sandMap;\nuniform float sandOn;\nuniform float waterLevel;')
+                        .replace('#include <common>', '#include <common>\nvarying float vBiome;\nvarying float vWarmth;\nvarying float vGroundY;\nuniform sampler2D sandMap;\nuniform float sandOn;\nuniform float waterLevel;')
                         .replace('#include <color_fragment>', `#include <color_fragment>
+                            vec3 campGold = vec3(0.96, 0.78, 0.40);
                             if (vGroundY < waterLevel + 0.05) {
                                 diffuseColor.rgb = vec3(0.07, 0.20, 0.30);
                             } else if (vGroundY < waterLevel + 0.8 && vBiome > 0.25) {
@@ -1542,7 +1543,10 @@
                             } else if (vBiome < 0.5) {
                                 diffuseColor.rgb = vColor.rgb;
                             } else if (vBiome > 1.5) {
-                                diffuseColor.rgb = sandOn > 0.5 ? texture2D(sandMap, vMapUv).rgb : vec3(0.76, 0.68, 0.42);
+                                vec3 beach = sandOn > 0.5 ? texture2D(sandMap, vMapUv).rgb : vec3(0.76, 0.68, 0.42);
+                                diffuseColor.rgb = mix(beach, campGold, vWarmth);
+                            } else {
+                                diffuseColor.rgb = mix(diffuseColor.rgb, campGold, vWarmth);
                             }`);
                 };
                 return mat;
@@ -3501,13 +3505,13 @@
                     : y > 4.2 ? [0.32, 0.5, 0.22]
                     : [0.16, 0.46, 0.15];
                 const warmth = y >= WATER_LEVEL + 0.15 ? campWarmth(wx, wz) : 0;
-                if (warmth > 0) {
+                if (warmth > 0 && !grass && !sand) {
                     const gold = [0.96, 0.78, 0.4];
                     tint[0] += (gold[0] - tint[0]) * warmth;
                     tint[1] += (gold[1] - tint[1]) * warmth;
                     tint[2] += (gold[2] - tint[2]) * warmth;
                 }
-                return { tint, sand, grass };
+                return { tint, sand, grass, warmth: grass || sand ? warmth : 0 };
             }
 
             function retintGround() {
@@ -3515,14 +3519,21 @@
                     const geo = mesh.geometry;
                     const pos = geo.attributes.position;
                     const colors = geo.attributes.color;
+                    let warmth = geo.attributes.warmth;
                     if (!pos || !colors) continue;
+                    if (!warmth || warmth.count !== pos.count) {
+                        geo.setAttribute('warmth', new THREE.BufferAttribute(new Float32Array(pos.count), 1));
+                        warmth = geo.attributes.warmth;
+                    }
                     const ox = mesh.parent ? mesh.parent.position.x : 0;
                     const oz = mesh.parent ? mesh.parent.position.z : 0;
                     for (let i = 0; i < pos.count; i++) {
-                        const tint = groundColor(ox + pos.getX(i), oz + pos.getZ(i), pos.getY(i)).tint;
-                        colors.setXYZ(i, tint[0], tint[1], tint[2]);
+                        const painted = groundColor(ox + pos.getX(i), oz + pos.getZ(i), pos.getY(i));
+                        colors.setXYZ(i, painted.tint[0], painted.tint[1], painted.tint[2]);
+                        warmth.setX(i, painted.warmth || 0);
                     }
                     colors.needsUpdate = true;
+                    warmth.needsUpdate = true;
                 }
             }
 
@@ -3533,6 +3544,7 @@
                 const pos = geo.attributes.position;
                 const colors = new Float32Array(pos.count * 3);
                 const biome = new Float32Array(pos.count);
+                const warmth = new Float32Array(pos.count);
                 const uv = geo.attributes.uv;
                 let wet = false;
                 for (let i = 0; i < pos.count; i++) {
@@ -3544,12 +3556,14 @@
                     if (y < WATER_LEVEL + 0.15) wet = true;
                     const painted = groundColor(wx, wz, y);
                     biome[i] = painted.sand ? 2 : painted.grass ? 1 : 0;
+                    warmth[i] = painted.warmth || 0;
                     colors[i * 3] = painted.tint[0];
                     colors[i * 3 + 1] = painted.tint[1];
                     colors[i * 3 + 2] = painted.tint[2];
                 }
                 geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                 geo.setAttribute('biome', new THREE.BufferAttribute(biome, 1));
+                geo.setAttribute('warmth', new THREE.BufferAttribute(warmth, 1));
                 geo.computeVertexNormals();
                 if (grassMat && grassMat.normalMap) {
                     try { geo.computeTangents(); } catch { /* the color still tiles if tangents fail */ }
