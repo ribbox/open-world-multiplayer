@@ -495,6 +495,7 @@
         }
         .craft-actions { display: flex; gap: 4px; flex: none; }
         .craft-job { margin: 0 0 8px; }
+        .craft-job .craft-actions { justify-content: space-between; margin-bottom: 4px; }
         .text-btn { padding: 3px 8px; }
         .text-btn:disabled { opacity: 0.45; cursor: default; }
         #sheetClose { float: right; }
@@ -7064,16 +7065,25 @@
                 if (craftJob) {
                     const job = document.createElement('div');
                     job.className = 'craft-job';
+                    const head = document.createElement('div');
+                    head.className = 'craft-actions';
                     const label = document.createElement('div');
                     label.id = 'craftJobLabel';
                     label.textContent = 'Crafting ' + craftJob.name;
+                    const cancel = document.createElement('button');
+                    cancel.type = 'button';
+                    cancel.className = 'text-btn';
+                    cancel.textContent = 'Cancel';
+                    cancel.addEventListener('click', () => sendCharacter('craft', { cancel: true }));
+                    head.appendChild(label);
+                    head.appendChild(cancel);
                     const track = document.createElement('div');
                     track.className = 'craft-track';
                     const fill = document.createElement('div');
                     fill.id = 'craftJobFill';
                     fill.className = 'craft-fill';
                     track.appendChild(fill);
-                    job.appendChild(label);
+                    job.appendChild(head);
                     job.appendChild(track);
                     body.appendChild(job);
                 }

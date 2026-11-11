@@ -4764,6 +4764,23 @@ wss.on('connection', (ws) => {
         }
 
         if (data.type === 'craft') {
+            if (data.cancel) {
+                const job = player.crafting;
+                const made = job ? job.made : 0;
+                const name = job && RECIPES[job.recipe] ? RECIPES[job.recipe].name : 'item';
+                player.crafting = null;
+                player.craftNote = '';
+                send(ws, {
+                    type: 'character',
+                    ok: true,
+                    note: job ? (made ? 'Stopped. Kept ' + made + ' ' + name : 'Crafting stopped') : 'Not crafting',
+                    craft: null,
+                    character: publicCharacter(player),
+                    inventory: inventoryOf(player),
+                    ...statsOf(player)
+                });
+                return;
+            }
             const error = startCraft(player, data.recipe, data.count);
             send(ws, {
                 type: 'character',
