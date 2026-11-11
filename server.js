@@ -1846,6 +1846,7 @@ const TREE = {
     execute: { class: 'warrior', spell: 'execute', requires: 'hamstring' },
     whirlwind: { class: 'warrior', spell: 'whirlwind', requires: 'hamstring' },
     cleave: { class: 'warrior', spell: 'cleave', requires: 'might' },
+    sweep: { class: 'warrior', name: 'Sweep', max: 3, requires: 'hamstring', text: '+0.6m area per rank' },
     staff: { class: 'mage', spell: 'staff', requires: null },
     'arcane-bolt': { class: 'mage', spell: 'arcane-bolt', requires: 'staff' },
     meditation: { class: 'mage', name: 'Meditation', max: 3, requires: 'staff', text: '+2 max mana per rank' },
@@ -1855,6 +1856,7 @@ const TREE = {
     barrier: { class: 'mage', spell: 'barrier', requires: 'mend' },
     'frost-nova': { class: 'mage', spell: 'frost-nova', requires: 'frost-bolt' },
     'arcane-surge': { class: 'mage', spell: 'arcane-surge', requires: 'arcane-power' },
+    blast: { class: 'mage', name: 'Blast', max: 3, requires: 'frost-bolt', text: '+0.6m area per rank' },
     bow: { class: 'hunter', spell: 'bow', requires: null },
     'aimed-shot': { class: 'hunter', spell: 'aimed-shot', requires: 'bow' },
     'thick-hide': { class: 'hunter', name: 'Thick Hide', max: 3, requires: 'bow', text: '+1 armor per rank' },
@@ -1862,6 +1864,7 @@ const TREE = {
     precision: { class: 'hunter', name: 'Precision', max: 3, requires: 'aimed-shot', text: '+1 shot damage per rank' },
     'multi-shot': { class: 'hunter', spell: 'multi-shot', requires: 'wing-clip' },
     'kill-shot': { class: 'hunter', spell: 'kill-shot', requires: 'precision' },
+    volley: { class: 'hunter', name: 'Volley', max: 3, requires: 'wing-clip', text: '+0.6m area per rank' },
     wand: { class: 'warlock', spell: 'wand', requires: null },
     'shadow-bolt': { class: 'warlock', spell: 'shadow-bolt', requires: 'wand' },
     reservoir: { class: 'warlock', name: 'Reservoir', max: 3, requires: 'wand', text: '+2 max mana per rank' },
@@ -1869,7 +1872,8 @@ const TREE = {
     curse: { class: 'warlock', spell: 'curse', requires: 'shadow-bolt' },
     affliction: { class: 'warlock', name: 'Affliction', max: 3, requires: 'reservoir', text: '+1 spell damage per rank' },
     hellfire: { class: 'warlock', spell: 'hellfire', requires: 'curse' },
-    'soul-burn': { class: 'warlock', spell: 'soul-burn', requires: 'affliction' }
+    'soul-burn': { class: 'warlock', spell: 'soul-burn', requires: 'affliction' },
+    immolate: { class: 'warlock', name: 'Immolate', max: 3, requires: 'curse', text: '+0.6m area per rank' }
 };
 const TALENTS = Object.fromEntries(Object.entries(TREE).filter(([, node]) => !node.spell).map(([id, node]) => [id, {
     class: node.class,
@@ -4087,13 +4091,15 @@ wss.on('connection', (ws) => {
             const travel = projectile ? Math.min(900, Math.max(220, Math.round(dist * 140))) : 0;
             const victims = [npc];
             if (spec.aoe && !projectile) {
+                const areaTalent = spec.weapon === 'sword' ? 'sweep' : spec.weapon === 'bow' ? 'volley' : spec.weapon === 'wand' ? 'immolate' : 'blast';
+                const reach = spec.aoe + talentRank(player, areaTalent) * 0.6;
                 const ox = spec.aoeSelf ? player.x : npc.x;
                 const oz = spec.aoeSelf ? player.z : npc.z;
                 for (const other of npcs.values()) {
                     if (other === npc || !other.alive) continue;
                     if ((other.dungeonId || '') !== (player.dungeonId || '')) continue;
                     if ((other.instanceId || '') !== (player.instanceId || '')) continue;
-                    if (Math.hypot(other.x - ox, other.z - oz) > spec.aoe) continue;
+                    if (Math.hypot(other.x - ox, other.z - oz) > reach) continue;
                     victims.push(other);
                     if (victims.length >= 6) break;
                 }
