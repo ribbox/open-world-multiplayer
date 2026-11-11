@@ -2779,7 +2779,7 @@
                 let best = null;
                 for (const site of lastCamps) {
                     const d = (site.x - x) ** 2 + (site.z - z) ** 2;
-                    if (d > 28 * 28) continue;
+                    if (d > 14 * 14) continue;
                     if (!best || d < best.d) best = { site, d };
                 }
                 const id = best ? best.site.id : '';
@@ -3482,8 +3482,8 @@
             function campWarmth(wx, wz) {
                 if (!lastCamps || !lastCamps.length) return 0;
                 let cover = 0;
-                const reach = 28;
-                const fade = 4;
+                const reach = 14;
+                const fade = 2;
                 for (const site of lastCamps) {
                     const d = Math.hypot(wx - site.x, wz - site.z);
                     if (d >= reach) continue;

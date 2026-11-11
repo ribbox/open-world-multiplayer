@@ -96,7 +96,7 @@ const npcs = new Map();
 const AGGRO_RANGE = 9;
 const ATTACK_RANGE = 2.6;
 const NPC_HIT_RANGE = 1.55;
-const SETTLEMENT_RADIUS = 28;
+const SETTLEMENT_RADIUS = 14;
 
 const NPC_KINDS = {
     boar: { id: 'boar', name: 'Wild Boar', tint: '#8d6a3a', loot: 'hide' },
