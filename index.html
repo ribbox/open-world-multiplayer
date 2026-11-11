@@ -1675,46 +1675,75 @@
                 model.position.z -= (grounded.min.z + grounded.max.z) / 2;
                 model.userData.foot = model.position.y;
             }
+            function markBold(mat) {
+                mat.userData.bold = 1;
+                mat.vertexColors = true;
+                mat.roughness = 0.55;
+                mat.metalness = 0;
+                mat.onBeforeCompile = (shader) => {
+                    shader.fragmentShader = shader.fragmentShader.replace(
+                        '#include <emissivemap_fragment>',
+                        '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * 0.38;'
+                    );
+                };
+                mat.customProgramCacheKey = () => 'bold-parts';
+                mat.needsUpdate = true;
+            }
             function surfaceColor(kind, x, y, z, headZ) {
                 const ax = Math.abs(x);
+                const skin = [0.98, 0.74, 0.54];
+                const hair = [0.12, 0.06, 0.04];
                 if (kind === 'shop') {
-                    if (y > 0.42 && y < 0.68 && ax > 0.28) return [0.8, 0.62, 0.48];
-                    if (y > 0.78) {
-                        if (y > 0.91) return [0.25, 0.16, 0.11];
-                        if (y > 0.84 && y < 0.9 && z > 0.02 && ax > 0.05 && ax < 0.2) return [0.12, 0.14, 0.16];
-                        return [0.8, 0.62, 0.48];
+                    if (y > 0.38 && y < 0.74 && ax > 0.24) return skin;
+                    if (y > 0.74) {
+                        if (y > 0.93 || z < -0.02) return hair;
+                        if (y > 0.8 && y < 0.86 && ax < 0.04) return [0.86, 0.48, 0.38];
+                        if (y > 0.755 && y < 0.81 && ax < 0.12) return [0.75, 0.1, 0.14];
+                        if (y > 0.86 && y < 0.92 && ax > 0.02 && ax < 0.2) return hair;
+                        if (y > 0.82 && y < 0.89 && ax > 0.05 && ax < 0.18) return [0.02, 0.02, 0.04];
+                        return skin;
                     }
-                    if (y > 0.5) return [0.22, 0.4, 0.58];
-                    if (y > 0.44) return [0.45, 0.3, 0.14];
-                    if (y > 0.12) return [0.3, 0.25, 0.2];
-                    return [0.14, 0.11, 0.09];
+                    if (y > 0.48) return [0.08, 0.32, 0.9];
+                    if (y > 0.42) return [0.9, 0.62, 0.08];
+                    if (y > 0.1) return [0.14, 0.16, 0.36];
+                    return [0.06, 0.05, 0.05];
                 }
                 if (kind === 'quest') {
-                    if (y > 0.93 && ax > 0.08) return [0.28, 0.16, 0.12];
-                    if (y > 0.9 && ax > 0.1 && ax < 0.26) return [0.72, 0.45, 0.48];
-                    if (y > 0.8 && y < 0.9 && z > 0.06 && ax > 0.05 && ax < 0.22) return [0.15, 0.55, 0.28];
-                    if (y > 0.76 && y < 0.84 && z > 0.1 && ax < 0.06) return [0.42, 0.2, 0.22];
-                    if (y > 0.74 && z > 0.08 && ax < 0.14) return [0.78, 0.64, 0.48];
-                    if (y < 0.08 || (y > 0.42 && y < 0.7 && ax > 0.34)) return [0.26, 0.16, 0.11];
-                    if (y > 0.4 && y < 0.66 && ax < 0.16) return [0.18, 0.38, 0.28];
-                    return [0.55, 0.38, 0.24];
+                    const fur = [0.78, 0.5, 0.26];
+                    const dark = [0.32, 0.16, 0.08];
+                    if (y > 0.9 && ax > 0.1) return y > 0.95 ? [0.95, 0.4, 0.52] : dark;
+                    if (y > 0.7) {
+                        if (z < -0.06 && y > 0.78) return dark;
+                        if (y > 0.74 && y < 0.81 && ax < 0.05) return [0.95, 0.2, 0.32];
+                        if (y > 0.72 && y < 0.78 && ax < 0.1) return [0.5, 0.08, 0.12];
+                        if (y > 0.82 && y < 0.89 && ax > 0.07 && ax < 0.16) return [0.02, 0.02, 0.02];
+                        if (y > 0.78 && y < 0.91 && ax > 0.04 && ax < 0.22) return [0.1, 0.95, 0.25];
+                        if (y > 0.72 && y < 0.84 && ax < 0.14) return [0.98, 0.88, 0.72];
+                        return fur;
+                    }
+                    if (y < 0.07 || (y > 0.38 && y < 0.72 && ax > 0.3)) return dark;
+                    if (y > 0.36 && y < 0.7 && ax < 0.2) return [0.0, 0.62, 0.28];
+                    return fur;
                 }
                 if (kind === 'wolf') {
                     const along = z * headZ;
-                    if (along > 0.32 && y > 0.55 && y < 0.72 && ax > 0.04 && ax < 0.16) return [0.12, 0.42, 0.18];
-                    if (along > 0.4 && y > 0.48 && ax < 0.08) return [0.1, 0.08, 0.08];
-                    if (y > 0.72 && along > 0.15) return [0.3, 0.28, 0.28];
-                    if (y < 0.22 && ax > 0.12) return [0.22, 0.2, 0.2];
-                    if (y < 0.38 && ax < 0.14) return [0.76, 0.74, 0.68];
-                    if (y > 0.5) return [0.32, 0.34, 0.36];
-                    return [0.55, 0.56, 0.58];
+                    if (along > 0.22 && y > 0.48 && y < 0.74 && ax > 0.05 && ax < 0.16) return [0.02, 0.02, 0.02];
+                    if (along > 0.18 && y > 0.45 && y < 0.78 && ax > 0.02 && ax < 0.22) return [0.95, 0.82, 0.15];
+                    if (along > 0.34 && y > 0.42 && ax < 0.08) return [0.08, 0.06, 0.06];
+                    if (y > 0.7 && along > 0.1) return [0.22, 0.18, 0.16];
+                    if (y < 0.2 && ax > 0.1) return [0.12, 0.1, 0.1];
+                    if (y < 0.4 && ax < 0.16) return [0.93, 0.9, 0.82];
+                    if (y > 0.48) return [0.22, 0.22, 0.24];
+                    return [0.62, 0.64, 0.66];
                 }
-                if (y > 0.86) return [0.16, 0.12, 0.09];
-                if (y > 0.72 && y < 0.82 && z > 0.04 && ax > 0.04 && ax < 0.16) return [0.55, 0.12, 0.08];
-                if (y > 0.32 && y < 0.48 && ax < 0.18) return [0.36, 0.22, 0.12];
-                if (y > 0.28 && y < 0.36) return [0.18, 0.12, 0.08];
-                if (y < 0.16) return [0.28, 0.34, 0.18];
-                return [0.46, 0.56, 0.32];
+                if (y > 0.88) return [0.1, 0.06, 0.04];
+                if (y > 0.78 && y < 0.88 && ax < 0.2) return [0.08, 0.05, 0.03];
+                if (y > 0.7 && y < 0.8 && ax > 0.03 && ax < 0.18) return [0.95, 0.08, 0.05];
+                if (y > 0.68 && y < 0.76 && ax < 0.08) return [0.9, 0.82, 0.6];
+                if (y > 0.3 && y < 0.48 && ax < 0.2) return [0.72, 0.28, 0.08];
+                if (y > 0.26 && y < 0.34) return [0.1, 0.07, 0.04];
+                if (y < 0.14) return [0.2, 0.28, 0.1];
+                return [0.42, 0.7, 0.22];
             }
             function paintParts(model, kind) {
                 model.updateWorldMatrix(true, true);
@@ -1764,8 +1793,8 @@
                     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                     const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
                     for (const mat of mats) {
-                        mat.vertexColors = true;
                         if (mat.color) mat.color.set(0xffffff);
+                        markBold(mat);
                     }
                 });
             }
@@ -2017,7 +2046,8 @@
                 loader.load(
                     NPC_FILES[kind] || ('/models/' + kind + '.glb'),
                     (gltf) => {
-                        groundCreature(gltf.scene, CREATURE_HEIGHT[kind] || 1.4, kind === 'spider' ? -Math.PI / 2 : 0);
+                        const yaw = kind === 'spider' ? -Math.PI / 2 : kind === 'quest' ? Math.PI / 2 : 0;
+                        groundCreature(gltf.scene, CREATURE_HEIGHT[kind] || 1.4, yaw);
                         if (NPC_FILES[kind]) gltf.scene.userData.noGait = true;
                         if (kind === 'wolf' || kind === 'ogre' || kind === 'shop' || kind === 'quest') paintParts(gltf.scene, kind);
                         npcModels.set(kind, gltf.scene);
@@ -4934,6 +4964,7 @@
                     const cloned = source.map(mat => {
                         const next = mat.clone();
                         if (next.color) next.color.lerp(tint, mix);
+                        if (next.userData && next.userData.bold) markBold(next);
                         return next;
                     });
                     obj.material = Array.isArray(obj.material) ? cloned : cloned[0];
@@ -5063,7 +5094,15 @@
                 const model = template.clone(true);
                 model.traverse(obj => {
                     if (!obj.isMesh || !obj.material) return;
-                    obj.material = Array.isArray(obj.material) ? obj.material.map(mat => mat.clone()) : obj.material.clone();
+                    obj.material = Array.isArray(obj.material) ? obj.material.map(mat => {
+                        const next = mat.clone();
+                        if (next.userData && next.userData.bold) markBold(next);
+                        return next;
+                    }) : (() => {
+                        const next = obj.material.clone();
+                        if (next.userData && next.userData.bold) markBold(next);
+                        return next;
+                    })();
                 });
                 return model;
             }
