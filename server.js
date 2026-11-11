@@ -475,9 +475,10 @@ function questDoneByName(player, name) {
 
 function civInZone(zoneId, role, camp, name) {
     const wanted = String(name || '').trim().toLowerCase();
+    const generic = !wanted || wanted === 'innkeeper' || wanted === 'quest giver' || wanted === 'shop' || wanted === 'trainer';
     if (zoneId && role && Number.isInteger(camp)) {
         const exact = CIVILIANS.find(civ => civ.id === 'd' + role + '-' + zoneId + '-' + camp);
-        if (exact && (!wanted || exact.name.toLowerCase() === wanted)) return exact;
+        if (exact && (generic || exact.name.toLowerCase() === wanted)) return exact;
     }
     if (zoneId && wanted) {
         const named = CIVILIANS.find(civ => String(civ.id).includes('-' + zoneId + '-') && civ.name.toLowerCase() === wanted && (!role || civ.role === role))
