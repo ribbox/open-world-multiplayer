@@ -1449,8 +1449,14 @@ function talentRank(player, id) {
     return player.talents[id] || 0;
 }
 
+function ranksIn(player, ids) {
+    let total = 0;
+    for (const id of ids) total += talentRank(player, id);
+    return total;
+}
+
 function maxManaFor(player) {
-    return 10 + ((player.level || 1) - 1) * 4 + talentRank(player, 'meditation') * 2 + talentRank(player, 'reservoir') * 2;
+    return 10 + ((player.level || 1) - 1) * 4 + ranksIn(player, ['meditation', 'reservoir', 'ward', 'torment']) * 2;
 }
 
 function damageScale(playerLevel, mobLevel) {
@@ -1851,40 +1857,56 @@ const SPELLS = {
 const TREE = {
     sword: { class: 'warrior', spell: 'sword', requires: null },
     'power-strike': { class: 'warrior', spell: 'power-strike', requires: 'sword' },
-    toughness: { class: 'warrior', name: 'Toughness', max: 3, requires: 'sword', text: '+1 armor per rank' },
-    hamstring: { class: 'warrior', spell: 'hamstring', requires: 'power-strike' },
-    might: { class: 'warrior', name: 'Might', max: 3, requires: 'power-strike', text: '+1 melee damage per rank' },
+    might: { class: 'warrior', name: 'Might', max: 5, requires: 'power-strike', text: '+1 melee damage per rank' },
+    hamstring: { class: 'warrior', spell: 'hamstring', requires: 'might' },
     execute: { class: 'warrior', spell: 'execute', requires: 'hamstring' },
-    whirlwind: { class: 'warrior', spell: 'whirlwind', requires: 'hamstring' },
-    cleave: { class: 'warrior', spell: 'cleave', requires: 'might' },
-    sweep: { class: 'warrior', name: 'Sweep', max: 3, requires: 'hamstring', text: '+0.6m area per rank' },
+    cleave: { class: 'warrior', spell: 'cleave', requires: 'sword' },
+    sweep: { class: 'warrior', name: 'Sweep', max: 5, requires: 'cleave', text: '+0.6m area per rank' },
+    whirlwind: { class: 'warrior', spell: 'whirlwind', requires: 'sweep' },
+    frenzy: { class: 'warrior', name: 'Frenzy', max: 5, requires: 'whirlwind', text: '+1 melee damage per rank' },
+    toughness: { class: 'warrior', name: 'Toughness', max: 5, requires: 'sword', text: '+1 armor per rank' },
+    stalwart: { class: 'warrior', name: 'Stalwart', max: 5, requires: 'toughness', text: '+4 health per rank' },
+    defiance: { class: 'warrior', name: 'Defiance', max: 5, requires: 'stalwart', text: '+1 armor per rank' },
+    'last-stand': { class: 'warrior', name: 'Last Stand', max: 5, requires: 'defiance', text: '+4 health per rank' },
     staff: { class: 'mage', spell: 'staff', requires: null },
     'arcane-bolt': { class: 'mage', spell: 'arcane-bolt', requires: 'staff' },
-    meditation: { class: 'mage', name: 'Meditation', max: 3, requires: 'staff', text: '+2 max mana per rank' },
-    'frost-bolt': { class: 'mage', spell: 'frost-bolt', requires: 'arcane-bolt' },
-    mend: { class: 'mage', spell: 'mend', requires: 'arcane-bolt' },
-    'arcane-power': { class: 'mage', name: 'Arcane Power', max: 3, requires: 'meditation', text: '+1 spell damage per rank' },
-    barrier: { class: 'mage', spell: 'barrier', requires: 'mend' },
-    'frost-nova': { class: 'mage', spell: 'frost-nova', requires: 'frost-bolt' },
+    'arcane-power': { class: 'mage', name: 'Arcane Power', max: 5, requires: 'arcane-bolt', text: '+1 spell damage per rank' },
     'arcane-surge': { class: 'mage', spell: 'arcane-surge', requires: 'arcane-power' },
-    blast: { class: 'mage', name: 'Blast', max: 3, requires: 'frost-bolt', text: '+0.6m area per rank' },
+    focus: { class: 'mage', name: 'Focus', max: 5, requires: 'arcane-surge', text: '+1 spell damage per rank' },
+    'frost-bolt': { class: 'mage', spell: 'frost-bolt', requires: 'staff' },
+    blast: { class: 'mage', name: 'Blast', max: 5, requires: 'frost-bolt', text: '+0.6m area per rank' },
+    'frost-nova': { class: 'mage', spell: 'frost-nova', requires: 'blast' },
+    winter: { class: 'mage', name: 'Winter', max: 5, requires: 'frost-nova', text: '+0.6m area per rank' },
+    mend: { class: 'mage', spell: 'mend', requires: 'staff' },
+    meditation: { class: 'mage', name: 'Meditation', max: 5, requires: 'mend', text: '+2 max mana per rank' },
+    barrier: { class: 'mage', spell: 'barrier', requires: 'meditation' },
+    ward: { class: 'mage', name: 'Ward', max: 5, requires: 'barrier', text: '+2 max mana per rank' },
     bow: { class: 'hunter', spell: 'bow', requires: null },
     'aimed-shot': { class: 'hunter', spell: 'aimed-shot', requires: 'bow' },
-    'thick-hide': { class: 'hunter', name: 'Thick Hide', max: 3, requires: 'bow', text: '+1 armor per rank' },
-    'wing-clip': { class: 'hunter', spell: 'wing-clip', requires: 'aimed-shot' },
-    precision: { class: 'hunter', name: 'Precision', max: 3, requires: 'aimed-shot', text: '+1 shot damage per rank' },
-    'multi-shot': { class: 'hunter', spell: 'multi-shot', requires: 'wing-clip' },
+    precision: { class: 'hunter', name: 'Precision', max: 5, requires: 'aimed-shot', text: '+1 shot damage per rank' },
     'kill-shot': { class: 'hunter', spell: 'kill-shot', requires: 'precision' },
-    volley: { class: 'hunter', name: 'Volley', max: 3, requires: 'wing-clip', text: '+0.6m area per rank' },
+    'eagle-eye': { class: 'hunter', name: 'Eagle Eye', max: 5, requires: 'kill-shot', text: '+1 shot damage per rank' },
+    'wing-clip': { class: 'hunter', spell: 'wing-clip', requires: 'bow' },
+    'thick-hide': { class: 'hunter', name: 'Thick Hide', max: 5, requires: 'wing-clip', text: '+1 armor per rank' },
+    endure: { class: 'hunter', name: 'Endure', max: 5, requires: 'thick-hide', text: '+4 health per rank' },
+    stonehide: { class: 'hunter', name: 'Stonehide', max: 5, requires: 'endure', text: '+1 armor per rank' },
+    'multi-shot': { class: 'hunter', spell: 'multi-shot', requires: 'bow' },
+    volley: { class: 'hunter', name: 'Volley', max: 5, requires: 'multi-shot', text: '+0.6m area per rank' },
+    barrage: { class: 'hunter', name: 'Barrage', max: 5, requires: 'volley', text: '+0.6m area per rank' },
+    salvo: { class: 'hunter', name: 'Salvo', max: 5, requires: 'barrage', text: '+0.6m area per rank' },
     wand: { class: 'warlock', spell: 'wand', requires: null },
     'shadow-bolt': { class: 'warlock', spell: 'shadow-bolt', requires: 'wand' },
-    reservoir: { class: 'warlock', name: 'Reservoir', max: 3, requires: 'wand', text: '+2 max mana per rank' },
-    'drain-life': { class: 'warlock', spell: 'drain-life', requires: 'shadow-bolt' },
-    curse: { class: 'warlock', spell: 'curse', requires: 'shadow-bolt' },
-    affliction: { class: 'warlock', name: 'Affliction', max: 3, requires: 'reservoir', text: '+1 spell damage per rank' },
-    hellfire: { class: 'warlock', spell: 'hellfire', requires: 'curse' },
+    affliction: { class: 'warlock', name: 'Affliction', max: 5, requires: 'shadow-bolt', text: '+1 spell damage per rank' },
     'soul-burn': { class: 'warlock', spell: 'soul-burn', requires: 'affliction' },
-    immolate: { class: 'warlock', name: 'Immolate', max: 3, requires: 'curse', text: '+0.6m area per rank' }
+    ruin: { class: 'warlock', name: 'Ruin', max: 5, requires: 'soul-burn', text: '+1 spell damage per rank' },
+    curse: { class: 'warlock', spell: 'curse', requires: 'wand' },
+    immolate: { class: 'warlock', name: 'Immolate', max: 5, requires: 'curse', text: '+0.6m area per rank' },
+    'drain-life': { class: 'warlock', spell: 'drain-life', requires: 'immolate' },
+    siphon: { class: 'warlock', name: 'Siphon', max: 5, requires: 'drain-life', text: '+1 spell damage per rank' },
+    hellfire: { class: 'warlock', spell: 'hellfire', requires: 'wand' },
+    reservoir: { class: 'warlock', name: 'Reservoir', max: 5, requires: 'hellfire', text: '+2 max mana per rank' },
+    torment: { class: 'warlock', name: 'Torment', max: 5, requires: 'reservoir', text: '+2 max mana per rank' },
+    'soul-link': { class: 'warlock', name: 'Soul Link', max: 5, requires: 'torment', text: '+4 health per rank' }
 };
 const TALENTS = Object.fromEntries(Object.entries(TREE).filter(([, node]) => !node.spell).map(([id, node]) => [id, {
     class: node.class,
@@ -2252,7 +2274,7 @@ function loadCharacter(prof) {
 }
 
 function armorValue(player) {
-    let total = talentRank(player, 'toughness') + talentRank(player, 'thick-hide');
+    let total = ranksIn(player, ['toughness', 'thick-hide', 'defiance', 'stonehide']);
     let worn = false;
     for (const slot of EQUIP_SLOTS) {
         if (slot === 'weapon') continue;
@@ -2268,7 +2290,7 @@ function armorValue(player) {
 function refreshDerived(player) {
     player.stats = totalStats(player);
     player.armor = armorValue(player);
-    const nextHp = maxHpFor(player.level) + player.stats.stamina * 4;
+    const nextHp = maxHpFor(player.level) + player.stats.stamina * 4 + ranksIn(player, ['stalwart', 'last-stand', 'endure', 'soul-link']) * 4;
     const nextMana = maxManaFor(player) + player.stats.intellect * 2;
     const wasFull = !player.maxHp || player.hp >= player.maxHp;
     player.maxHp = nextHp;
@@ -2684,9 +2706,9 @@ function spendNode(player, id) {
     if (talentPoints(player) < 1) return 'No talent points';
     if (node.requires) {
         const parent = TREE[node.requires];
-        if (!parent || nodeRank(player, node.requires) < nodeMax(node.requires)) {
+        if (!parent || nodeRank(player, node.requires) < 1) {
             const name = parent && parent.spell ? SPELLS[parent.spell].name : (parent && parent.name) || 'the previous talent';
-            return 'Requires ' + name + ' fully trained';
+            return 'Requires 1 point in ' + name;
         }
     }
     const before = talentPoints(player);
@@ -4102,14 +4124,14 @@ wss.on('connection', (ws) => {
             const statBonus = (spec.weapon === 'sword' || spec.weapon === 'bow')
                 ? ((player.stats && player.stats.strength) || 0)
                 : ((player.stats && player.stats.intellect) || 0);
-            const powerTalent = spec.weapon === 'sword' ? 'might' : spec.weapon === 'bow' ? 'precision' : spec.weapon === 'wand' ? 'affliction' : 'arcane-power';
-            const per = (spellAmount(abilityId, player.level) + statBonus + (spec.damage || spec.leech ? talentRank(player, powerTalent) : 0)) * rankPower(rank);
+            const powerTalent = spec.weapon === 'sword' ? ['might', 'frenzy'] : spec.weapon === 'bow' ? ['precision', 'eagle-eye'] : spec.weapon === 'wand' ? ['affliction', 'ruin', 'siphon'] : ['arcane-power', 'focus'];
+            const per = (spellAmount(abilityId, player.level) + statBonus + (spec.damage || spec.leech ? ranksIn(player, powerTalent) : 0)) * rankPower(rank);
             const projectile = !!spec.bolt;
             const travel = projectile ? Math.min(900, Math.max(220, Math.round(dist * 140))) : 0;
             const victims = [npc];
             if (spec.aoe && !projectile) {
-                const areaTalent = spec.weapon === 'sword' ? 'sweep' : spec.weapon === 'bow' ? 'volley' : spec.weapon === 'wand' ? 'immolate' : 'blast';
-                const reach = spec.aoe + talentRank(player, areaTalent) * 0.6;
+                const areaTalent = spec.weapon === 'sword' ? ['sweep'] : spec.weapon === 'bow' ? ['volley', 'barrage', 'salvo'] : spec.weapon === 'wand' ? ['immolate'] : ['blast', 'winter'];
+                const reach = spec.aoe + ranksIn(player, areaTalent) * 0.6;
                 const ox = spec.aoeSelf ? player.x : npc.x;
                 const oz = spec.aoeSelf ? player.z : npc.z;
                 for (const other of npcs.values()) {

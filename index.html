@@ -725,7 +725,7 @@
         C: Character sheet. Characters, under the map, returns to the select screen. Reset character is on the sheet and returns that one to level 1<br>
         Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health. Warriors wear plate, hunters wear leather, mages and warlocks wear cloth<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
-        Spells and talents share one tree. The sheet is only for looking. Talk to a trainer to spend points or to reset them and spend again. The next node stays locked until the one before it is fully trained. A branch does not wait on the other branch<br>
+        Spells and talents share one tree. The sheet is only for looking. Talk to a trainer to spend points or to reset them and spend again. One point in a node opens the next. A branch does not wait on the other branch. Level 60 is not enough to fill every branch<br>
         Hamstring, Wing Clip, Frost Bolt, and Curse slow. Execute, Kill Shot, and Soul Burn double damage under 35% health. Cleave, Multi-Shot, Whirlwind, Frost Nova, and Hellfire hit nearby foes. Drain Life returns the damage as health. Barrier soaks hits<br>
         The bar is your level and experience. Armor and stats are on the character sheet<br>
         Camps are safe. Creatures walk out, and you cannot attack while you are inside. The camp name appears when you enter<br>
@@ -6920,7 +6920,7 @@
                     const rank = treeNodeRank(id, node);
                     const max = treeNodeMax(node);
                     const parent = node.requires ? tree[node.requires] : null;
-                    const open = !parent || treeNodeRank(node.requires, parent) >= treeNodeMax(parent);
+                    const open = !parent || treeNodeRank(node.requires, parent) >= 1;
                     const canSpend = !!editable && open && rank < max && points > 0;
                     const wrap = document.createElement('div');
                     wrap.className = 't-wrap';
@@ -6946,7 +6946,7 @@
                     } else if (node.text) lines.push(node.text);
                     if (rank >= max) lines.push('Fully trained');
                     else if (canSpend) lines.push(rank > 0 ? 'Click to improve' : 'Click to learn');
-                    else if (!open) lines.push('Locked');
+                    else if (!open) lines.push('Requires 1 point in ' + treeNodeName(parent));
                     else if (!editable) lines.push('A trainer teaches this');
                     else lines.push('No points left');
                     wrap.addEventListener('mouseenter', (e) => showPlainTip(treeNodeName(node), lines, e));
