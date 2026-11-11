@@ -997,6 +997,8 @@ function xpToNext(level) {
     return 50 * level;
 }
 
+const MAX_LEVEL = 60;
+
 function maxHpFor(level) {
     return 20 + (level - 1) * 4;
 }
@@ -1466,15 +1468,24 @@ function xpForKill(player, npc) {
 }
 
 function grantXp(player, amount) {
+    if ((player.level || 1) >= MAX_LEVEL) {
+        player.level = MAX_LEVEL;
+        player.xp = 0;
+        return false;
+    }
     player.xp += amount;
     let leveled = false;
-    while (player.xp >= xpToNext(player.level)) {
+    while (player.level < MAX_LEVEL && player.xp >= xpToNext(player.level)) {
         player.xp -= xpToNext(player.level);
         player.level += 1;
         refreshDerived(player);
         player.hp = player.maxHp;
         player.mana = player.maxMana;
         leveled = true;
+    }
+    if (player.level >= MAX_LEVEL) {
+        player.level = MAX_LEVEL;
+        player.xp = 0;
     }
     savePlayer(player);
     return leveled;
@@ -1484,7 +1495,7 @@ function statsOf(player) {
     return {
         level: player.level,
         xp: player.xp,
-        xpToNext: xpToNext(player.level),
+        xpToNext: player.level >= MAX_LEVEL ? 0 : xpToNext(player.level),
         hp: Math.floor(player.hp),
         maxHp: player.maxHp,
         mana: Math.floor(player.mana),
@@ -3640,8 +3651,8 @@ wss.on('connection', (ws) => {
             }
             const prof = save.players[persistentId];
             if (!prof.color) prof.color = colorFor(persistentId);
-            prof.level = prof.level || 1;
-            prof.xp = prof.xp || 0;
+            prof.level = Math.max(1, Math.min(MAX_LEVEL, Math.round(Number(prof.level) || 1)));
+            prof.xp = prof.level >= MAX_LEVEL ? 0 : (prof.xp || 0);
             prof.armor = prof.armor || 0;
             loadInventory(prof);
             loadCharacter(prof);

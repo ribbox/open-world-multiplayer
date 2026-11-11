@@ -2068,8 +2068,8 @@
             }
             function updateStatsUI() {
                 document.getElementById('levelCount').textContent = stats.level;
-                document.getElementById('xpCount').textContent = stats.xp;
-                document.getElementById('xpNext').textContent = stats.xpToNext;
+                const label = document.getElementById('xpLabel');
+                if (label) label.textContent = stats.xpToNext > 0 ? (stats.xp + ' / ' + stats.xpToNext) : 'Max';
                 const xpPct = stats.xpToNext > 0 ? Math.max(0, Math.min(1, stats.xp / stats.xpToNext)) : 1;
                 const xpFill = document.getElementById('xpFill');
                 if (xpFill) xpFill.style.width = (xpPct * 100) + '%';
