@@ -508,17 +508,19 @@ function pullInside(x, z, minInset) {
 function applyBoundary(x, z, h) {
     const inset = boundaryInset(x, z);
     if (shape.edge === 'sea') {
+        if (inset >= 0) return h;
+        const out = -inset;
+        const beach = 10;
+        const lip = WATER_LEVEL + 0.02;
         const bed = WATER_LEVEL - 2.2;
-        const drop = Math.max(0.4, h - bed);
-        const reach = Math.max(16, drop / (shape.maxSlope * 0.55));
-        if (inset >= reach) return h;
-        if (inset >= 0) {
-            const t = 1 - inset / reach;
+        if (out <= beach) {
+            const t = out / beach;
             const s = t * t * (3 - 2 * t);
-            return h * (1 - s) + bed * s;
+            return h * (1 - s) + lip * s;
         }
-        const t = Math.min(1, -inset / 14);
-        return bed * (1 - t) + (bed - 1.4) * t;
+        const t = Math.min(1, (out - beach) / 12);
+        const s = t * t * (3 - 2 * t);
+        return lip * (1 - s) + bed * s;
     }
     if (inset < 42) {
         const u = Math.min(1, (42 - inset) / 42);
