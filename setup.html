@@ -71,6 +71,18 @@
                 <button type="button" id="undo">Undo</button>
                 <button type="button" id="deleteZone">Delete zone</button>
                 <button type="button" id="clearBounds">Clear world edge</button>
+                <h2>Maps</h2>
+                <p>Every map stays open. Players travel from an inn once they meet the level. A new map is the default world until you draw on it.</p>
+                <label>Map</label>
+                <select id="mapPick"></select>
+                <label>Map name</label>
+                <input id="mapName" maxlength="32">
+                <label>Minimum level to travel here</label>
+                <input id="mapMin" type="number" min="1" max="60">
+                <div class="row">
+                    <button type="button" id="addMap">New map</button>
+                    <button type="button" id="deleteMap">Delete map</button>
+                </div>
                 <h2>Zones</h2>
                 <div id="zoneList"></div>
                 <h2>Roads</h2>
@@ -187,6 +199,91 @@
         let routeTool = 'draw';
         let savedWorldView = null;
         const view = { x: 0, z: 0, scale: 0.42 };
+        let mapPick = 0;
+
+        function ensureMaps() {
+            if (!Array.isArray(config.maps) || !config.maps.length) {
+                config.maps = [{
+                    id: 'mstart',
+                    name: 'Starting lands',
+                    minLevel: 1,
+                    maxLevel: 0,
+                    zones: config.zones || [],
+                    roads: config.roads || [],
+                    bounds: config.bounds || { half: 900, edge: 'hills', swim: 14, maxSlope: 0.7, points: [], edges: [] },
+                    dungeons: config.dungeons || []
+                }];
+            }
+            for (const map of config.maps) {
+                if (!Array.isArray(map.zones)) map.zones = [];
+                if (!Array.isArray(map.roads)) map.roads = [];
+                if (!Array.isArray(map.dungeons)) map.dungeons = [];
+                if (!map.bounds) map.bounds = { half: 900, edge: 'hills', swim: 14, maxSlope: 0.7, points: [], edges: [] };
+                if (!map.name) map.name = 'Lands';
+                if (!map.minLevel) map.minLevel = 1;
+            }
+        }
+        function workingIntoMap() {
+            const map = config.maps && config.maps[mapPick];
+            if (!map) return;
+            const name = document.getElementById('mapName').value.trim().slice(0, 32);
+            map.name = name || map.name || 'Lands';
+            map.minLevel = Math.max(1, Math.min(60, Math.round(Number(document.getElementById('mapMin').value) || 1)));
+            map.zones = config.zones;
+            map.roads = config.roads;
+            map.bounds = config.bounds;
+            map.dungeons = config.dungeons;
+        }
+        function renderMapList() {
+            const pick = document.getElementById('mapPick');
+            pick.replaceChildren();
+            config.maps.forEach((map, index) => {
+                const option = document.createElement('option');
+                option.value = String(index);
+                option.textContent = (map.name || 'Lands') + ' · level ' + (map.minLevel || 1) + '+';
+                pick.appendChild(option);
+            });
+            pick.value = String(mapPick);
+            document.getElementById('mapName').value = config.maps[mapPick].name || '';
+            document.getElementById('mapMin').value = config.maps[mapPick].minLevel || 1;
+        }
+        function mountMap(index) {
+            mapPick = Math.max(0, Math.min(index, config.maps.length - 1));
+            const map = config.maps[mapPick];
+            config.zones = map.zones;
+            config.roads = map.roads;
+            config.bounds = map.bounds;
+            config.dungeons = map.dungeons;
+            selected = config.zones.length ? 0 : -1;
+            draft = [];
+            draftEdges = [];
+            roadDraft = [];
+            roadEdges = [];
+            drawing = 'zone';
+            dungeonPick = config.dungeons.length ? 0 : -1;
+            questZoneId = '';
+            questPick = -1;
+            applyRuleFields();
+            renderMapList();
+            renderZones();
+            renderRoads();
+            renderFields();
+            if (!document.getElementById('panelDungeons').hidden) renderDungeons();
+            if (!document.getElementById('panelQuests').hidden) renderQuests();
+            draw();
+        }
+        function blankMap(minLevel) {
+            return {
+                id: 'm' + Math.random().toString(36).slice(2, 8),
+                name: 'New lands',
+                minLevel,
+                maxLevel: 0,
+                zones: [],
+                roads: [],
+                dungeons: [],
+                bounds: { half: 900, edge: 'hills', swim: 14, maxSlope: 0.7, points: [], edges: [] }
+            };
+        }
 
         function note(text) { document.getElementById('note').textContent = text || ''; }
         async function api(path, options = {}) {
@@ -1395,8 +1492,18 @@
         const MOB_LABEL = { boar: 'Wild Boar', wolf: 'Wolf', spider: 'Moss Spider', bandit: 'Bandit', ogre: 'Hill Ogre', wisp: 'Fen Wisp', knight: 'Plate Knight', cultist: 'Cultist' };
         let questPick = 0;
         let questZoneId = '';
+        function allZones() {
+            const rows = [];
+            const maps = (config && config.maps) || [];
+            if (!maps.length) return (config.zones || []).map(zone => ({ zone, mapName: '' }));
+            for (const map of maps) {
+                for (const zone of map.zones || []) rows.push({ zone, mapName: map.name || '' });
+            }
+            return rows;
+        }
         function questZone() {
-            return (config.zones || []).find(zone => zone.id === questZoneId) || null;
+            const hit = allZones().find(row => row.zone.id === questZoneId);
+            return hit ? hit.zone : null;
         }
         function zonePeople(zone) {
             const people = [];
@@ -1428,17 +1535,18 @@
         }
         function fillQuestZone() {
             const pick = document.getElementById('questZone');
+            const rows = allZones();
             if (!questZoneId && selected >= 0 && config.zones[selected]) questZoneId = config.zones[selected].id;
-            if (questZoneId && !(config.zones || []).some(zone => zone.id === questZoneId)) questZoneId = '';
+            if (questZoneId && !rows.some(row => row.zone.id === questZoneId)) questZoneId = '';
             pick.replaceChildren();
             const empty = document.createElement('option');
             empty.value = '';
-            empty.textContent = (config.zones || []).length ? 'Select a zone' : 'Draw a zone first';
+            empty.textContent = rows.length ? 'Select a zone' : 'Draw a zone first';
             pick.appendChild(empty);
-            for (const zone of config.zones || []) {
+            for (const row of rows) {
                 const option = document.createElement('option');
-                option.value = zone.id;
-                option.textContent = zone.name || 'Zone';
+                option.value = row.zone.id;
+                option.textContent = (row.mapName ? row.mapName + ' — ' : '') + (row.zone.name || 'Zone');
                 pick.appendChild(option);
             }
             pick.value = questZoneId || '';
@@ -1761,21 +1869,31 @@
         });
         document.getElementById('save').addEventListener('click', async () => {
             readFields();
+            workingIntoMap();
+            const seen = new Map();
+            let clash = '';
+            for (const map of config.maps || []) {
+                for (const zone of map.zones || []) {
+                    if (seen.has(zone.id)) clash = (zone.name || zone.id) + ' is on more than one map. Give each zone its own id.';
+                    else seen.set(zone.id, map.id);
+                }
+            }
+            if (clash) { note(clash); return; }
             if (config) config.sheetUrl = googleSheetUrl();
             try {
                 const saved = await api('/api/setup/config', { method: 'PUT', body: JSON.stringify(config) });
                 config = saved.config;
+                ensureMaps();
                 showSheetLink();
                 note('Saved. Players already in the game receive it.');
-                renderZones();
-                renderFields();
-                draw();
+                mountMap(Math.min(mapPick, config.maps.length - 1));
             } catch (err) {
                 note(err.message);
             }
         });
         document.getElementById('exportMap').addEventListener('click', () => {
             readFields();
+            workingIntoMap();
             const copy = {
                 hpBase: config.hpBase,
                 hpPerLevel: config.hpPerLevel,
@@ -1787,6 +1905,7 @@
                 zones: config.zones || [],
                 roads: config.roads || [],
                 dungeons: config.dungeons || [],
+                maps: config.maps || [],
                 loot: config.loot || {},
                 quests: config.quests || [],
                 items: config.items || []
@@ -1822,14 +1941,20 @@
             }
             if (!confirm('Replace ' + parts.join(' and ') + ' with this spreadsheet?')) return;
             if (parsed.items) config.items = parsed.items;
-            if (parsed.quests) config.quests = applyQuestPlaces(parsed.quests, config.zones || [], config.dungeons || []);
+            if (parsed.quests) {
+                workingIntoMap();
+                const zones = allZones().map(row => row.zone);
+                const dungeons = (config.maps || []).flatMap(map => map.dungeons || []);
+                config.quests = applyQuestPlaces(parsed.quests, zones.length ? zones : (config.zones || []), dungeons.length ? dungeons : (config.dungeons || []));
+            }
             const saved = await api('/api/setup/config', { method: 'PUT', body: JSON.stringify(config) });
             config = saved.config;
+            ensureMaps();
             if (!Array.isArray(config.quests)) config.quests = [];
             if (!Array.isArray(config.items)) config.items = [];
             questPick = -1;
             showSheetLink();
-            if (!document.getElementById('panelQuests').hidden) renderQuests();
+            mountMap(Math.min(mapPick, config.maps.length - 1));
             note('Imported ' + parts.join(' and '));
         }
         document.getElementById('sheetUrl').addEventListener('input', showSheetLink);
@@ -1940,7 +2065,7 @@
                 note('That file is not valid JSON');
                 return;
             }
-            if (!parsed || typeof parsed !== 'object' || (!Array.isArray(parsed.zones) && !parsed.bounds && !Array.isArray(parsed.quests) && !parsed.loot && !Array.isArray(parsed.dungeons))) {
+            if (!parsed || typeof parsed !== 'object' || (!Array.isArray(parsed.zones) && !parsed.bounds && !Array.isArray(parsed.quests) && !parsed.loot && !Array.isArray(parsed.dungeons) && !Array.isArray(parsed.maps))) {
                 note('That file is not a world');
                 return;
             }
@@ -1948,21 +2073,12 @@
             try {
                 const saved = await api('/api/setup/config', { method: 'PUT', body: JSON.stringify(parsed) });
                 config = saved.config;
+                ensureMaps();
                 showSheetLink();
                 if (!Array.isArray(config.quests)) config.quests = [];
-                if (!Array.isArray(config.roads)) config.roads = [];
-                if (!Array.isArray(config.dungeons)) config.dungeons = [];
-                applyRuleFields();
-                selected = config.zones.length ? 0 : -1;
-                questZoneId = selected >= 0 ? config.zones[selected].id : '';
-                questPick = -1;
-                renderZones();
-                renderRoads();
-                renderFields();
+                mapPick = 0;
+                mountMap(0);
                 renderLoot();
-                if (!document.getElementById('panelQuests').hidden) renderQuests();
-                if (!document.getElementById('panelDungeons').hidden) renderDungeons();
-                draw();
                 note('World imported');
             } catch (err) {
                 note(err.message);
@@ -1999,20 +2115,41 @@
             document.getElementById('swimDistance').addEventListener('change', () => { config.bounds.swim = Number(document.getElementById('swimDistance').value); });
             document.getElementById('maxSlope').addEventListener('change', () => { config.bounds.maxSlope = Number(document.getElementById('maxSlope').value); });
         }
+        document.getElementById('mapPick').addEventListener('change', () => {
+            const next = Number(document.getElementById('mapPick').value);
+            if (next === mapPick) return;
+            readFields();
+            workingIntoMap();
+            mountMap(next);
+        });
+        document.getElementById('addMap').addEventListener('click', () => {
+            readFields();
+            workingIntoMap();
+            config.maps.push(blankMap(10));
+            mountMap(config.maps.length - 1);
+            note('New map uses the default world until you draw on it. Save the world.');
+        });
+        document.getElementById('deleteMap').addEventListener('click', () => {
+            if (!config.maps || config.maps.length < 2) {
+                note('Keep at least one map');
+                return;
+            }
+            const name = config.maps[mapPick].name || 'this map';
+            if (!confirm('Delete ' + name + '? Players there move to the starting land when you save.')) return;
+            config.maps.splice(mapPick, 1);
+            mountMap(Math.min(mapPick, config.maps.length - 1));
+            note('Map removed. Save the world.');
+        });
         async function boot() {
             if (!token) return showLogin('');
             try {
                 config = await api('/api/setup/config');
+                ensureMaps();
                 showApp();
                 showSheetLink();
                 fillRules();
-                if (!Array.isArray(config.roads)) config.roads = [];
-                if (!Array.isArray(config.dungeons)) config.dungeons = [];
-                renderZones();
-                renderRoads();
-                renderFields();
+                mountMap(0);
                 renderLoot();
-                draw();
             } catch (err) {
                 showLogin(err.message);
             }

@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked, dungeonTravel } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, installMaps, activateMap, currentMapId, mapBriefs, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked, dungeonTravel } from './worldgen.js';
 import { defaultIconName, iconKeyFromChoice } from './icons.js';
 import { buildWorkbook, readWorkbook, spreadsheetUrl, clipboardSheets } from './sheets.js';
 
@@ -120,6 +120,7 @@ const CIVILIANS = [
     { id: 'nessa', name: 'Nessa', role: 'bank', title: 'Banker', tint: '#f4d03f', x: GLADE_INN.x + 3.2, z: GLADE_INN.z + 1.2, text: 'The vault is only here, in the main settlement. I will hold what you do not want to carry.' },
     { id: 'wren', name: 'Wren', role: 'quest', title: 'Fen watcher', tint: '#5dade2', x: 160, z: 30, text: 'The chapel drowned, but the prior did not. Clear the fen, then take a party of four through the portal.' }
 ];
+const STORY_CIVS = CIVILIANS.map(civ => ({ ...civ }));
 
 function pushCampRole(list, camp, zone, index, role, title, tint, text) {
     const name = camp[role];
@@ -153,80 +154,98 @@ function mapSpawn() {
         const sites = campSites();
         if (sites[0]) {
             const spot = campSpot(sites[0].layout || 'hamlet', 'inn', sites[0].x, sites[0].z);
-            if (onLand(spot.x, spot.z)) return { x: spot.x, z: spot.z, name: 'Inn' };
-            if (onLand(sites[0].x, sites[0].z)) return { x: sites[0].x, z: sites[0].z, name: 'Camp' };
+            if (onLand(spot.x, spot.z)) return { x: spot.x, z: spot.z, name: 'Inn', mapId: currentMapId() };
+            if (onLand(sites[0].x, sites[0].z)) return { x: sites[0].x, z: sites[0].z, name: 'Camp', mapId: currentMapId() };
         }
         const zone = listDesignedZones()[0];
-        if (zone && zone.points && zone.points[0]) return { x: zone.points[0][0], z: zone.points[0][1], name: zone.name || 'Camp' };
+        if (zone && zone.points && zone.points[0]) return { x: zone.points[0][0], z: zone.points[0][1], name: zone.name || 'Camp', mapId: currentMapId() };
     }
-    return DEFAULT_SPAWN;
+    const home = { ...DEFAULT_SPAWN, mapId: currentMapId() };
+    return home;
 }
 
 function rebuildCivilians() {
-    const home = CIVILIANS.filter(civ => civ.id === 'mira' || civ.id === 'bram' || civ.id === 'sela' || civ.id === 'holt' || civ.id === 'nessa' || civ.id === 'wren');
+    const briefs = mapBriefs();
+    const runs = briefs.length ? briefs : [{ id: '' }];
     CIVILIANS.length = 0;
-    if (!customMap()) CIVILIANS.push(...home);
-    if (!customMap()) {
-        for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
-            for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
-                if (zx === 0 && zz === 0) continue;
-                const plan = zoneCampPlan(zx, zz);
-                if (!onLand(plan.x, plan.z)) continue;
-                const drawn = designedZoneAt(plan.x, plan.z);
-                if (drawn && drawn.camps.length) continue;
-                CIVILIANS.push(...plan.folk.filter(person => onLand(person.x, person.z)));
+    const sites = [];
+    runs.forEach((brief, index) => {
+        if (brief.id) activateMap(brief.id);
+        const before = CIVILIANS.length;
+        if (!customMap()) {
+            const story = STORY_CIVS.map(civ => ({ ...civ }));
+            if (index > 0 && brief.id) {
+                for (const civ of story) civ.id = brief.id + ':' + civ.id;
+            }
+            CIVILIANS.push(...story);
+            for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
+                for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
+                    if (zx === 0 && zz === 0) continue;
+                    const plan = zoneCampPlan(zx, zz);
+                    if (!onLand(plan.x, plan.z)) continue;
+                    const drawn = designedZoneAt(plan.x, plan.z);
+                    if (drawn && drawn.camps.length) continue;
+                    CIVILIANS.push(...plan.folk.filter(person => onLand(person.x, person.z)));
+                }
             }
         }
-    }
-    for (const zone of listDesignedZones()) {
-        zone.camps.forEach((camp, index) => {
-            if (!campStanding(camp.x, camp.z)) return;
-            pushCampRole(CIVILIANS, camp, zone, index, 'inn', 'Innkeeper', '#e67e22', 'I keep the inn in ' + zone.name + '. Set your rest here, then press H to return.');
-            pushCampRole(CIVILIANS, camp, zone, index, 'shop', 'Shop', '#f1c40f', 'I buy and sell in ' + zone.name + '.');
-            pushCampRole(CIVILIANS, camp, zone, index, 'trainer', 'Trainer', '#5dade2', 'I train spells in ' + zone.name + '.');
-            pushCampRole(CIVILIANS, camp, zone, index, 'quest', 'Quest giver', '#2ecc71', 'I keep the road through ' + zone.name + '.');
-        });
-    }
-    for (const dungeon of listDungeons()) {
-        const live = dungeonById(dungeon.id) || dungeon;
-        const samples = live.samples && live.samples.length ? live.samples : live.points;
-        const spotLocal = retreatAlong(samples, 3.4);
-        const spot = dungeonWorld(live, spotLocal[0], spotLocal[1]);
-        CIVILIANS.push({
-            id: 'dend-' + dungeon.id,
-            name: dungeon.endName || 'Warden',
-            role: 'quest',
-            title: 'Inside ' + dungeon.name,
-            tint: '#bb88ff',
-            x: spot.x,
-            z: spot.z,
-            text: 'The only way out is the portal. I take what you finished in here.',
-            quest: '',
-            dungeonId: dungeon.id
-        });
-    }
-    if (customMap() && !CIVILIANS.some(civ => civ.role === 'bank')) {
-        const spawn = mapSpawn();
-        let best = null;
-        for (const civ of CIVILIANS) {
-            if (civ.role !== 'inn') continue;
-            const dist = Math.hypot(civ.x - spawn.x, civ.z - spawn.z);
-            if (!best || dist < best.dist) best = { dist, civ };
-        }
-        if (best) {
-            CIVILIANS.push({
-                id: 'nessa',
-                name: 'Nessa',
-                role: 'bank',
-                title: 'Banker',
-                tint: '#f4d03f',
-                x: best.civ.x + 2.4,
-                z: best.civ.z,
-                text: 'The vault is only here, in the main settlement. I will hold what you do not want to carry.'
+        for (const zone of listDesignedZones()) {
+            zone.camps.forEach((camp, index) => {
+                if (!campStanding(camp.x, camp.z)) return;
+                pushCampRole(CIVILIANS, camp, zone, index, 'inn', 'Innkeeper', '#e67e22', 'I keep the inn in ' + zone.name + '. Set your rest here, then press H to return.');
+                pushCampRole(CIVILIANS, camp, zone, index, 'shop', 'Shop', '#f1c40f', 'I buy and sell in ' + zone.name + '.');
+                pushCampRole(CIVILIANS, camp, zone, index, 'trainer', 'Trainer', '#5dade2', 'I train spells in ' + zone.name + '.');
+                pushCampRole(CIVILIANS, camp, zone, index, 'quest', 'Quest giver', '#2ecc71', 'I keep the road through ' + zone.name + '.');
             });
         }
-    }
-    rememberSettlements();
+        for (const dungeon of listDungeons()) {
+            const live = dungeonById(dungeon.id) || dungeon;
+            const samples = live.samples && live.samples.length ? live.samples : live.points;
+            const spotLocal = retreatAlong(samples, 3.4);
+            const spot = dungeonWorld(live, spotLocal[0], spotLocal[1]);
+            CIVILIANS.push({
+                id: 'dend-' + dungeon.id,
+                name: dungeon.endName || 'Warden',
+                role: 'quest',
+                title: 'Inside ' + dungeon.name,
+                tint: '#bb88ff',
+                x: spot.x,
+                z: spot.z,
+                text: 'The only way out is the portal. I take what you finished in here.',
+                quest: '',
+                dungeonId: dungeon.id
+            });
+        }
+        if (customMap() && !CIVILIANS.slice(before).some(civ => civ.role === 'bank')) {
+            const spawn = mapSpawn();
+            let best = null;
+            for (const civ of CIVILIANS.slice(before)) {
+                if (civ.role !== 'inn') continue;
+                const dist = Math.hypot(civ.x - spawn.x, civ.z - spawn.z);
+                if (!best || dist < best.dist) best = { dist, civ };
+            }
+            if (best) {
+                CIVILIANS.push({
+                    id: 'nessa',
+                    name: 'Nessa',
+                    role: 'bank',
+                    title: 'Banker',
+                    tint: '#f4d03f',
+                    x: best.civ.x + 2.4,
+                    z: best.civ.z,
+                    text: 'The vault is only here, in the main settlement. I will hold what you do not want to carry.'
+                });
+            }
+        }
+        for (let i = before; i < CIVILIANS.length; i++) {
+            const civ = CIVILIANS[i];
+            civ.mapId = brief.id || '';
+            if (index > 0 && brief.id && !String(civ.id).startsWith(brief.id + ':')) civ.id = brief.id + ':' + civ.id;
+        }
+        for (const site of campSites()) sites.push({ x: site.x, z: site.z, mapId: brief.id || '' });
+    });
+    settlementSites = sites;
+    if (briefs[0]) activateMap(briefs[0].id);
 }
 
 function campSites() {
@@ -265,7 +284,9 @@ function inSettlement(x, z) {
 function settlementAt(x, z) {
     let best = null;
     const reach = SETTLEMENT_RADIUS * SETTLEMENT_RADIUS;
+    const mapId = currentMapId();
     for (const site of settlementSites) {
+        if (mapId && site.mapId && site.mapId !== mapId) continue;
         const dx = x - site.x;
         const dz = z - site.z;
         const d = dx * dx + dz * dz;
@@ -395,13 +416,36 @@ function publicQuests() {
     return out;
 }
 
+function firstMapId() {
+    const briefs = mapBriefs();
+    return briefs.length ? briefs[0].id : '';
+}
+
+function startMapId() {
+    const briefs = mapBriefs();
+    if (!briefs.length) return '';
+    let best = briefs[0];
+    for (const brief of briefs) {
+        if ((brief.minLevel || 1) < (best.minLevel || 1)) best = brief;
+    }
+    return best.id;
+}
+
+function knownMap(id) {
+    return mapBriefs().some(brief => brief.id === id);
+}
+
 function readSpawn(prof) {
     const spawn = prof && prof.spawn;
     const x = Number(spawn && spawn.x);
     const z = Number(spawn && spawn.z);
-    if (!Number.isFinite(x) || !Number.isFinite(z)) return mapSpawn();
+    const hasPoint = Number.isFinite(x) && Number.isFinite(z);
+    let mapId = String((spawn && spawn.mapId) || '');
+    if (!knownMap(mapId)) mapId = hasPoint ? firstMapId() : startMapId();
+    if (mapId) activateMap(mapId);
+    if (!hasPoint) return mapSpawn();
     if (customMap() && boundaryInset(x, z) < 0) return mapSpawn();
-    return { x, z, name: String(spawn.name || 'Inn').slice(0, 16) };
+    return { x, z, name: String((spawn && spawn.name) || 'Inn').slice(0, 16), mapId: currentMapId() };
 }
 
 function loadQuests(prof) {
@@ -421,12 +465,13 @@ function loadQuests(prof) {
 function nearCivilian(player, id) {
     const civ = CIVILIANS.find(entry => entry.id === id);
     if (!civ) return null;
+    if (civ.mapId && player.mapId && civ.mapId !== player.mapId) return null;
     if (Math.hypot(civ.x - player.x, civ.z - player.z) > 3.6) return null;
     return civ;
 }
 
 function nearRole(player, role) {
-    return CIVILIANS.find(civ => civ.role === role && Math.hypot(civ.x - player.x, civ.z - player.z) <= 3.6) || null;
+    return CIVILIANS.find(civ => civ.role === role && (!civ.mapId || !player.mapId || civ.mapId === player.mapId) && Math.hypot(civ.x - player.x, civ.z - player.z) <= 3.6) || null;
 }
 
 function placePlayer(player, data) {
@@ -477,7 +522,8 @@ function civInZone(zoneId, role, camp, name) {
     const wanted = String(name || '').trim().toLowerCase();
     const generic = !wanted || wanted === 'innkeeper' || wanted === 'quest giver' || wanted === 'shop' || wanted === 'trainer';
     if (zoneId && role && Number.isInteger(camp)) {
-        const exact = CIVILIANS.find(civ => civ.id === 'd' + role + '-' + zoneId + '-' + camp);
+        const tail = 'd' + role + '-' + zoneId + '-' + camp;
+        const exact = CIVILIANS.find(civ => civ.id === tail || String(civ.id).endsWith(':' + tail));
         if (exact && (generic || exact.name.toLowerCase() === wanted)) return exact;
     }
     if (zoneId && wanted) {
@@ -703,6 +749,7 @@ function tickEscorts(dt, now) {
     let moved = false;
     for (const civ of CIVILIANS) {
         if (!civ.escort) continue;
+        if (civ.mapId && civ.mapId !== currentMapId()) activateMap(civ.mapId);
         const quest = QUESTS[civ.escort.questId];
         const active = quest && someoneNeeds(civ.escort.questId) && (quest.guardHp || 0) > 0;
         if (!active) {
@@ -773,6 +820,7 @@ function spawnQuestMob(quest, questId, index, x, z, guardId) {
         zx: Math.round(x / ZONE_SIZE),
         zz: Math.round(z / ZONE_SIZE),
         pinned: true,
+        mapId: currentMapId(),
         questId,
         guardId: guardId || '',
         x, z,
@@ -847,14 +895,16 @@ function playerOnObjective(player, quest) {
         if (here && here.id === quest.zoneId) return true;
     }
     const giver = giverOf(quest);
-    if (giver && Math.hypot(player.x - giver.x, player.z - giver.z) < 90) return true;
+    if (giver && (!giver.mapId || !player.mapId || giver.mapId === player.mapId) && Math.hypot(player.x - giver.x, player.z - giver.z) < 90) return true;
     return !quest.zoneId && Math.hypot(player.x, player.z) < 110;
 }
 
-function aliveKindNear(x, z, kind, range) {
+function aliveKindNear(x, z, kind, range, mapId) {
     let count = 0;
+    const mid = mapId || currentMapId();
     for (const npc of npcs.values()) {
         if (!npc.alive || npc.kind !== kind) continue;
+        if (mid && (npc.mapId || '') !== mid) continue;
         if (Math.hypot(npc.x - x, npc.z - z) <= range) count += 1;
     }
     return count;
@@ -862,6 +912,7 @@ function aliveKindNear(x, z, kind, range) {
 
 function herdStillNeeded(npc) {
     for (const player of players.values()) {
+        if ((player.mapId || '') !== (npc.mapId || '')) continue;
         if (Math.hypot(player.x - npc.homeX, player.z - npc.homeZ) > 100) continue;
         for (const quest of Object.values(QUESTS)) {
             if (quest.mob !== npc.kind || (quest.type !== 'kill' && quest.type !== 'gather')) continue;
@@ -908,6 +959,7 @@ function spawnHerdMob(quest, x, z) {
             zx: Math.round(px / ZONE_SIZE),
             zz: Math.round(pz / ZONE_SIZE),
             herd: true,
+            mapId: currentMapId(),
             x: px,
             z: pz,
             homeX: px,
@@ -931,13 +983,14 @@ function spawnHerdMob(quest, x, z) {
 
 function topUpQuestMobs() {
     for (const player of players.values()) {
+        if (player.mapId) activateMap(player.mapId);
         for (const quest of Object.values(QUESTS)) {
             if (quest.type !== 'kill' && quest.type !== 'gather') continue;
             if (!quest.mob) continue;
             const row = player.quests && player.quests[quest.id];
             if (!row || row.state !== 'active' || row.failed || row.count >= quest.count) continue;
             if (!playerOnObjective(player, quest)) continue;
-            let near = aliveKindNear(player.x, player.z, quest.mob, 70);
+            let near = aliveKindNear(player.x, player.z, quest.mob, 70, player.mapId);
             let added = 0;
             while (near < 6 && added < 3) {
                 const npc = spawnHerdMob(quest, player.x, player.z);
@@ -966,6 +1019,7 @@ function syncQuestActors(now) {
             }
             if (mobs.some(npc => npc.alive || npc.respawnAt > now)) continue;
             const giver = giverOf(quest) || { x: 0, z: 8 };
+            if (giver.mapId) activateMap(giver.mapId);
             const spot = spotNear(giver.x, giver.z, 1);
             spawnQuestMob(quest, id, 0, spot.x, spot.z, '');
         } else if (quest.type === 'protect') {
@@ -975,6 +1029,7 @@ function syncQuestActors(now) {
             }
             const civ = protectTarget(quest);
             if (!civ) continue;
+            if (civ.mapId) activateMap(civ.mapId);
             if (!quest.guardMax) quest.guardMax = 50 + quest.count * 20;
             if (!quest.guardHp) quest.guardHp = quest.guardMax;
             if (!civ.escort || civ.escort.questId !== id) beginEscort(civ, quest);
@@ -1132,6 +1187,7 @@ function clampToZone(npc, x, z) {
 }
 
 function placeNpc(npc, spot) {
+    if (!npc.mapId) npc.mapId = currentMapId();
     const profile = zoneNpc(npc.zx, npc.zz);
     const kind = NPC_KINDS[profile.kind] || NPC_KINDS.boar;
     const span = ZONE_SIZE - 44;
@@ -1225,6 +1281,7 @@ function livingInArea(area) {
     let count = 0;
     for (const npc of npcs.values()) {
         if (!npc.alive || npc.questId || npc.pinned || npc.herd) continue;
+        if ((npc.mapId || '') !== (area.mapId || '')) continue;
         if (area.zone) {
             const at = designedZoneAt(npc.x, npc.z);
             if (at && at.id === area.zone.id) count++;
@@ -1263,10 +1320,11 @@ const zoneSpawns = new Map();
 let activeAreas = new Map();
 
 function spawnAmbient(area) {
+    if (area.mapId) activateMap(area.mapId);
     const spot = area.zone ? randomInZone(area.zone) : null;
     if (area.zone && !spot) return;
     const cell = spot ? zoneAt(spot.x, spot.z) : { zx: area.zx, zz: area.zz };
-    const npc = { id: 'a' + (ambientSeq++), zx: cell.zx, zz: cell.zz, ambient: true };
+    const npc = { id: 'a' + (ambientSeq++), zx: cell.zx, zz: cell.zz, ambient: true, mapId: area.mapId || currentMapId() };
     placeNpc(npc, spot);
     if (area.zone) {
         const at = designedZoneAt(npc.x, npc.z);
@@ -1277,6 +1335,7 @@ function spawnAmbient(area) {
 }
 
 function tickAreaSpawns(area, now) {
+    if (area.mapId) activateMap(area.mapId);
     const rules = spawnRules(area);
     let plan = zoneSpawns.get(area.key);
     if (!plan || now >= plan.until) {
@@ -1303,46 +1362,86 @@ function downNpc(npc) {
 }
 
 function refreshNpcZones() {
-    const want = new Set();
-    const marks = [{ x: 0, z: 0 }];
-    for (const player of players.values()) marks.push(player);
-    for (const mark of marks) {
-        const here = zoneAt(mark.x, mark.z);
-        for (let dx = -2; dx <= 2; dx++) {
-            for (let dz = -2; dz <= 2; dz++) want.add(zoneKey(here.zx + dx, here.zz + dz));
-        }
+    const groups = new Map();
+    for (const player of players.values()) {
+        const id = player.mapId || firstMapId();
+        if (!id) continue;
+        if (!groups.has(id)) groups.set(id, []);
+        groups.get(id).push(player);
     }
     const areas = new Map();
-    for (const key of want) {
-        const [zx, zz] = key.split(',').map(Number);
-        const area = areaOfCell(zx, zz);
-        if (area) areas.set(area.key, area);
-    }
-    if (customMap()) {
+    const wantByMap = new Map();
+    for (const [mapId, marks] of groups) {
+        activateMap(mapId);
+        const want = new Set();
         for (const mark of marks) {
-            const zone = designedZoneAt(mark.x, mark.z);
-            if (!zone) continue;
-            const cell = zoneAt(mark.x, mark.z);
-            areas.set('d:' + zone.id, { key: 'd:' + zone.id, zone, zx: cell.zx, zz: cell.zz });
+            const here = zoneAt(mark.x, mark.z);
+            for (let dx = -2; dx <= 2; dx++) {
+                for (let dz = -2; dz <= 2; dz++) want.add(zoneKey(here.zx + dx, here.zz + dz));
+            }
+        }
+        wantByMap.set(mapId, want);
+        for (const key of want) {
+            const [zx, zz] = key.split(',').map(Number);
+            const area = areaOfCell(zx, zz);
+            if (!area) continue;
+            area.mapId = mapId;
+            area.key = mapId + ':' + area.key;
+            areas.set(area.key, area);
+        }
+        if (customMap()) {
+            for (const mark of marks) {
+                const zone = designedZoneAt(mark.x, mark.z);
+                if (!zone) continue;
+                const cell = zoneAt(mark.x, mark.z);
+                const key = mapId + ':d:' + zone.id;
+                areas.set(key, { key, zone, zx: cell.zx, zz: cell.zz, mapId });
+            }
         }
     }
     activeAreas = areas;
     const unload = [];
     for (const [id, npc] of npcs) {
-        if (npc.pinned) continue;
-        if (want.has(zoneKey(npc.zx, npc.zz))) continue;
+        if (npc.pinned || npc.instanceId) continue;
+        const want = wantByMap.get(npc.mapId || '');
+        if (want && want.has(zoneKey(npc.zx, npc.zz))) continue;
         unload.push(id);
         npcs.delete(id);
     }
     if (unload.length) broadcast({ type: 'npcUnload', ids: unload });
+    const back = firstMapId();
+    if (back) activateMap(back);
+}
+
+function fogStored(mapId, cell) {
+    return (mapId || firstMapId() || 'map') + '|' + cell;
+}
+
+function fogCell(stored, mapId) {
+    const bar = String(stored || '').indexOf('|');
+    if (bar < 0) return mapId && mapId === firstMapId() ? stored : '';
+    return stored.slice(0, bar) === mapId ? stored.slice(bar + 1) : '';
+}
+
+function fogOn(player) {
+    const mapId = player.mapId || firstMapId();
+    const out = [];
+    for (const key of player.explored || []) {
+        const cell = fogCell(key, mapId);
+        if (cell) out.push(cell);
+    }
+    return out;
 }
 
 function revealFog(player) {
     if (!player.explored) player.explored = new Set();
+    if (player.mapId) activateMap(player.mapId);
     const add = [];
+    const legacy = player.mapId && player.mapId === firstMapId();
     for (const key of fogCellsAround(player.x, player.z)) {
-        if (player.explored.has(key)) continue;
-        player.explored.add(key);
+        const stored = fogStored(player.mapId, key);
+        if (player.explored.has(stored) || (legacy && player.explored.has(key))) continue;
+        player.explored.add(stored);
         add.push(key);
     }
     if (!add.length) return add;
@@ -1391,7 +1490,11 @@ function becomeGhost(player, now) {
         if (instId) clearInstanceIfEmpty(instId);
     }
     player.corpse = corpse;
-    const home = player.spawn || mapSpawn();
+    let home = player.spawn;
+    if (!home || (home.mapId && player.mapId && home.mapId !== player.mapId)) {
+        if (player.mapId) activateMap(player.mapId);
+        home = mapSpawn();
+    }
     player.hp = 0;
     player.absorb = 0;
     player.absorbUntil = 0;
@@ -1402,7 +1505,7 @@ function becomeGhost(player, now) {
     const revealed = revealFog(player);
     if (revealed.length) send(player.ws, { type: 'fog', add: revealed });
     send(player.ws, { type: 'died', x: player.x, y: 0, z: player.z, corpse: player.corpse, ...statsOf(player) });
-    broadcast({ type: 'ghost', ...publicPlayer(player.persistentId, player) });
+    broadcastSeen(player, { type: 'ghost', ...publicPlayer(player.persistentId, player) });
     refreshSight(player);
     savePlayer(player);
 }
@@ -1414,6 +1517,7 @@ function dungeonThreat(npc) {
     let bestD = AGGRO_RANGE * AGGRO_RANGE;
     for (const player of players.values()) {
         if (player.hp <= 0 || player.ghost) continue;
+        if ((player.mapId || '') !== (npc.mapId || '')) continue;
         if (player.dungeonId !== npc.dungeonId) continue;
         if ((player.instanceId || '') !== (npc.instanceId || '')) continue;
         if (dungeonTravel(cave, player.x, player.z) < 5) continue;
@@ -1433,6 +1537,7 @@ function nearestPlayer(npc, range) {
     let bestD = range * range;
     for (const player of players.values()) {
         if (player.hp <= 0 || player.ghost || player.dungeonId) continue;
+        if ((player.mapId || '') !== (npc.mapId || '')) continue;
         if (inSettlement(player.x, player.z)) continue;
         const dx = player.x - npc.x;
         const dz = player.z - npc.z;
@@ -3166,6 +3271,7 @@ function savePlayer(player) {
     prof.craftSkill = JSON.parse(JSON.stringify(player.craftSkill || {}));
     prof.quests = player.quests || {};
     prof.spawn = player.spawn || mapSpawn();
+    prof.mapId = player.mapId || '';
     prof.level = player.level;
     prof.xp = player.xp;
     prof.coins = player.coins || 0;
@@ -3412,10 +3518,11 @@ function spawnChest(npc, owners) {
         z: npc.z,
         level: npc.level,
         items,
+        mapId: npc.mapId || currentMapId(),
         spawnedAt: Date.now()
     };
     chests.set(chest.id, chest);
-    broadcast({ type: 'chest', chest: publicChest(chest) });
+    broadcastMap(chest.mapId, { type: 'chest', chest: publicChest(chest) });
     return chest;
 }
 
@@ -3457,6 +3564,7 @@ function spawnChapelChests(npc, owners) {
             level: npc.level,
             items,
             ownerId: owner.persistentId,
+            mapId: npc.mapId || owner.mapId || currentMapId(),
             spawnedAt: Date.now()
         };
         chests.set(chest.id, chest);
@@ -3555,9 +3663,10 @@ function tickNpcs() {
     for (const area of activeAreas.values()) tickAreaSpawns(area, now);
 
     for (const npc of npcs.values()) {
+        if (npc.mapId && npc.mapId !== currentMapId()) activateMap(npc.mapId);
         if (!npc.alive) {
             if (npc.herd) {
-                const crowded = aliveKindNear(npc.homeX, npc.homeZ, npc.kind, 70) >= 6;
+                const crowded = aliveKindNear(npc.homeX, npc.homeZ, npc.kind, 70, npc.mapId) >= 6;
                 if (!herdStillNeeded(npc) || crowded) {
                     if (now >= (npc.respawnAt || 0)) dropQuestMob(npc);
                 } else if (now >= (npc.respawnAt || 0)) respawnHerd(npc);
@@ -3696,7 +3805,7 @@ function tickNpcs() {
     for (const [id, chest] of chests) {
         if (now - chest.spawnedAt > 60000) {
             chests.delete(id);
-            broadcast({ type: 'chestGone', id });
+            broadcastMap(chest.mapId || '', { type: 'chestGone', id });
         }
     }
 
@@ -3818,6 +3927,7 @@ wss.on('connection', (ws) => {
                 ghost: false,
                 corpse: null,
                 spawn,
+                mapId: spawn.mapId || currentMapId(),
                 explored: new Set(Array.isArray(prof.explored) ? prof.explored.filter(key => typeof key === 'string') : []),
                 persistentId,
                 partyId: null
@@ -3828,6 +3938,7 @@ wss.on('connection', (ws) => {
             revealFog(player);
             sessionId = persistentId;
             scheduleSave();
+            const scene = sceneFor(player);
 
             send(ws, {
                 type: 'welcome',
@@ -3836,18 +3947,21 @@ wss.on('connection', (ws) => {
                 color: player.color,
                 inventory: inventoryOf(player),
                 stats: statsOf(player),
-                npcs: visibleNpcs(player),
-                civilians: CIVILIANS.map(publicCivilian),
-                camps: campSites(),
+                npcs: scene.npcs,
+                civilians: scene.civilians,
+                camps: scene.camps,
                 spawn: player.spawn,
                 quests: player.quests,
                 questDefs: publicQuests(),
-                chests: Array.from(chests.values()).filter(chest => !chest.ownerId || chest.ownerId === persistentId).map(publicChest),
+                chests: scene.chests,
                 actionbar: player.actionbar,
                 character: publicCharacter(player),
                 resources: save.resources,
-                fog: Array.from(player.explored),
-                dungeons: listDungeons(),
+                fog: scene.fog,
+                world: scene.world,
+                mapId: scene.mapId,
+                maps: scene.maps,
+                dungeons: scene.world.dungeons,
                 dungeon: player.dungeonId ? { id: player.dungeonId, x: player.x, y: 0.2, z: player.z } : null,
                 place: kicked,
                 players: Array.from(players.entries())
@@ -3860,6 +3974,7 @@ wss.on('connection', (ws) => {
 
         const player = sessionId ? players.get(sessionId) : null;
         if (!player || player.ws !== ws) return;
+        if (player.mapId) activateMap(player.mapId);
 
         if (data.type === 'update') {
             const prevX = player.x;
@@ -4356,14 +4471,14 @@ wss.on('connection', (ws) => {
             player.mana = player.maxMana;
             player.corpse = null;
             player.invulnUntil = Date.now() + 2000;
-            broadcast({ type: 'ghost', ...publicPlayer(player.persistentId, player) });
+            broadcastSeen(player, { type: 'ghost', ...publicPlayer(player.persistentId, player) });
             send(ws, { type: 'reclaim', ok: true, ...statsOf(player) });
             return;
         }
 
         if (data.type === 'loot') {
             const chest = chests.get(data.id);
-            if (!chest) {
+            if (!chest || ((chest.mapId || '') && (player.mapId || '') && chest.mapId !== player.mapId)) {
                 send(ws, { type: 'lootResult', ok: false, reason: 'Chest is gone' });
                 return;
             }
@@ -4385,10 +4500,10 @@ wss.on('connection', (ws) => {
             }
             if (leftover.length) {
                 chest.items = leftover;
-                broadcast({ type: 'chest', chest: publicChest(chest) });
+                broadcastMap(chest.mapId || player.mapId || '', { type: 'chest', chest: publicChest(chest) });
             } else {
                 chests.delete(chest.id);
-                broadcast({ type: 'chestGone', id: chest.id });
+                broadcastMap(chest.mapId || player.mapId || '', { type: 'chestGone', id: chest.id });
             }
             send(ws, {
                 type: 'lootResult',
@@ -4409,9 +4524,70 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'spawn', ok: false, reason: civ ? 'Not an innkeeper' : 'Too far', spawn: player.spawn });
                 return;
             }
-            player.spawn = { x: civ.x, z: civ.z, name: civ.name };
+            player.spawn = { x: civ.x, z: civ.z, name: civ.name, mapId: player.mapId || civ.mapId || currentMapId() };
             savePlayer(player);
             send(ws, { type: 'spawn', ok: true, spawn: player.spawn, note: 'Rest set to ' + civ.name + '. Press H to return here.' });
+            return;
+        }
+
+        if (data.type === 'travel') {
+            const dest = mapBriefs().find(brief => brief.id === String(data.map || ''));
+            if (!dest) {
+                send(ws, { type: 'travel', ok: false, reason: 'That land is not open' });
+                return;
+            }
+            if (player.ghost) {
+                send(ws, { type: 'travel', ok: false, reason: 'You are a ghost' });
+                return;
+            }
+            if (Date.now() < (player.combatUntil || 0)) {
+                send(ws, { type: 'travel', ok: false, reason: 'You are in combat' });
+                return;
+            }
+            if ((player.level || 1) < (dest.minLevel || 1)) {
+                send(ws, { type: 'travel', ok: false, reason: 'Requires level ' + dest.minLevel });
+                return;
+            }
+            if (dest.maxLevel && (player.level || 1) > dest.maxLevel) {
+                send(ws, { type: 'travel', ok: false, reason: 'That land is for level ' + dest.maxLevel + ' and under' });
+                return;
+            }
+            if (!nearRole(player, 'inn')) {
+                send(ws, { type: 'travel', ok: false, reason: 'Travel from an inn' });
+                return;
+            }
+            if (dest.id === (player.mapId || '')) {
+                send(ws, { type: 'travel', ok: false, reason: 'You are already there' });
+                return;
+            }
+            const instId = player.instanceId || '';
+            if (player.dungeonId || instId) {
+                player.instanceId = '';
+                player.dungeonId = '';
+                for (const hz of hazards.values()) {
+                    if (hz.instanceId === instId) send(ws, { type: 'hazard', id: hz.id, on: false });
+                }
+                if (instId) clearInstanceIfEmpty(instId);
+            }
+            player.mapId = dest.id;
+            activateMap(dest.id);
+            const gate = mapSpawn();
+            player.x = gate.x;
+            player.z = gate.z;
+            player.y = terrainHeight(player.x, player.z);
+            savePlayer(player);
+            refreshNpcZones();
+            const scene = sceneFor(player);
+            send(ws, {
+                type: 'travel',
+                ok: true,
+                mapName: dest.name,
+                x: player.x,
+                y: player.y,
+                z: player.z,
+                ...scene
+            });
+            refreshSight(player);
             return;
         }
 
@@ -4438,21 +4614,31 @@ wss.on('connection', (ws) => {
                 }
                 if (instId) clearInstanceIfEmpty(instId);
             }
+            const destId = knownMap(home.mapId) ? home.mapId : (player.mapId || firstMapId());
+            const changed = !!destId && destId !== (player.mapId || '');
+            if (changed) {
+                player.mapId = destId;
+                activateMap(destId);
+            }
             player.x = home.x;
             player.z = home.z;
             player.y = terrainHeight(player.x, player.z);
             savePlayer(player);
+            if (changed) refreshNpcZones();
             const revealed = revealFog(player);
-            send(ws, {
+            const packet = {
                 type: 'hearth',
                 ok: true,
                 x: player.x,
                 y: player.y,
                 z: player.z,
                 name: home.name || 'the inn',
-                add: revealed
-            });
-            send(ws, { type: 'npcs', npcs: visibleNpcs(player) });
+                add: revealed,
+                mapId: player.mapId || ''
+            };
+            if (changed) Object.assign(packet, sceneFor(player));
+            send(ws, packet);
+            if (!changed) send(ws, { type: 'npcs', npcs: visibleNpcs(player) });
             refreshSight(player);
             return;
         }
@@ -4725,7 +4911,17 @@ wss.on('connection', (ws) => {
 
         if (data.type === 'reset') {
             if (player.partyId) leaveParty(player);
+            const instId = player.instanceId || '';
+            player.instanceId = '';
+            player.dungeonId = '';
+            if (instId) clearInstanceIfEmpty(instId);
+            const start = startMapId();
+            if (start) {
+                player.mapId = start;
+                activateMap(start);
+            }
             const home = mapSpawn();
+            player.mapId = home.mapId || player.mapId || '';
             player.level = 1;
             player.xp = 0;
             player.class = null;
@@ -4748,7 +4944,7 @@ wss.on('connection', (ws) => {
             player.legacyArmor = 0;
             player.ghost = false;
             player.corpse = null;
-            player.spawn = { x: home.x, z: home.z, name: home.name || 'Inn' };
+            player.spawn = { x: home.x, z: home.z, name: home.name || 'Inn', mapId: player.mapId || '' };
             player.x = home.x;
             player.y = 0;
             player.z = home.z;
@@ -4764,6 +4960,8 @@ wss.on('connection', (ws) => {
             prof.explored = [];
             revealFog(player);
             scheduleSave();
+            refreshNpcZones();
+            const scene = sceneFor(player);
             send(ws, {
                 type: 'reset',
                 ok: true,
@@ -4774,12 +4972,18 @@ wss.on('connection', (ws) => {
                 spawn: player.spawn,
                 quests: player.quests,
                 actionbar: player.actionbar,
-                fog: Array.from(player.explored),
+                fog: scene.fog,
                 inventory: inventoryOf(player),
                 character: publicCharacter(player),
+                world: scene.world,
+                civilians: scene.civilians,
+                camps: scene.camps,
+                npcs: scene.npcs,
+                mapId: scene.mapId,
+                maps: scene.maps,
                 ...statsOf(player)
             });
-            broadcastSeen(player, { type: 'update', ...publicPlayer(player.persistentId, player) });
+            refreshSight(player);
             return;
         }
 
@@ -5287,6 +5491,7 @@ let instanceSeq = 1;
 
 function sameView(a, b) {
     if (!a || !b) return false;
+    if ((a.mapId || '') !== (b.mapId || '')) return false;
     if ((a.instanceId || '') !== (b.instanceId || '')) return false;
     if (a.instanceId) return true;
     return (a.dungeonId || '') === (b.dungeonId || '');
@@ -5294,13 +5499,22 @@ function sameView(a, b) {
 
 function visibleNpcs(player) {
     const list = [];
+    const mapId = player.mapId || '';
     for (const npc of npcs.values()) {
         if (!npc.alive) continue;
+        if (mapId && npc.mapId && npc.mapId !== mapId) continue;
         if (npc.instanceId) {
             if (npc.instanceId === player.instanceId) list.push(publicNpc(npc));
         } else if (!player.instanceId) list.push(publicNpc(npc));
     }
     return list;
+}
+
+function broadcastMap(mapId, data) {
+    for (const player of players.values()) {
+        if ((player.mapId || '') !== (mapId || '')) continue;
+        send(player.ws, data);
+    }
 }
 
 function broadcastSeen(source, data) {
@@ -5346,6 +5560,7 @@ function makeChapelNpc(inst, cave, local, extra) {
     const npc = {
         id: inst.id + '-' + extra.tag,
         instanceId: inst.id,
+        mapId: inst.mapId || currentMapId(),
         dungeonId: cave.id,
         pinned: true,
         chapel: true,
@@ -5400,7 +5615,7 @@ function enterChapel(player, cave) {
     let inst = null;
     if (player.partyId) {
         for (const row of instances.values()) {
-            if (row.dungeonId === cave.id && row.partyId === player.partyId) inst = row;
+            if (row.dungeonId === cave.id && row.partyId === player.partyId && (row.mapId || '') === (player.mapId || '')) inst = row;
         }
     }
     if (inst) {
@@ -5408,7 +5623,7 @@ function enterChapel(player, cave) {
         for (const other of players.values()) if (other.instanceId === inst.id) inside += 1;
         if (inside >= 4) return 'That run already has four players';
     } else {
-        inst = { id: 'i' + (instanceSeq++), dungeonId: cave.id, partyId: player.partyId || '' };
+        inst = { id: 'i' + (instanceSeq++), dungeonId: cave.id, partyId: player.partyId || '', mapId: player.mapId || currentMapId() };
         instances.set(inst.id, inst);
         spawnChapel(inst, cave);
     }
@@ -5501,6 +5716,19 @@ function tickChapelBosses(now) {
 }
 
 function spawnDungeonMobs() {
+    const briefs = mapBriefs();
+    const runs = briefs.length ? briefs : [{ id: '' }];
+    const back = currentMapId();
+    for (const brief of runs) {
+        if (brief.id) activateMap(brief.id);
+        spawnMobsForActiveMap();
+    }
+    if (back) activateMap(back);
+    else if (briefs[0] && briefs[0].id) activateMap(briefs[0].id);
+}
+
+function spawnMobsForActiveMap() {
+    const mapId = currentMapId();
     for (const brief of listDungeons()) {
         const dungeon = dungeonById(brief.id) || brief;
         if (dungeon.instanced) continue;
@@ -5522,7 +5750,8 @@ function spawnDungeonMobs() {
             const world = dungeonWorld(dungeon, along[0], along[1]);
             const kind = NPC_KINDS[dungeon.mob] || NPC_KINDS.spider;
             const npc = {
-                id: 'dm-' + dungeon.id + '-' + spawned,
+                id: (mapId ? mapId + ':' : '') + 'dm-' + dungeon.id + '-' + spawned,
+                mapId,
                 dungeonId: dungeon.id,
                 pinned: true,
                 x: world.x,
@@ -5550,7 +5779,8 @@ function spawnDungeonMobs() {
             if (quest.type !== 'named' || quest.dungeonId !== dungeon.id) continue;
             const kind = NPC_KINDS[quest.mob] || NPC_KINDS[dungeon.mob] || NPC_KINDS.spider;
             const boss = {
-                id: 'db-' + quest.id,
+                id: (mapId ? mapId + ':' : '') + 'db-' + quest.id,
+                mapId,
                 dungeonId: dungeon.id,
                 questId: quest.id,
                 pinned: true,
@@ -5575,11 +5805,12 @@ function spawnDungeonMobs() {
             pickWander(boss);
             npcs.set(boss.id, boss);
         }
-        const hasBoss = Array.from(npcs.values()).some(npc => npc.dungeonId === dungeon.id && npc.boss);
+        const hasBoss = Array.from(npcs.values()).some(npc => npc.dungeonId === dungeon.id && npc.boss && (npc.mapId || '') === (mapId || ''));
         if (!hasBoss) {
             const kind = NPC_KINDS[dungeon.mob] || NPC_KINDS.knight;
             const warden = {
-                id: 'db-end-' + dungeon.id,
+                id: (mapId ? mapId + ':' : '') + 'db-end-' + dungeon.id,
+                mapId,
                 dungeonId: dungeon.id,
                 boss: true,
                 pinned: true,
@@ -5757,8 +5988,44 @@ function itemRecords() {
     });
 }
 
+function sanitizeMap(raw, index, used) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    let id = String(src.id || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16);
+    if (id.length < 2 || used.has(id)) id = '';
+    while (!id || used.has(id)) id = 'm' + Math.random().toString(36).slice(2, 8);
+    used.add(id);
+    const minLevel = clampNum(src.minLevel, index === 0 ? 1 : 10, 1, 60);
+    let maxLevel = clampNum(src.maxLevel, 0, 0, 60);
+    if (maxLevel && maxLevel < minLevel) maxLevel = minLevel;
+    return {
+        id,
+        name: String(src.name || (index === 0 ? 'Starting lands' : 'New lands')).slice(0, 32),
+        minLevel,
+        maxLevel,
+        zones: Array.isArray(src.zones) ? src.zones : [],
+        roads: sanitizeRoads(src.roads),
+        bounds: sanitizeBounds(src.bounds),
+        dungeons: sanitizeDungeons(src.dungeons)
+    };
+}
+
 function sanitizeWorld(input) {
     const src = input && typeof input === 'object' ? input : {};
+    const used = new Set();
+    let maps;
+    if (Array.isArray(src.maps) && src.maps.length) maps = src.maps.slice(0, 8).map((raw, index) => sanitizeMap(raw, index, used));
+    else {
+        maps = [sanitizeMap({
+            id: 'mstart',
+            name: 'Starting lands',
+            minLevel: 1,
+            zones: src.zones,
+            roads: src.roads,
+            bounds: src.bounds,
+            dungeons: src.dungeons
+        }, 0, used)];
+    }
+    const first = maps[0];
     return {
         hpBase: clampNum(src.hpBase, 6, 1, 80),
         hpPerLevel: clampNum(src.hpPerLevel, 4, 0, 40),
@@ -5768,10 +6035,11 @@ function sanitizeWorld(input) {
         spawnCap: clampNum(src.spawnCap, 8, 0, 40),
         adminPassword: typeof src.adminPassword === 'string' ? src.adminPassword.slice(0, 64) : '',
         loot: sanitizeLoot(src.loot),
-        zones: Array.isArray(src.zones) ? src.zones : [],
-        roads: sanitizeRoads(src.roads),
-        bounds: sanitizeBounds(src.bounds),
-        dungeons: sanitizeDungeons(src.dungeons),
+        zones: first.zones,
+        roads: first.roads,
+        bounds: first.bounds,
+        dungeons: first.dungeons,
+        maps,
         quests: sanitizeQuests(src.quests),
         items: sanitizeItems(src.items),
         sheetUrl: cleanSheetUrl(src.sheetUrl)
@@ -5784,7 +6052,34 @@ function adminPassword() {
     return 'admin';
 }
 
+function civsOn(mapId) {
+    return CIVILIANS.filter(civ => (civ.mapId || '') === (mapId || '')).map(publicCivilian);
+}
+
+function chestsOn(player) {
+    return Array.from(chests.values()).filter(chest => {
+        if (chest.ownerId && chest.ownerId !== player.persistentId) return false;
+        return (chest.mapId || '') === (player.mapId || '');
+    }).map(publicChest);
+}
+
+function sceneFor(player) {
+    if (player.mapId) activateMap(player.mapId);
+    const mapId = player.mapId || currentMapId();
+    return {
+        mapId,
+        maps: mapBriefs(),
+        world: publicWorld(),
+        civilians: civsOn(mapId),
+        camps: campSites(),
+        npcs: visibleNpcs(player),
+        chests: chestsOn(player),
+        fog: fogOn(player)
+    };
+}
+
 function publicWorld() {
+    const brief = mapBriefs().find(entry => entry.id === currentMapId()) || null;
     return {
         hpBase: worldRules.hpBase,
         hpPerLevel: worldRules.hpPerLevel,
@@ -5797,7 +6092,11 @@ function publicWorld() {
         roads: listRoads(),
         dungeons: listDungeons(),
         quests: (worldConfig && worldConfig.quests) || [],
-        items: itemRecords()
+        items: itemRecords(),
+        mapId: currentMapId(),
+        mapName: brief ? brief.name : '',
+        minLevel: brief ? brief.minLevel : 1,
+        maps: mapBriefs()
     };
 }
 
@@ -5808,14 +6107,51 @@ function applyLoaded(config) {
     worldRules.xpPerMobLevel = config.xpPerMobLevel;
     worldRules.spawnPerMin = config.spawnPerMin;
     worldRules.spawnCap = config.spawnCap;
-    applyWorldConfig(config);
+    const maps = config.maps && config.maps.length ? config.maps : [{
+        id: 'mstart',
+        name: 'Starting lands',
+        minLevel: 1,
+        maxLevel: 0,
+        zones: config.zones || [],
+        roads: config.roads || [],
+        bounds: config.bounds,
+        dungeons: config.dungeons || []
+    }];
+    installMaps(maps);
+    const stored = [];
+    for (const brief of mapBriefs()) {
+        activateMap(brief.id);
+        stored.push({
+            id: brief.id,
+            name: brief.name,
+            minLevel: brief.minLevel,
+            maxLevel: brief.maxLevel,
+            zones: listDesignedZones(),
+            bounds: worldShape(),
+            roads: listRoads(),
+            dungeons: listDungeons()
+        });
+    }
+    if (stored[0]) activateMap(stored[0].id);
     lootTables = config.loot;
     if (Array.isArray(config.items) && config.items.length) installItems(config.items);
-    worldConfig = { ...config, zones: listDesignedZones(), bounds: worldShape(), loot: lootTables, quests: config.quests || [], dungeons: listDungeons(), items: itemRecords() };
+    const first = stored[0] || { zones: [], bounds: worldShape(), roads: [], dungeons: [] };
+    worldConfig = {
+        ...config,
+        maps: stored,
+        zones: first.zones,
+        bounds: first.bounds,
+        roads: first.roads,
+        dungeons: first.dungeons,
+        loot: lootTables,
+        quests: config.quests || [],
+        items: itemRecords()
+    };
     rebuildCivilians();
     installQuests(config.quests || []);
     npcs.clear();
     zoneSpawns.clear();
+    chests.clear();
     refreshNpcZones();
     spawnDungeonMobs();
 }
@@ -5876,7 +6212,17 @@ function cleanSheetUrl(value) {
 }
 
 function setupPayload() {
-    return { ...publicWorld(), loot: lootTables, locked: !!process.env.ADMIN_PASSWORD, sheetUrl: (worldConfig && worldConfig.sheetUrl) || '' };
+    return {
+        ...publicWorld(),
+        maps: (worldConfig && worldConfig.maps) || [],
+        zones: (worldConfig && worldConfig.zones) || listDesignedZones(),
+        roads: (worldConfig && worldConfig.roads) || listRoads(),
+        bounds: (worldConfig && worldConfig.bounds) || worldShape(),
+        dungeons: (worldConfig && worldConfig.dungeons) || listDungeons(),
+        loot: lootTables,
+        locked: !!process.env.ADMIN_PASSWORD,
+        sheetUrl: (worldConfig && worldConfig.sheetUrl) || ''
+    };
 }
 
 function ensureSheetToken() {
@@ -5891,15 +6237,31 @@ function workbookBytes() {
     return buildWorkbook(workbookSource());
 }
 
+function sheetPlaces() {
+    const briefs = mapBriefs();
+    if (!briefs.length) return { zones: listDesignedZones(), dungeons: listDungeons() };
+    const prev = currentMapId();
+    const zones = [];
+    const dungeons = [];
+    for (const brief of briefs) {
+        activateMap(brief.id);
+        for (const zone of listDesignedZones()) zones.push({ ...zone, name: (brief.name || 'Lands') + ' — ' + zone.name });
+        for (const dungeon of listDungeons()) dungeons.push({ ...dungeon, name: (brief.name || 'Lands') + ' — ' + dungeon.name });
+    }
+    if (prev) activateMap(prev);
+    return { zones, dungeons };
+}
+
 function workbookSource() {
     const items = itemRecords();
     const sets = new Set(['cloth', 'leather', 'plate', 'weapon', 'magic', 'alchemy', 'explosive']);
     for (const item of items) if (item.set) sets.add(String(item.set));
+    const places = sheetPlaces();
     return {
         items,
         quests: (worldConfig && worldConfig.quests) || [],
-        zones: listDesignedZones(),
-        dungeons: listDungeons(),
+        zones: places.zones,
+        dungeons: places.dungeons,
         lists: {
             kind: ['armor', 'weapon', 'health', 'mana', 'bomb', 'junk'],
             slot: ['head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'waist', 'legs', 'feet', 'weapon', 'offhand'],
@@ -6004,15 +6366,39 @@ app.put('/api/setup/config', requireAdmin, (req, res) => {
     next.sheetToken = worldConfig.sheetToken || '';
     applyLoaded(next);
     saveWorldFile();
-    broadcast({
-        type: 'world',
-        world: publicWorld(),
-        civilians: CIVILIANS.map(publicCivilian),
-        camps: campSites(),
-        npcs: Array.from(npcs.values()).filter(npc => npc.alive).map(publicNpc),
-        questDefs: publicQuests(),
-        craft: publicCraft()
-    });
+    for (const player of players.values()) {
+        let moved = false;
+        if (!knownMap(player.mapId)) {
+            player.mapId = startMapId() || firstMapId();
+            activateMap(player.mapId);
+            const home = mapSpawn();
+            player.x = home.x;
+            player.z = home.z;
+            player.y = terrainHeight(player.x, player.z);
+            player.dungeonId = '';
+            player.instanceId = '';
+            player.spawn = home;
+            savePlayer(player);
+            moved = true;
+        }
+        const scene = sceneFor(player);
+        send(player.ws, {
+            type: 'world',
+            moved,
+            x: player.x,
+            z: player.z,
+            world: scene.world,
+            civilians: scene.civilians,
+            camps: scene.camps,
+            npcs: scene.npcs,
+            chests: scene.chests,
+            fog: scene.fog,
+            mapId: scene.mapId,
+            maps: scene.maps,
+            questDefs: publicQuests(),
+            craft: publicCraft()
+        });
+    }
     res.json({ ok: true, config: setupPayload() });
 });
 

@@ -138,7 +138,7 @@ function shapedHeight(x, z) {
     return applyBoundary(x, z, h);
 }
 
-const heightCache = new Map();
+let heightCache = new Map();
 
 export function terrainHeight(x, z) {
     const key = Math.round(x * 50) * 131071 + Math.round(z * 50);
@@ -843,6 +843,86 @@ export function applyWorldConfig(config) {
     }
     rebuildRoads();
     loadDungeons(config);
+}
+
+let mapBook = [];
+let activeMapId = '';
+
+function captureMap() {
+    return {
+        shape: {
+            half: shape.half,
+            edge: shape.edge,
+            swim: shape.swim,
+            maxSlope: shape.maxSlope,
+            points: shape.points,
+            edges: shape.edges,
+            samples: shape.samples
+        },
+        designedZones,
+        designedNodes,
+        designedRoads,
+        roadSamples,
+        designedDungeons,
+        heightCache
+    };
+}
+
+function restoreMap(snap) {
+    shape.half = snap.shape.half;
+    shape.edge = snap.shape.edge;
+    shape.swim = snap.shape.swim;
+    shape.maxSlope = snap.shape.maxSlope;
+    shape.points = snap.shape.points;
+    shape.edges = snap.shape.edges;
+    shape.samples = snap.shape.samples;
+    designedZones = snap.designedZones;
+    designedNodes = snap.designedNodes;
+    designedRoads = snap.designedRoads;
+    roadSamples = snap.roadSamples;
+    designedDungeons = snap.designedDungeons;
+    heightCache = snap.heightCache;
+}
+
+export function installMaps(entries) {
+    const list = Array.isArray(entries) ? entries : [];
+    mapBook = [];
+    activeMapId = '';
+    for (const entry of list) {
+        if (!entry || !entry.id) continue;
+        heightCache = new Map();
+        applyWorldConfig(entry);
+        mapBook.push({
+            id: String(entry.id),
+            name: String(entry.name || 'Lands'),
+            minLevel: Math.max(1, Math.min(60, Math.round(Number(entry.minLevel) || 1))),
+            maxLevel: Math.max(0, Math.min(60, Math.round(Number(entry.maxLevel) || 0))),
+            snap: captureMap()
+        });
+    }
+    if (mapBook.length) activateMap(mapBook[0].id);
+}
+
+export function activateMap(id) {
+    const map = mapBook.find(entry => entry.id === id) || mapBook[0];
+    if (!map) return '';
+    if (map.id === activeMapId) return map.id;
+    restoreMap(map.snap);
+    activeMapId = map.id;
+    return map.id;
+}
+
+export function currentMapId() {
+    return activeMapId;
+}
+
+export function mapBriefs() {
+    return mapBook.map(map => ({
+        id: map.id,
+        name: map.name,
+        minLevel: map.minLevel,
+        maxLevel: map.maxLevel
+    }));
 }
 
 export function customMap() {

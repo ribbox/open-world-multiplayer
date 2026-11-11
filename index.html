@@ -724,6 +724,7 @@
         A/D or Left/Right: Turn. The camera follows behind unless you are holding the right mouse button<br>
         Space: Jump &nbsp; Shift: Sprint<br>
         H: Return to the inn where you set your rest. Stand still for a moment. Moving or combat cancels it<br>
+        Inn Travel: Move to another map. Every map stays open. A new map is the default world until it is edited<br>
         1-8: Action bar &nbsp; [ ]: Change page. A slot darkens while that action cools down<br>
         Right-click a slot to assign a trained action<br>
         E: Gather if something is close, otherwise attack your target<br>
@@ -897,6 +898,8 @@
         } catch (err) { bootWorld = null; }
         if (bootWorld) applyWorldConfig(bootWorld);
         let grayLevels = (bootWorld && bootWorld.grayLevels) || 5;
+        let travelMaps = (bootWorld && bootWorld.maps) || [];
+        let hereMapId = (bootWorld && bootWorld.mapId) || '';
 
         const infoBox = document.getElementById('info');
         const showInfo = document.getElementById('showInfo');
@@ -4083,6 +4086,36 @@
                 return best ? { exit: false, id: best.id, name: best.name, dist: bestD } : null;
             }
 
+            function applyMapWorld(data, spot) {
+                if (data.world) {
+                    applyWorldConfig(data.world);
+                    bootWorld = data.world;
+                    if (data.world.grayLevels) grayLevels = data.world.grayLevels;
+                    reloadChunks();
+                    rebuildOverworldPortals();
+                    addWorldEdge();
+                }
+                if (data.mapId) hereMapId = data.mapId;
+                else if (data.world && data.world.mapId) hereMapId = data.world.mapId;
+                if (Array.isArray(data.maps)) travelMaps = data.maps;
+                else if (data.world && Array.isArray(data.world.maps)) travelMaps = data.world.maps;
+                if (spot && Number.isFinite(spot.x) && Number.isFinite(spot.z)) {
+                    characterGroup.position.set(spot.x, spot.cave ? 0.2 : terrainHeight(spot.x, spot.z), spot.z);
+                    verticalVelocity = 0;
+                    onGround = true;
+                }
+                for (const id of [...worldChests.keys()]) removeChest(id);
+                if (Array.isArray(data.chests)) data.chests.forEach(addChest);
+                if (Array.isArray(data.fog)) {
+                    explored.clear();
+                    exploredZones.clear();
+                    for (const key of data.fog) rememberFog(key);
+                }
+                if (data.camps) spawnCamps(data.camps);
+                if (data.civilians) spawnCivilians(data.civilians);
+                if (data.npcs) syncNpcs(data.npcs);
+            }
+
             function reloadChunks() {
                 for (const data of loadedChunks.values()) {
                     for (const c of data.colliders) {
@@ -6520,7 +6553,10 @@
                 const tabs = [];
                 if (entry.role === 'shop') tabs.push(['buy', 'Buy'], ['sell', 'Sell']);
                 else if (entry.role === 'trainer') tabs.push(['talents', 'Talents'], ['craft', 'Craft']);
-                else if (entry.role === 'inn') tabs.push(['rest', 'Rest']);
+                else if (entry.role === 'inn') {
+                    tabs.push(['rest', 'Rest']);
+                    if (travelMaps.length > 1) tabs.push(['travel', 'Travel']);
+                }
                 else if (entry.role === 'bank') tabs.push(['vault', 'Vault']);
                 if (offeredHere(entry).length) tabs.push(['quests', 'Quests']);
                 return tabs;
@@ -6811,6 +6847,35 @@
                     const hint = document.createElement('div');
                     hint.textContent = 'Press H anywhere to return to this inn. Stand still until you arrive.';
                     parent.appendChild(hint);
+                } else if (tab === 'travel') {
+                    const note = document.createElement('p');
+                    note.textContent = 'Every land stays open. You need the level, and you cannot travel while fighting.';
+                    parent.appendChild(note);
+                    for (const map of travelMaps) {
+                        const line = document.createElement('div');
+                        line.className = 'spell-row';
+                        const label = document.createElement('div');
+                        const level = map.minLevel || 1;
+                        label.textContent = (map.name || 'Lands') + (level > 1 ? ' · level ' + level + '+' : ' · any level');
+                        line.appendChild(label);
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'text-btn gold-btn';
+                        const here = map.id === hereMapId;
+                        const locked = (stats.level || 1) < level;
+                        if (here) {
+                            button.textContent = 'Here';
+                            button.disabled = true;
+                        } else if (locked) {
+                            button.textContent = 'Level ' + level;
+                            button.disabled = true;
+                        } else {
+                            button.textContent = 'Travel';
+                            button.addEventListener('click', () => sendCharacter('travel', { map: map.id }));
+                        }
+                        line.appendChild(button);
+                        parent.appendChild(line);
+                    }
                 } else if (tab === 'vault') renderVault(parent);
                 else if (tab === 'quests') renderQuestOffers(parent, entry);
             }
@@ -8187,31 +8252,46 @@
                         }
                         if (data.inventory) applyInventory(data.inventory);
                         if (data.stats) applyStats(data.stats);
-                        if (data.npcs) syncNpcs(data.npcs);
-                        if (data.civilians) spawnCivilians(data.civilians);
-                        if (data.camps) spawnCamps(data.camps);
-                        if (Array.isArray(data.dungeons)) {
-                            const base = bootWorld && typeof bootWorld === 'object' ? bootWorld : {};
-                            applyWorldConfig({ ...base, dungeons: data.dungeons });
-                            bootWorld = { ...base, dungeons: data.dungeons };
-                            rebuildOverworldPortals();
-                        }
-                        if (data.place && Number.isFinite(data.place.x)) {
-                            leaveDungeonView();
-                            characterGroup.position.set(data.place.x, terrainHeight(data.place.x, data.place.z), data.place.z);
-                            verticalVelocity = 0;
-                            onGround = true;
-                        } else if (data.dungeon && data.dungeon.id) {
-                            enterDungeonView(data.dungeon.id);
-                            characterGroup.position.set(data.dungeon.x, 0.2, data.dungeon.z);
-                            verticalVelocity = 0;
-                            onGround = true;
-                        } else if (data.spawn && Number.isFinite(data.spawn.x) && Number.isFinite(data.spawn.z)) {
-                            boundSpawn = data.spawn;
-                            characterGroup.position.set(data.spawn.x, terrainHeight(data.spawn.x, data.spawn.z), data.spawn.z);
-                            leaveDungeonView();
-                        }
                         if (data.spawn) boundSpawn = data.spawn;
+                        if (data.world) {
+                            let spot = null;
+                            if (data.place && Number.isFinite(data.place.x)) spot = { x: data.place.x, z: data.place.z };
+                            else if (data.dungeon && data.dungeon.id) spot = { x: data.dungeon.x, z: data.dungeon.z, cave: true };
+                            else if (data.spawn && Number.isFinite(data.spawn.x)) spot = { x: data.spawn.x, z: data.spawn.z };
+                            applyMapWorld(data, spot);
+                            if (data.dungeon && data.dungeon.id && !(data.place && Number.isFinite(data.place.x))) enterDungeonView(data.dungeon.id);
+                            else leaveDungeonView();
+                        } else {
+                            if (data.npcs) syncNpcs(data.npcs);
+                            if (data.civilians) spawnCivilians(data.civilians);
+                            if (data.camps) spawnCamps(data.camps);
+                            if (Array.isArray(data.dungeons)) {
+                                const base = bootWorld && typeof bootWorld === 'object' ? bootWorld : {};
+                                applyWorldConfig({ ...base, dungeons: data.dungeons });
+                                bootWorld = { ...base, dungeons: data.dungeons };
+                                rebuildOverworldPortals();
+                            }
+                            if (data.place && Number.isFinite(data.place.x)) {
+                                leaveDungeonView();
+                                characterGroup.position.set(data.place.x, terrainHeight(data.place.x, data.place.z), data.place.z);
+                                verticalVelocity = 0;
+                                onGround = true;
+                            } else if (data.dungeon && data.dungeon.id) {
+                                enterDungeonView(data.dungeon.id);
+                                characterGroup.position.set(data.dungeon.x, 0.2, data.dungeon.z);
+                                verticalVelocity = 0;
+                                onGround = true;
+                            } else if (data.spawn && Number.isFinite(data.spawn.x) && Number.isFinite(data.spawn.z)) {
+                                characterGroup.position.set(data.spawn.x, terrainHeight(data.spawn.x, data.spawn.z), data.spawn.z);
+                                leaveDungeonView();
+                            }
+                            if (data.chests) data.chests.forEach(addChest);
+                            if (Array.isArray(data.fog)) {
+                                explored.clear();
+                                exploredZones.clear();
+                                for (const key of data.fog) rememberFog(key);
+                            }
+                        }
                         if (data.questDefs) questDefs = data.questDefs;
                         if (data.quests) {
                             quests = data.quests;
@@ -8360,12 +8440,31 @@
                             const z = Number.isFinite(data.z) ? data.z : 0;
                             if (activeCave) leaveDungeonView();
                             clearHazards();
-                            characterGroup.position.set(x, terrainHeight(x, z), z);
-                            verticalVelocity = 0;
-                            onGround = true;
-                            for (const key of data.add || []) rememberFog(key);
-                            revealHere(x, z);
+                            if (data.world) applyMapWorld(data, { x, z });
+                            else {
+                                characterGroup.position.set(x, terrainHeight(x, z), z);
+                                verticalVelocity = 0;
+                                onGround = true;
+                                for (const key of data.add || []) rememberFog(key);
+                                revealHere(x, z);
+                            }
                             showMessage('You return to ' + (data.name || 'the inn'));
+                            sfx('portal');
+                        }
+                    } else if (data.type === 'travel') {
+                        if (!data.ok) {
+                            showMessage(data.reason || 'Cannot travel');
+                            sfx('deny');
+                        } else {
+                            const x = Number.isFinite(data.x) ? data.x : 0;
+                            const z = Number.isFinite(data.z) ? data.z : 0;
+                            if (activeCave) leaveDungeonView();
+                            clearHazards();
+                            closeTalk();
+                            applyMapWorld(data, { x, z });
+                            revealHere(x, z);
+                            showPlace(data.mapName || 'New lands');
+                            showMessage('You travel to ' + (data.mapName || 'new lands'));
                             sfx('portal');
                         }
                     } else if (data.type === 'died') {
@@ -8554,42 +8653,35 @@
                         if (data.character) applyCharacter(data.character);
                         quests = data.quests || {};
                         renderQuestTracker();
-                        explored.clear();
-                        exploredZones.clear();
-                        for (const key of data.fog || []) rememberFog(key);
-                        currentTool = 'sword';
-                        updateToolUI();
-                        if (ghost) leaveGhost();
-                        if (Number.isFinite(data.x) && Number.isFinite(data.z)) {
+                        if (data.spawn) boundSpawn = data.spawn;
+                        if (data.world) applyMapWorld(data, Number.isFinite(data.x) ? { x: data.x, z: data.z } : null);
+                        else if (Number.isFinite(data.x) && Number.isFinite(data.z)) {
                             characterGroup.position.set(data.x, terrainHeight(data.x, data.z), data.z);
                             verticalVelocity = 0;
                             onGround = true;
                         }
-                        if (data.spawn) boundSpawn = data.spawn;
+                        if (!data.world && Array.isArray(data.fog)) {
+                            explored.clear();
+                            exploredZones.clear();
+                            for (const key of data.fog) rememberFog(key);
+                        }
+                        currentTool = 'sword';
+                        updateToolUI();
+                        if (ghost) leaveGhost();
                         if (document.getElementById('sheet').classList.contains('open')) renderSheet();
                         showMessage(data.note || 'Character reset');
                     } else if (data.type === 'world') {
-                        applyWorldConfig(data.world || {});
-                        bootWorld = data.world || bootWorld;
-                        if (data.world && data.world.grayLevels) grayLevels = data.world.grayLevels;
+                        if (activeCave) leaveDungeonView();
+                        const spot = data.moved && Number.isFinite(data.x) ? { x: data.x, z: data.z } : null;
+                        applyMapWorld(data, spot);
                         if (data.questDefs) questDefs = data.questDefs;
                         if (data.craft) {
                             character.craft = data.craft;
                             if (document.getElementById('sheet').classList.contains('open')) renderSheet();
                         }
                         renderQuestTracker();
-                        reloadChunks();
-                        rebuildOverworldPortals();
-                        if (activeCave) {
-                            const still = dungeonById(activeCave.id);
-                            if (!still) leaveDungeonView();
-                            else enterDungeonView(still.id);
-                        }
-                        if (data.civilians) spawnCivilians(data.civilians);
-                        if (data.camps) spawnCamps(data.camps);
-                        if (data.npcs) syncNpcs(data.npcs);
-                        addWorldEdge();
-                        showMessage('World updated');
+                        refreshOpenTalk();
+                        showMessage(data.moved ? 'That land was removed. You are in ' + ((data.world && data.world.mapName) || 'another land') : 'World updated');
                     } else if (data.type === 'fog') {
                         for (const key of data.add || []) rememberFog(key);
                     } else if (data.type === 'teleport') {
