@@ -72,7 +72,7 @@
                 <button type="button" id="deleteZone">Delete zone</button>
                 <button type="button" id="clearBounds">Clear world edge</button>
                 <h2>Maps</h2>
-                <p>Every map stays open. Players travel only from a camp marked as the travel inn, and they arrive at the travel inn of the other map. A new map is the default world until you draw on it.</p>
+                <p>Every map stays open. Players travel only from a camp marked as the travel inn, and they arrive at the travel inn of the other map. A new map is the default world until you draw on it. That default world, with its camps and the Drowned Chapel, is drawn here until then.</p>
                 <label>Map</label>
                 <select id="mapPick"></select>
                 <label>Map name</label>
@@ -164,7 +164,7 @@
         </div>
     </div>
     <script type="module">
-        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve, polygonIntersection, downsampleRing, DUNGEON_HALF } from './worldgen.js';
+        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve, polygonIntersection, downsampleRing, DUNGEON_HALF, applyWorldConfig, zoneName, zoneNpc, zoneCamp, boundaryInset, waterAt } from './worldgen.js';
         import { readWorkbook, applyQuestPlaces } from './sheets.js';
 
         const MOBS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
@@ -242,7 +242,8 @@
             config.maps.forEach((map, index) => {
                 const option = document.createElement('option');
                 option.value = String(index);
-                option.textContent = (map.name || 'Lands') + ' · level ' + (map.minLevel || 1) + '+';
+                const fresh = !(map.zones && map.zones.length);
+                option.textContent = (map.name || 'Lands') + (fresh ? ' · default world' : '') + ' · level ' + (map.minLevel || 1) + '+';
                 pick.appendChild(option);
             });
             pick.value = String(mapPick);
@@ -500,6 +501,12 @@
         function renderZones() {
             const list = document.getElementById('zoneList');
             list.textContent = '';
+            if (!config.zones.length) {
+                const hint = document.createElement('p');
+                hint.textContent = 'No drawn zones. This map is the default world: Camp Glade, the surrounding lands, their camps, and the Drowned Chapel. Draw a zone to replace it.';
+                list.appendChild(hint);
+                return;
+            }
             config.zones.forEach((entry, index) => {
                 const button = document.createElement('button');
                 button.type = 'button';
@@ -566,10 +573,23 @@
                 table.appendChild(tr);
             });
         }
+        let boundsKey = '';
+        function syncEditorBounds() {
+            const bounds = config && config.bounds;
+            const key = bounds ? JSON.stringify(bounds) : '';
+            if (key === boundsKey) return;
+            boundsKey = key;
+            applyWorldConfig({ bounds: bounds || {}, zones: [], roads: [], dungeons: [] });
+        }
+        function onLandPreview(x, z) {
+            return boundaryInset(x, z) >= 6 && !waterAt(x, z);
+        }
         function draw() {
             if (mapMode === 'route') { drawRoute(); return; }
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            syncEditorBounds();
             const bounds = worldBounds();
+            const defaultWorld = !(config.zones && config.zones.length);
             ctx.strokeStyle = '#5a4030';
             ctx.lineWidth = 3;
             const a = toScreen(bounds.min, bounds.min);
@@ -584,9 +604,34 @@
                     const z0 = zz * ZONE_SIZE - ZONE_SIZE / 2;
                     const p = toScreen(x0, z0);
                     const q = toScreen(x0 + ZONE_SIZE, z0 + ZONE_SIZE);
-                    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+                    ctx.strokeStyle = defaultWorld ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.12)';
                     ctx.strokeRect(p.px, p.py, q.px - p.px, q.py - p.py);
+                    if (!defaultWorld) continue;
+                    const cell = Math.abs(q.px - p.px);
+                    const camp = zoneCamp(zx, zz);
+                    if (onLandPreview(camp.x, camp.z)) mark(camp.x, camp.z, '#f1c40f', 4);
+                    if (cell < 36) continue;
+                    const mob = zoneNpc(zx, zz);
+                    ctx.font = Math.max(10, Math.min(14, cell / 8)) + 'px sans-serif';
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(zoneName(zx, zz), (p.px + q.px) / 2, (p.py + q.py) / 2 - 8);
+                    ctx.fillStyle = '#9cf';
+                    ctx.fillText(mob.kind + ' ' + mob.level, (p.px + q.px) / 2, (p.py + q.py) / 2 + 8);
                 }
+            }
+            if (defaultWorld && onLandPreview(168, 24) && !(config.dungeons || []).some(dungeon => dungeon.id === 'chapel')) {
+                mark(168, 24, '#bb88ff', 6);
+                const chapel = toScreen(168, 24);
+                ctx.fillStyle = '#bb88ff';
+                ctx.font = '11px sans-serif';
+                ctx.fillText('Drowned Chapel', chapel.px, chapel.py - 10);
+            }
+            if (defaultWorld) {
+                ctx.fillStyle = '#9cf';
+                ctx.textAlign = 'left';
+                ctx.font = '13px sans-serif';
+                ctx.fillText('Default world. Draw a zone to replace it.', 12, 18);
+                ctx.textAlign = 'center';
             }
             if (config.bounds && config.bounds.points && config.bounds.points.length >= 3) {
                 strokeZone(config.bounds.points, config.bounds.edges, drawing === 'bounds' ? 'rgba(80,160,220,0.18)' : 'rgba(40,90,140,0.12)', config.bounds.edge === 'sea' ? '#7ec8e3' : '#c4a574', true);
@@ -2141,10 +2186,10 @@
             for (const id of ['hpBase', 'hpPerLevel', 'grayLevels', 'xpPerMobLevel', 'spawnPerMin', 'spawnCap']) {
                 document.getElementById(id).addEventListener('change', () => { config[id] = Number(document.getElementById(id).value); });
             }
-            document.getElementById('worldHalf').addEventListener('change', () => { config.bounds.half = Number(document.getElementById('worldHalf').value); });
+            document.getElementById('worldHalf').addEventListener('change', () => { config.bounds.half = Number(document.getElementById('worldHalf').value); draw(); });
             document.getElementById('worldEdge').addEventListener('change', () => { config.bounds.edge = document.getElementById('worldEdge').value; draw(); });
-            document.getElementById('swimDistance').addEventListener('change', () => { config.bounds.swim = Number(document.getElementById('swimDistance').value); });
-            document.getElementById('maxSlope').addEventListener('change', () => { config.bounds.maxSlope = Number(document.getElementById('maxSlope').value); });
+            document.getElementById('swimDistance').addEventListener('change', () => { config.bounds.swim = Number(document.getElementById('swimDistance').value); draw(); });
+            document.getElementById('maxSlope').addEventListener('change', () => { config.bounds.maxSlope = Number(document.getElementById('maxSlope').value); draw(); });
         }
         document.getElementById('mapPick').addEventListener('change', () => {
             const next = Number(document.getElementById('mapPick').value);
