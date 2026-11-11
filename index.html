@@ -1535,7 +1535,8 @@
                     shader.fragmentShader = shader.fragmentShader
                         .replace('#include <common>', '#include <common>\nvarying float vBiome;\nvarying float vWarmth;\nvarying float vGroundY;\nuniform sampler2D sandMap;\nuniform float sandOn;\nuniform float waterLevel;')
                         .replace('#include <color_fragment>', `#include <color_fragment>
-                            vec3 campGold = vec3(0.96, 0.78, 0.40);
+                            vec3 soil = vec3(0.40, 0.28, 0.16);
+                            if (sandOn > 0.5) soil = texture2D(sandMap, vMapUv).rgb * vec3(0.55, 0.40, 0.24);
                             if (vGroundY < waterLevel + 0.05) {
                                 diffuseColor.rgb = vec3(0.07, 0.20, 0.30);
                             } else if (vGroundY < waterLevel + 0.8 && vBiome > 0.25) {
@@ -1544,9 +1545,9 @@
                                 diffuseColor.rgb = vColor.rgb;
                             } else if (vBiome > 1.5) {
                                 vec3 beach = sandOn > 0.5 ? texture2D(sandMap, vMapUv).rgb : vec3(0.76, 0.68, 0.42);
-                                diffuseColor.rgb = mix(beach, campGold, vWarmth);
+                                diffuseColor.rgb = mix(beach, soil, vWarmth);
                             } else {
-                                diffuseColor.rgb = mix(diffuseColor.rgb, campGold, vWarmth);
+                                diffuseColor.rgb = mix(diffuseColor.rgb, soil, vWarmth);
                             }`);
                 };
                 return mat;
@@ -3480,14 +3481,16 @@
 
             function campWarmth(wx, wz) {
                 if (!lastCamps || !lastCamps.length) return 0;
-                let warmth = 0;
+                let cover = 0;
+                const reach = 28;
+                const fade = 4;
                 for (const site of lastCamps) {
                     const d = Math.hypot(wx - site.x, wz - site.z);
-                    if (d >= 28) continue;
-                    const wash = d > 25.6 ? 0.7 : 0.28 * (1 - d / 28);
-                    if (wash > warmth) warmth = wash;
+                    if (d >= reach) continue;
+                    const t = d <= reach - fade ? 1 : (reach - d) / fade;
+                    if (t > cover) cover = t;
                 }
-                return warmth;
+                return cover;
             }
 
             function groundColor(wx, wz, y) {
@@ -3506,10 +3509,10 @@
                     : [0.16, 0.46, 0.15];
                 const warmth = y >= WATER_LEVEL + 0.15 ? campWarmth(wx, wz) : 0;
                 if (warmth > 0 && !grass && !sand) {
-                    const gold = [0.96, 0.78, 0.4];
-                    tint[0] += (gold[0] - tint[0]) * warmth;
-                    tint[1] += (gold[1] - tint[1]) * warmth;
-                    tint[2] += (gold[2] - tint[2]) * warmth;
+                    const dirt = [0.42, 0.30, 0.18];
+                    tint[0] += (dirt[0] - tint[0]) * warmth;
+                    tint[1] += (dirt[1] - tint[1]) * warmth;
+                    tint[2] += (dirt[2] - tint[2]) * warmth;
                 }
                 return { tint, sand, grass, warmth: grass || sand ? warmth : 0 };
             }
