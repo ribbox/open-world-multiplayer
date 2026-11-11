@@ -53,6 +53,7 @@
         #itemTip[hidden] { display: none; }
         #itemTip .tip-name { font-weight: bold; font-size: 13px; margin-bottom: 2px; }
         #itemTip .tip-block { color: #e74c3c; }
+        #itemTip .tip-worn { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.22); color: #c8b48a; font-size: 11px; }
         #coinLine, #sheetCoins { display: flex; gap: 12px; flex-wrap: wrap; }
         #coinLine { justify-content: flex-end; }
         .money-gold { color: #f1c40f; }
@@ -74,6 +75,7 @@
             cursor: pointer;
             touch-action: none;
         }
+        .slot, .paper-slot.filled { box-shadow: inset 0 0 0 2px var(--q, transparent); }
         .slot.drop-on { box-shadow: inset 0 0 0 2px rgba(232, 206, 150, 0.9); }
         .drag-ghost {
             position: fixed; z-index: 90; width: 40px; height: 40px; margin: -20px 0 0 -20px;
@@ -2282,15 +2284,19 @@
                 tip.hidden = false;
                 moveItemTip(e);
             }
-            function showItemTip(item, e, extra) {
-                const tip = document.getElementById('itemTip');
-                if (!tip || !item) return;
-                tip.textContent = '';
+            function equippedMatch(item) {
+                if (!item || !character.equipment) return null;
+                const slot = item.kind === 'weapon' ? 'weapon' : item.kind === 'armor' ? item.slot : '';
+                if (!slot) return null;
+                const worn = character.equipment[slot];
+                if (!worn || worn === item) return null;
+                return worn;
+            }
+            function appendTipItem(tip, item) {
                 const title = document.createElement('div');
                 title.className = 'tip-name';
                 title.textContent = item.name || 'Item';
                 title.style.color = QUALITY_COLOR[itemQuality(item)] || QUALITY_COLOR[1];
-                tip.style.borderColor = title.style.color;
                 tip.appendChild(title);
                 const mark = document.createElement('div');
                 mark.textContent = QUALITY_NAME[itemQuality(item)] || 'Common';
@@ -2302,10 +2308,25 @@
                     if (line.block) row.className = 'tip-block';
                     tip.appendChild(row);
                 }
+                return title.style.color;
+            }
+            function showItemTip(item, e, extra) {
+                const tip = document.getElementById('itemTip');
+                if (!tip || !item) return;
+                tip.textContent = '';
+                tip.style.borderColor = appendTipItem(tip, item);
                 for (const line of extra || []) {
                     const row = document.createElement('div');
                     row.textContent = line;
                     tip.appendChild(row);
+                }
+                const worn = equippedMatch(item);
+                if (worn) {
+                    const head = document.createElement('div');
+                    head.className = 'tip-worn';
+                    head.textContent = 'Equipped';
+                    tip.appendChild(head);
+                    appendTipItem(tip, worn);
                 }
                 tip.hidden = false;
                 moveItemTip(e);
