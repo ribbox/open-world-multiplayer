@@ -2114,7 +2114,7 @@ for (const [id, recipe] of Object.entries(RECIPES)) {
 }
 
 function xpToNextCraft(level) {
-    return 6 + level * 2;
+    return Math.max(1, Math.round((6 + level * 2) * 0.25));
 }
 
 function craftXpGain(craftLevel, skill) {
