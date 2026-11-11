@@ -3496,6 +3496,14 @@ function needsQuestItem(player, item) {
     return false;
 }
 
+function clearUnusedQuestItems(player) {
+    if (!player.slots) return;
+    for (let i = 0; i < player.slots.length; i++) {
+        const slot = player.slots[i];
+        if (slot && slot.kind === 'quest' && !needsQuestItem(player, slot)) player.slots[i] = null;
+    }
+}
+
 function creditQuestItem(player, item, qty) {
     const quest = (item.questId && QUESTS[item.questId]) || Object.values(QUESTS).find(entry => entry.type === 'gather' && entry.item === item.name);
     if (!quest || quest.type !== 'gather') return false;
@@ -4515,19 +4523,9 @@ wss.on('connection', (ws) => {
                     return;
                 }
             }
-            if (quest.type === 'gather' && quest.item) {
-                let left = quest.count;
-                for (let i = 0; i < player.slots.length && left > 0; i++) {
-                    const slot = player.slots[i];
-                    if (!slot || slot.kind !== 'quest' || slot.name !== quest.item) continue;
-                    const take = Math.min(slot.qty, left);
-                    slot.qty -= take;
-                    left -= take;
-                    if (slot.qty <= 0) player.slots[i] = null;
-                }
-            }
             row.state = 'done';
             row.failed = false;
+            clearUnusedQuestItems(player);
             if (quest.coins) addToSlots(player, { kind: 'coins', name: 'Coins', qty: quest.coins });
             const leveled = grantXp(player, quest.xp || 0);
             savePlayer(player);
