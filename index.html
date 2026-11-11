@@ -744,7 +744,7 @@
         Character sheet Craft tab makes gear. A shop sells health and mana potions, and has Buy and Sell tabs<br>
         100 coins make 1 silver, and 100 silver make 1 gold. Drag an item in the bag to move it. Bags go in the bag slots and add room. Nessa's bank is only in the main settlement<br>
         The Drowned Chapel is east of the river. Wren's quests lead there. A party of four can enter. Move out of the black water<br>
-        You can learn 2 crafting skills from a shop assistant. Making items raises the skill. A trainer teaches the next tier at 75, 150, and 225<br>
+        You can learn 2 crafting skills from a shop assistant. The shop also sells patterns once your skill is high enough. Making items raises the skill. A trainer teaches the next tier at 75, 150, and 225. Spiders drop silk. Rocks sometimes hold a gem<br>
         Gather herbs by hand and sulfur with a pickaxe<br>
         M: World map. Scroll or +/− to zoom. Right-click a spot to mark it. The minimap points the way<br>
         Active quests stay on the right, with progress<br>
@@ -2144,7 +2144,7 @@
             }
 
             const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, bags: [null, null, null, null], bank: [], baseSlots: 16, coins: 0, materials: {} };
-            const SUPPLY_KINDS = [['wood', 'Wood'], ['stone', 'Stone'], ['cloth', 'Cloth'], ['leather', 'Leather'], ['ore', 'Ore'], ['gem', 'Gem'], ['herb', 'Herb'], ['powder', 'Powder']];
+            const SUPPLY_KINDS = [['wood', 'Wood'], ['stone', 'Stone'], ['cloth', 'Cloth'], ['leather', 'Leather'], ['ore', 'Ore'], ['gem', 'Gem'], ['herb', 'Herb'], ['powder', 'Powder'], ['silk', 'Silk']];
             const iconSheet = new Image();
             let iconSheetReady = false;
             const SHEET_COLS = 16;
@@ -6538,7 +6538,7 @@
                         head.style.margin = '10px 0 4px';
                         parent.appendChild(head);
                     }
-                    const ids = Object.entries(craft.recipes || {}).filter(([, recipe]) => recipe.set === id && !recipe.loot && !(recipe.tier > 0));
+                    const ids = Object.entries(craft.recipes || {}).filter(([, recipe]) => recipe.set === id && !recipe.loot && !recipe.buy && !(recipe.tier > 0));
                     const owned = ids.length > 0 && ids.every(([recipeId]) => known.has(recipeId));
                     const line = document.createElement('div');
                     line.className = 'spell-row';
@@ -6564,6 +6564,37 @@
                     }
                     line.appendChild(button);
                     parent.appendChild(line);
+                    if (!learnedSets.has(id)) continue;
+                    const skill = (character.craftSkill || {})[id] || { level: 1 };
+                    const patterns = Object.entries(craft.recipes || {})
+                        .filter(([recipeId, recipe]) => recipe.set === id && recipe.buy && !known.has(recipeId))
+                        .sort((a, b) => (a[1].craftLevel || 1) - (b[1].craftLevel || 1));
+                    for (const [recipeId, recipe] of patterns) {
+                        const row = document.createElement('div');
+                        row.className = 'spell-row';
+                        const text = document.createElement('div');
+                        const mats = Object.entries(recipe.cost || {}).map(([kind, qty]) => qty + ' ' + kind).join(', ');
+                        const makes = recipe.yield ? ' → ' + Object.entries(recipe.yield).map(([kind, qty]) => qty + ' ' + kind).join(', ') : '';
+                        text.textContent = recipe.name + ' · skill ' + (recipe.craftLevel || 1) + ((recipe.reqLevel || 1) > 1 ? ' · equips at ' + recipe.reqLevel : '') + ' · ' + mats + makes;
+                        row.appendChild(text);
+                        const buy = document.createElement('button');
+                        buy.type = 'button';
+                        buy.className = 'text-btn gold-btn';
+                        const ready = skill.level >= (recipe.craftLevel || 1);
+                        if (!nearestRole('shop')) {
+                            buy.textContent = 'Shop';
+                            buy.disabled = true;
+                        } else if (!ready) {
+                            buy.textContent = 'Lv ' + (recipe.craftLevel || 1);
+                            buy.disabled = true;
+                        } else {
+                            buy.textContent = formatMoney(recipe.price || 0);
+                            buy.disabled = coins < (recipe.price || 0);
+                            buy.addEventListener('click', () => sendCharacter('buyRecipe', { recipe: recipeId }));
+                        }
+                        row.appendChild(buy);
+                        parent.appendChild(row);
+                    }
                 }
             }
 
@@ -7116,21 +7147,23 @@
                         line.appendChild(itemCanvas(recipe));
                         const label = document.createElement('div');
                         const cost = Object.entries(recipe.cost || {}).map(([kind, qty]) => qty + ' ' + kind).join(', ');
+                        const makes = recipe.yield ? ' → ' + Object.entries(recipe.yield).map(([kind, qty]) => qty + ' ' + kind).join(', ') : '';
                         const costs = Object.entries(recipe.cost || {});
                         const can = costs.length ? costs.reduce((n, [kind, qty]) => Math.min(n, qty > 0 ? Math.floor(haveKind(kind) / qty) : n), Infinity) : 0;
                         const bits = statBits(recipe);
                         const gain = craftXpGain(recipe.craftLevel || 1, skill.level);
                         const tier = recipe.tier || 0;
                         const trained = (skill.tiers || [0]).includes(tier);
-                        const open = trained && skill.level >= tier;
-                        label.textContent = recipe.name + (open && can > 0 ? ' x' + can : '') + (tier ? ' · tier ' + tier : '') + (bits.length ? ' · ' + bits.join(' ') : '') + (recipe.armor ? ' · armor ' + recipe.armor : '') + ' · ' + cost + (gain ? ' · +' + gain + ' skill' : '');
+                        const need = Math.max(tier, recipe.buy ? (recipe.craftLevel || 1) : 0);
+                        const open = trained && skill.level >= need;
+                        label.textContent = recipe.name + (open && can > 0 ? ' x' + can : '') + (recipe.buy ? ' · skill ' + (recipe.craftLevel || 1) : '') + (tier ? ' · tier ' + tier : '') + (bits.length ? ' · ' + bits.join(' ') : '') + (recipe.armor ? ' · armor ' + recipe.armor : '') + ' · ' + cost + makes + (gain ? ' · +' + gain + ' skill' : '');
                         bindItemTip(line, recipe, ['Click Craft']);
                         line.appendChild(label);
                         if (!open) {
                             const button = document.createElement('button');
                             button.type = 'button';
                             button.className = 'text-btn';
-                            button.textContent = !trained ? 'Train ' + tier : 'Needs ' + tier;
+                            button.textContent = !trained ? 'Train ' + tier : 'Lv ' + need;
                             button.disabled = true;
                             line.appendChild(button);
                         } else {
@@ -8160,6 +8193,7 @@
                             sfx('loot');
                             if (data.gained === 'wood') showMessage('+1 Wood');
                             else if (data.gained === 'stone') showMessage('+1 Stone');
+                            else if (data.gained === 'stone-gem') showMessage('+1 Stone, +1 Gem');
                             else if (data.gained === 'herb') showMessage('+1 Herb');
                             else if (data.gained === 'powder') showMessage('+1 Powder');
                             else showMessage('Hit');

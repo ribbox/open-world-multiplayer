@@ -1035,7 +1035,7 @@ function gearAmount(level) {
 }
 
 function gearReq(level) {
-    return level <= 4 ? 1 : Math.max(1, level - 1);
+    return Math.max(1, Math.round(level) || 1);
 }
 
 function classBaseStats(player) {
@@ -2071,7 +2071,37 @@ const RECIPES = {
     'ore-charge': { name: 'Ore Charge', set: 'explosive', kind: 'bomb', amount: 44, cost: { powder: 5, ore: 2 }, tier: 150, craftLevel: 165 },
     'venom-flask': { name: 'Venom Flask', set: 'explosive', kind: 'bomb', amount: 42, cost: { herb: 5, powder: 4 }, tier: 150, craftLevel: 195 },
     'gem-charge': { name: 'Gem Charge', set: 'explosive', kind: 'bomb', amount: 85, cost: { powder: 8, ore: 2, gem: 1 }, tier: 225, craftLevel: 240 },
-    'void-flask': { name: 'Void Flask', set: 'explosive', kind: 'bomb', amount: 62, cost: { herb: 8, powder: 5, gem: 1 }, tier: 225, craftLevel: 275 }
+    'void-flask': { name: 'Void Flask', set: 'explosive', kind: 'bomb', amount: 62, cost: { herb: 8, powder: 5, gem: 1 }, tier: 225, craftLevel: 275 },
+    'cut-gem': { name: 'Cut Gem', set: 'alchemy', kind: 'gem', yield: { gem: 1 }, cost: { powder: 8 }, buy: true, price: 20, craftLevel: 20 },
+    'bright-cut': { name: 'Bright Cut', set: 'alchemy', kind: 'gem', yield: { gem: 1 }, cost: { powder: 6, herb: 1 }, buy: true, price: 80, craftLevel: 90 },
+    'rare-cut': { name: 'Rare Cut', set: 'alchemy', kind: 'gem', yield: { gem: 1 }, cost: { powder: 4, herb: 2 }, buy: true, price: 180, craftLevel: 180 },
+    'pristine-cut': { name: 'Pristine Cut', set: 'alchemy', kind: 'gem', yield: { gem: 2 }, cost: { powder: 6, herb: 2 }, buy: true, price: 320, craftLevel: 260 },
+    'crystal-health': { name: 'Crystal Health Potion', set: 'alchemy', kind: 'health', amount: 180, cost: { herb: 12, powder: 5, gem: 2 }, buy: true, price: 160, craftLevel: 240 },
+    'crystal-mana': { name: 'Crystal Mana Potion', set: 'alchemy', kind: 'mana', amount: 130, cost: { herb: 12, powder: 5, gem: 2 }, buy: true, price: 180, craftLevel: 270 },
+    'silk-sash': { name: 'Silk Sash', set: 'cloth', slot: 'waist', kind: 'armor', style: 'cloth', armor: 2, cost: { cloth: 4, silk: 2 }, buy: true, price: 24, craftLevel: 40, reqLevel: 10, statsSet: true, stats: { intellect: 3, stamina: 1 } },
+    'rune-sash': { name: 'Runecloth Sash', set: 'cloth', slot: 'waist', kind: 'armor', style: 'cloth', armor: 4, cost: { cloth: 8, silk: 4, gem: 1 }, buy: true, price: 80, craftLevel: 120, reqLevel: 26, statsSet: true, stats: { intellect: 6, stamina: 2 } },
+    'nightweave-robe': { name: 'Nightweave Robe', set: 'cloth', slot: 'chest', kind: 'armor', style: 'cloth', magic: true, armor: 7, cost: { cloth: 12, silk: 6, gem: 2 }, buy: true, price: 180, craftLevel: 200, reqLevel: 42, statsSet: true, stats: { intellect: 10, stamina: 3 } },
+    'starweave-hood': { name: 'Starweave Hood', set: 'cloth', slot: 'head', kind: 'armor', style: 'cloth', magic: true, armor: 6, cost: { cloth: 10, silk: 8, gem: 4 }, buy: true, price: 320, craftLevel: 280, reqLevel: 56, statsSet: true, stats: { intellect: 14, stamina: 4 } },
+    'trail-belt': { name: 'Trail Belt', set: 'leather', slot: 'waist', kind: 'armor', style: 'leather', armor: 3, cost: { leather: 5 }, buy: true, price: 28, craftLevel: 50, reqLevel: 14, statsSet: true, stats: { strength: 3, stamina: 2 } },
+    'studded-belt': { name: 'Studded Belt', set: 'leather', slot: 'waist', kind: 'armor', style: 'leather', armor: 5, cost: { leather: 8, gem: 1 }, buy: true, price: 90, craftLevel: 140, reqLevel: 30, statsSet: true, stats: { strength: 6, stamina: 3 } },
+    'night-jerkin': { name: 'Night Jerkin', set: 'leather', slot: 'chest', kind: 'armor', style: 'leather', armor: 8, cost: { leather: 12, gem: 2 }, buy: true, price: 200, craftLevel: 220, reqLevel: 46, statsSet: true, stats: { strength: 10, stamina: 4 } },
+    'shadow-cloak': { name: 'Shadow Cloak', set: 'leather', slot: 'cloak', kind: 'armor', style: 'leather', armor: 6, cost: { leather: 10, gem: 4 }, buy: true, price: 340, craftLevel: 285, reqLevel: 58, statsSet: true, stats: { strength: 12, stamina: 5 } },
+    'iron-belt': { name: 'Iron Belt', set: 'plate', slot: 'waist', kind: 'armor', style: 'plate', armor: 4, cost: { ore: 5, stone: 2 }, buy: true, price: 32, craftLevel: 55, reqLevel: 16, statsSet: true, stats: { strength: 4, stamina: 3 } },
+    'steel-greaves': { name: 'Steel Greaves', set: 'plate', slot: 'legs', kind: 'armor', style: 'plate', armor: 7, cost: { ore: 8, stone: 3, gem: 1 }, buy: true, price: 100, craftLevel: 150, reqLevel: 32, statsSet: true, stats: { strength: 7, stamina: 5 } },
+    'mithril-gauntlets': { name: 'Mithril Gauntlets', set: 'plate', slot: 'hands', kind: 'armor', style: 'plate', armor: 8, cost: { ore: 10, stone: 3, gem: 2 }, buy: true, price: 210, craftLevel: 210, reqLevel: 44, statsSet: true, stats: { strength: 11, stamina: 6 } },
+    'thorium-sabatons': { name: 'Thorium Sabatons', set: 'plate', slot: 'feet', kind: 'armor', style: 'plate', armor: 10, cost: { ore: 14, stone: 4, gem: 4 }, buy: true, price: 360, craftLevel: 290, reqLevel: 58, statsSet: true, stats: { strength: 14, stamina: 8 } },
+    'bronze-sword': { name: 'Bronze Sword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', armor: 0, cost: { ore: 4, wood: 1 }, buy: true, price: 36, craftLevel: 60, reqLevel: 16, statsSet: true, stats: { strength: 5 } },
+    'gemmed-blade': { name: 'Gemmed Blade', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', armor: 0, cost: { ore: 7, wood: 2, gem: 2 }, buy: true, price: 140, craftLevel: 160, reqLevel: 36, statsSet: true, stats: { strength: 10 } },
+    'king-blade': { name: 'King Blade', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', magic: true, armor: 0, cost: { ore: 12, wood: 2, gem: 4 }, buy: true, price: 340, craftLevel: 275, reqLevel: 55, statsSet: true, stats: { strength: 16 } },
+    'grove-bow': { name: 'Grove Bow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'bow', armor: 0, cost: { wood: 6 }, buy: true, price: 40, craftLevel: 70, reqLevel: 18, statsSet: true, stats: { strength: 5 } },
+    'elder-bow': { name: 'Elder Bow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'bow', armor: 0, cost: { wood: 8, gem: 2 }, buy: true, price: 160, craftLevel: 175, reqLevel: 38, statsSet: true, stats: { strength: 11 } },
+    'warbow': { name: 'Warbow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'bow', magic: true, armor: 0, cost: { wood: 12, gem: 4 }, buy: true, price: 320, craftLevel: 270, reqLevel: 54, statsSet: true, stats: { strength: 15 } },
+    'thorn-wand': { name: 'Thorn Wand', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'wand', armor: 0, cost: { wood: 3, gem: 1 }, buy: true, price: 40, craftLevel: 65, reqLevel: 16, statsSet: true, stats: { intellect: 5 } },
+    'night-wand': { name: 'Night Wand', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'wand', armor: 0, cost: { wood: 6, gem: 2 }, buy: true, price: 150, craftLevel: 170, reqLevel: 36, statsSet: true, stats: { intellect: 10 } },
+    'abyss-wand': { name: 'Abyss Wand', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'wand', magic: true, armor: 0, cost: { wood: 8, gem: 4 }, buy: true, price: 300, craftLevel: 265, reqLevel: 52, statsSet: true, stats: { intellect: 15 } },
+    'minor-focus': { name: 'Minor Focus', set: 'magic', slot: 'offhand', kind: 'armor', style: 'cloth', magic: true, armor: 2, cost: { wood: 2, gem: 2 }, buy: true, price: 70, craftLevel: 80, reqLevel: 20, statsSet: true, stats: { intellect: 6 } },
+    'star-focus': { name: 'Star Focus', set: 'magic', slot: 'offhand', kind: 'armor', style: 'cloth', magic: true, armor: 3, cost: { wood: 3, gem: 3 }, buy: true, price: 170, craftLevel: 190, reqLevel: 40, statsSet: true, stats: { intellect: 11 } },
+    'void-focus': { name: 'Void Focus', set: 'magic', slot: 'offhand', kind: 'armor', style: 'cloth', magic: true, armor: 4, cost: { wood: 4, gem: 5 }, buy: true, price: 340, craftLevel: 280, reqLevel: 56, statsSet: true, stats: { intellect: 16 } }
 };
 
 const CRAFT_SETS = {
@@ -2080,7 +2110,7 @@ const CRAFT_SETS = {
     plate: { name: 'Armorsmithing', cost: 30, rarity: 3, text: 'Helm, breastplate, gauntlets, greaves, and sabatons.' },
     weapon: { name: 'Weaponsmithing', cost: 16, rarity: 1, text: 'Swords, staves, bows, and wands.' },
     magic: { name: 'Spellforging', cost: 28, rarity: 4, text: 'Enchanted blades, staves, bows, and wands.' },
-    alchemy: { name: 'Alchemy', cost: 18, rarity: 2, text: 'Draughts, potions, and elixirs from herbs.' },
+    alchemy: { name: 'Alchemy', cost: 18, rarity: 2, text: 'Potions, and refining powder into gems.' },
     explosive: { name: 'Explosives', cost: 22, rarity: 2, text: 'Charges and flasks from powder, stone, and ore.' }
 };
 
@@ -2111,6 +2141,15 @@ for (const [id, recipe] of Object.entries(RECIPES)) {
             recipe.craftLevel = greater ? 160 : 85;
         } else recipe.craftLevel = APPRENTICE_LEVEL[id] || 1;
     }
+    const tier = recipe.tier || 0;
+    if (recipe.buy || !tier) continue;
+    if (recipe.set === 'cloth') recipe.cost = { ...recipe.cost, silk: tier === 75 ? 2 : tier === 150 ? 4 : 6 };
+    if (tier >= 150 && recipe.set !== 'alchemy' && recipe.set !== 'explosive' && recipe.set !== 'cloth') {
+        recipe.cost = { ...recipe.cost, gem: Math.max(recipe.cost.gem || 0, tier === 150 ? 1 : 2) };
+    }
+    if (tier === 225 && (recipe.set === 'alchemy' || recipe.set === 'explosive')) {
+        recipe.cost = { ...recipe.cost, gem: Math.max(recipe.cost.gem || 0, 2) };
+    }
 }
 
 function xpToNextCraft(level) {
@@ -2126,7 +2165,7 @@ function craftXpGain(craftLevel, skill) {
     return Math.max(1, Math.ceil(base * (40 - over) / 40));
 }
 
-const MATERIAL_NAMES = { cloth: 'Cloth', leather: 'Leather', ore: 'Ore', gem: 'Gem', wood: 'Wood', stone: 'Stone', herb: 'Herb', powder: 'Powder' };
+const MATERIAL_NAMES = { cloth: 'Cloth', leather: 'Leather', ore: 'Ore', gem: 'Gem', wood: 'Wood', stone: 'Stone', herb: 'Herb', powder: 'Powder', silk: 'Silk' };
 
 function lootRecipeIds() {
     return Object.keys(RECIPES).filter(id => RECIPES[id].loot);
@@ -2179,6 +2218,9 @@ function publicCraft() {
             magic: !!recipe.magic,
             cost: recipe.cost,
             loot: !!recipe.loot,
+            buy: !!recipe.buy,
+            price: recipe.price || 0,
+            yield: recipe.yield || null,
             tier: recipe.tier || 0,
             craftLevel: recipe.craftLevel || 1,
             icon: recipe.icon || defaultIconName(recipe),
@@ -2368,10 +2410,10 @@ function publicCharacter(player) {
     };
 }
 
-const MATERIAL_KINDS = ['wood', 'stone', 'cloth', 'leather', 'ore', 'gem', 'herb', 'powder'];
+const MATERIAL_KINDS = ['wood', 'stone', 'cloth', 'leather', 'ore', 'gem', 'herb', 'powder', 'silk'];
 
 function blankMaterials() {
-    return { wood: 0, stone: 0, cloth: 0, leather: 0, ore: 0, gem: 0, herb: 0, powder: 0 };
+    return { wood: 0, stone: 0, cloth: 0, leather: 0, ore: 0, gem: 0, herb: 0, powder: 0, silk: 0 };
 }
 
 function coinCount(player) {
@@ -2431,12 +2473,25 @@ function learnSet(player, setId) {
     if (!set) return 'Unknown set';
     const blocked = craftRoom(player, setId);
     if (blocked) return blocked;
-    const ids = Object.keys(RECIPES).filter(id => RECIPES[id].set === setId && !RECIPES[id].loot && !(RECIPES[id].tier > 0));
+    const ids = Object.keys(RECIPES).filter(id => RECIPES[id].set === setId && !RECIPES[id].loot && !RECIPES[id].buy && !(RECIPES[id].tier > 0));
     if (ids.every(id => player.recipes.includes(id))) return 'Already learned';
     if (!spendCoins(player, set.cost)) return 'Not enough coins';
     for (const id of ids) if (!player.recipes.includes(id)) player.recipes.push(id);
     if (!player.craftSkill) player.craftSkill = {};
     if (!player.craftSkill[setId]) player.craftSkill[setId] = { level: 1, xp: 0, tiers: [0] };
+    savePlayer(player);
+    return null;
+}
+
+function buyPattern(player, id) {
+    const recipe = RECIPES[id];
+    if (!recipe || !recipe.buy) return 'Not for sale';
+    if (player.recipes.includes(id)) return 'Already known';
+    const skill = player.craftSkill && player.craftSkill[recipe.set];
+    if (!skill) return 'Learn ' + ((CRAFT_SETS[recipe.set] && CRAFT_SETS[recipe.set].name) || 'that skill') + ' first';
+    if (skill.level < (recipe.craftLevel || 1)) return 'Requires crafting level ' + recipe.craftLevel;
+    if (!spendCoins(player, recipe.price || 0)) return 'Not enough coins';
+    player.recipes.push(id);
     savePlayer(player);
     return null;
 }
@@ -2507,7 +2562,7 @@ function learnTier(player, setId) {
     const next = CRAFT_TIERS.find(tier => !have.has(tier));
     if (!next) return 'All tiers trained';
     if (skill.level < next) return 'Requires crafting level ' + next;
-    const ids = Object.keys(RECIPES).filter(id => RECIPES[id].set === setId && RECIPES[id].tier === next && !RECIPES[id].loot);
+    const ids = Object.keys(RECIPES).filter(id => RECIPES[id].set === setId && RECIPES[id].tier === next && !RECIPES[id].loot && !RECIPES[id].buy);
     if (!ids.length) return 'Nothing to teach';
     for (const id of ids) if (!player.recipes.includes(id)) player.recipes.push(id);
     skill.tiers.push(next);
@@ -2571,7 +2626,7 @@ function startCraft(player, id, count) {
     const skill = ensureCraftSkill(player, recipe.set) || { level: 1, xp: 0, tiers: [0] };
     const tier = recipe.tier || 0;
     if (!(skill.tiers || [0]).includes(tier)) return 'Train tier ' + tier + ' at a trainer';
-    if (skill.level < tier) return 'Requires crafting level ' + tier;
+    if (skill.level < Math.max(tier, recipe.buy ? (recipe.craftLevel || 1) : 0)) return 'Requires crafting level ' + Math.max(tier, recipe.buy ? recipe.craftLevel : tier);
     const can = craftCount(player, recipe);
     if (can < 1) {
         const [kind, qty] = Object.entries(recipe.cost || {})[0] || ['materials', 1];
@@ -2644,11 +2699,19 @@ function craftItem(player, id) {
     const skill = ensureCraftSkill(player, recipe.set) || { level: 1, xp: 0, tiers: [0] };
     const tier = recipe.tier || 0;
     if (!(skill.tiers || [0]).includes(tier)) return 'Train tier ' + tier + ' at a trainer';
-    if (skill.level < tier) return 'Requires crafting level ' + tier;
+    if (skill.level < Math.max(tier, recipe.buy ? (recipe.craftLevel || 1) : 0)) return 'Requires crafting level ' + Math.max(tier, recipe.buy ? recipe.craftLevel : tier);
     for (const [kind, qty] of Object.entries(recipe.cost)) {
         if (countKind(player, kind) < qty) return 'Need ' + qty + ' ' + (MATERIAL_NAMES[kind] || kind);
     }
     for (const [kind, qty] of Object.entries(recipe.cost)) takeKind(player, kind, qty);
+    if (recipe.yield) {
+        for (const [kind, qty] of Object.entries(recipe.yield)) {
+            addToSlots(player, { kind, name: MATERIAL_NAMES[kind] || kind, qty });
+        }
+        player.craftNote = grantCraftXp(player, recipe);
+        savePlayer(player);
+        return null;
+    }
     const made = statsForRecipe(recipe);
     const rest = addToSlots(player, {
         kind: recipe.kind,
@@ -3125,12 +3188,13 @@ const LOOT_TABLES = {
         { kind: 'recipe', weight: 4, sets: ['leather'] }
     ],
     silk: [
-        { kind: 'cloth', weight: 30 },
-        { kind: 'herb', weight: 16 },
-        { kind: 'junk', weight: 18, names: ['Webbing', 'Dried silk', 'Chitin'] },
-        { kind: 'mana', weight: 16 },
-        { kind: 'coins', weight: 12 },
-        { kind: 'recipe', weight: 12, sets: ['cloth'] },
+        { kind: 'silk', weight: 36 },
+        { kind: 'cloth', weight: 10 },
+        { kind: 'herb', weight: 14 },
+        { kind: 'junk', weight: 12, names: ['Webbing', 'Dried silk', 'Chitin'] },
+        { kind: 'mana', weight: 14 },
+        { kind: 'coins', weight: 10 },
+        { kind: 'recipe', weight: 8, sets: ['cloth'] },
         { kind: 'health', weight: 6 }
     ],
     bandit: [
@@ -3205,7 +3269,7 @@ function lootItem(row, level, tableId) {
     }
     if (kind === 'health') return { kind, name: 'Health potion', qty: 1, amount: 8 + level * 3 };
     if (kind === 'mana') return { kind, name: 'Mana potion', qty: 1, amount: 6 + level * 2 };
-    if (kind === 'stone' || kind === 'herb' || kind === 'powder') return { kind, name: MATERIAL_NAMES[kind], qty: 1 + Math.floor(level / 3) };
+    if (kind === 'stone' || kind === 'herb' || kind === 'powder' || kind === 'silk') return { kind, name: MATERIAL_NAMES[kind], qty: 1 + Math.floor(level / 3) };
     if (kind === 'cloth' || kind === 'leather' || kind === 'ore' || kind === 'gem') {
         return { kind, name: MATERIAL_NAMES[kind], qty: kind === 'gem' ? 1 : 1 + Math.floor(level / 2) };
     }
@@ -3972,11 +4036,14 @@ wss.on('connection', (ws) => {
                         : node.type === 'sulfur'
                             ? { kind: 'powder', name: 'Powder', qty: 1 }
                             : { kind: 'stone', name: 'Stone', qty: 1 };
-                if (addToSlots(player, drop)) {
+                const gem = node.type === 'rock' && Math.random() < 0.3
+                    ? { kind: 'gem', name: 'Gem', qty: 1 }
+                    : null;
+                if (addToSlots(player, drop) || (gem && addToSlots(player, gem))) {
                     send(ws, { type: 'gatherResult', ok: false, reason: 'Inventory full', id: node.id, hits, inventory: inventoryOf(player) });
                     return;
                 }
-                gained = drop.kind;
+                gained = gem ? 'stone-gem' : drop.kind;
                 savePlayer(player);
             }
             save.resources[node.id] = next;
@@ -4768,6 +4835,26 @@ wss.on('connection', (ws) => {
             return;
         }
 
+        if (data.type === 'buyRecipe') {
+            placePlayer(player, data);
+            if (!nearRole(player, 'shop')) {
+                send(ws, { type: 'character', ok: false, reason: 'See a shop assistant', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+                return;
+            }
+            const error = buyPattern(player, data.recipe);
+            const recipe = RECIPES[data.recipe];
+            send(ws, {
+                type: 'character',
+                ok: !error,
+                reason: error || '',
+                note: error ? '' : ((recipe ? recipe.name : 'Pattern') + ' learned'),
+                character: publicCharacter(player),
+                inventory: inventoryOf(player),
+                ...statsOf(player)
+            });
+            return;
+        }
+
         if (data.type === 'buy') {
             placePlayer(player, data);
             if (!nearRole(player, 'shop')) {
@@ -4998,7 +5085,7 @@ wss.on('connection', (ws) => {
 const worldPath = path.join(dataDir, 'world.json');
 let worldConfig = null;
 const adminTokens = new Set();
-const LOOT_KINDS = ['junk', 'coins', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor', 'bag'];
+const LOOT_KINDS = ['junk', 'coins', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'silk', 'recipe', 'armor', 'bag'];
 
 function defaultWorldConfig() {
     return {
@@ -5823,7 +5910,7 @@ function workbookSource() {
             yes: ['yes', 'no'],
             type: ['kill', 'gather', 'named', 'protect'],
             mob: ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'],
-            reward: ['junk', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor', 'bag'],
+            reward: ['junk', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'silk', 'recipe', 'armor', 'bag'],
             role: ['inn', 'shop', 'trainer', 'quest']
         }
     };

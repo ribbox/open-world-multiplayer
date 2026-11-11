@@ -709,7 +709,7 @@ export function zoneCampPlan(zx, zz) {
 const SELL_RARITY = {
     junk: 1, wood: 1, stone: 1, herb: 1, powder: 1,
     cloth: 2, leather: 2, health: 2, mana: 2, bomb: 2,
-    ore: 3, armor: 3, weapon: 3, bag: 4, recipe: 4, gem: 5
+    ore: 3, armor: 3, weapon: 3, silk: 3, bag: 4, recipe: 4, gem: 5
 };
 
 export function itemRarity(item) {
