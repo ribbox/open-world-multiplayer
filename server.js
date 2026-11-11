@@ -1910,7 +1910,23 @@ const RECIPES = {
     'siege-bomb': { name: 'Siege Bomb', set: 'explosive', kind: 'bomb', amount: 50, cost: { powder: 6, ore: 2 }, tier: 150, craftLevel: 150 },
     'siege-flask': { name: 'Siege Flask', set: 'explosive', kind: 'bomb', amount: 36, cost: { herb: 6, powder: 3 }, tier: 150, craftLevel: 180 },
     'devastation': { name: 'Devastation Charge', set: 'explosive', kind: 'bomb', amount: 70, cost: { powder: 8, ore: 2, gem: 1 }, tier: 225, craftLevel: 225 },
-    'ruin-flask': { name: 'Ruin Flask', set: 'explosive', kind: 'bomb', amount: 50, cost: { herb: 8, powder: 4, gem: 1 }, tier: 225, craftLevel: 260 }
+    'ruin-flask': { name: 'Ruin Flask', set: 'explosive', kind: 'bomb', amount: 50, cost: { herb: 8, powder: 4, gem: 1 }, tier: 225, craftLevel: 260 },
+    'healing-draught': { name: 'Healing Draught', set: 'alchemy', kind: 'health', amount: 10, cost: { herb: 1 }, craftLevel: 8 },
+    'mana-draught': { name: 'Mana Draught', set: 'alchemy', kind: 'mana', amount: 8, cost: { herb: 1 }, craftLevel: 22 },
+    'bracing-health': { name: 'Bracing Potion', set: 'alchemy', kind: 'health', amount: 48, cost: { herb: 5, powder: 1 }, tier: 75, craftLevel: 85 },
+    'bracing-mana': { name: 'Bracing Mana', set: 'alchemy', kind: 'mana', amount: 32, cost: { herb: 5 }, tier: 75, craftLevel: 115 },
+    'potent-health': { name: 'Potent Health Potion', set: 'alchemy', kind: 'health', amount: 95, cost: { herb: 9, powder: 2 }, tier: 150, craftLevel: 165 },
+    'potent-mana': { name: 'Potent Mana Potion', set: 'alchemy', kind: 'mana', amount: 70, cost: { herb: 9, powder: 2 }, tier: 150, craftLevel: 195 },
+    'elixir-health': { name: 'Health Elixir', set: 'alchemy', kind: 'health', amount: 150, cost: { herb: 12, powder: 4, gem: 1 }, tier: 225, craftLevel: 240 },
+    'elixir-mana': { name: 'Mana Elixir', set: 'alchemy', kind: 'mana', amount: 110, cost: { herb: 12, powder: 4, gem: 1 }, tier: 225, craftLevel: 275 },
+    'stone-charge': { name: 'Stone Charge', set: 'explosive', kind: 'bomb', amount: 8, cost: { stone: 2, powder: 1 }, craftLevel: 12 },
+    'spark-flask': { name: 'Spark Flask', set: 'explosive', kind: 'bomb', amount: 16, cost: { herb: 1, powder: 2 }, craftLevel: 35 },
+    'iron-charge': { name: 'Iron Charge', set: 'explosive', kind: 'bomb', amount: 30, cost: { powder: 3, ore: 1 }, tier: 75, craftLevel: 85 },
+    'caustic-flask': { name: 'Caustic Flask', set: 'explosive', kind: 'bomb', amount: 28, cost: { herb: 3, powder: 3 }, tier: 75, craftLevel: 120 },
+    'ore-charge': { name: 'Ore Charge', set: 'explosive', kind: 'bomb', amount: 44, cost: { powder: 5, ore: 2 }, tier: 150, craftLevel: 165 },
+    'venom-flask': { name: 'Venom Flask', set: 'explosive', kind: 'bomb', amount: 42, cost: { herb: 5, powder: 4 }, tier: 150, craftLevel: 195 },
+    'gem-charge': { name: 'Gem Charge', set: 'explosive', kind: 'bomb', amount: 85, cost: { powder: 8, ore: 2, gem: 1 }, tier: 225, craftLevel: 240 },
+    'void-flask': { name: 'Void Flask', set: 'explosive', kind: 'bomb', amount: 62, cost: { herb: 8, powder: 5, gem: 1 }, tier: 225, craftLevel: 275 }
 };
 
 const CRAFT_SETS = {
@@ -1919,8 +1935,8 @@ const CRAFT_SETS = {
     plate: { name: 'Armorsmithing', cost: 30, rarity: 3, text: 'Helm, breastplate, gauntlets, greaves, and sabatons.' },
     weapon: { name: 'Weaponsmithing', cost: 16, rarity: 1, text: 'Swords, staves, bows, and wands.' },
     magic: { name: 'Spellforging', cost: 28, rarity: 4, text: 'Enchanted blades, staves, bows, and wands.' },
-    alchemy: { name: 'Alchemy', cost: 18, rarity: 2, text: 'Health and mana potions from herbs.' },
-    explosive: { name: 'Explosives', cost: 22, rarity: 2, text: 'Bombs from powder and stone.' }
+    alchemy: { name: 'Alchemy', cost: 18, rarity: 2, text: 'Draughts, potions, and elixirs from herbs.' },
+    explosive: { name: 'Explosives', cost: 22, rarity: 2, text: 'Charges and flasks from powder, stone, and ore.' }
 };
 
 const SHOP_GOODS = [
