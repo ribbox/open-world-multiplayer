@@ -2230,14 +2230,14 @@
                     const wrongStyle = !!(item.style && mine && item.slot !== 'neck' && item.slot !== 'cloak' && item.style !== mine);
                     push(style + ' armor' + (item.magic ? ' · magic' : ''), wrongStyle);
                     if (SLOT_NAMES[item.slot]) push(SLOT_NAMES[item.slot]);
-                    push('Armor +' + (item.armor || 0));
+                    push('+' + (item.armor || 0) + ' Armor');
                 } else if (item.kind === 'weapon') {
                     const names = { sword: 'Sword', staff: 'Staff', bow: 'Bow', wand: 'Wand' };
                     const mine = { warrior: 'sword', hunter: 'bow', mage: 'staff', warlock: 'wand' }[character.class];
                     const wrongWeapon = !!(item.weapon && mine && item.weapon !== mine);
                     push((item.magic ? 'Magic ' : '') + (names[item.weapon] || 'Weapon'), wrongWeapon);
                     if (SLOT_NAMES[item.slot]) push(SLOT_NAMES[item.slot]);
-                    if (item.armor) push('Armor +' + item.armor);
+                    if (item.armor) push('+' + item.armor + ' Armor');
                 } else if (item.kind === 'bag') push('Adds ' + (item.slots || 0) + ' slots');
                 else if (item.kind === 'recipe') push('Pattern · click to learn');
                 else if (item.kind === 'quest') push('Quest item');
