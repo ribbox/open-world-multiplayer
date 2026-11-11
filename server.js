@@ -1847,12 +1847,28 @@ const RECIPES = {
     'rune-hood': { name: 'Runecloth Hood', set: 'cloth', slot: 'head', kind: 'armor', style: 'cloth', armor: 4, cost: { cloth: 6, gem: 1 }, tier: 150, craftLevel: 180 },
     'arcane-robe': { name: 'Arcanoweave Robe', set: 'cloth', slot: 'chest', kind: 'armor', style: 'cloth', magic: true, armor: 8, cost: { cloth: 12, gem: 2 }, tier: 225, craftLevel: 225 },
     'arcane-hood': { name: 'Arcanoweave Hood', set: 'cloth', slot: 'head', kind: 'armor', style: 'cloth', magic: true, armor: 5, cost: { cloth: 8, gem: 2 }, tier: 225, craftLevel: 260 },
+    'silk-shoulders': { name: 'Silk Shoulders', set: 'cloth', slot: 'shoulders', kind: 'armor', style: 'cloth', armor: 2, cost: { cloth: 5 }, tier: 75, craftLevel: 90 },
+    'silk-pants': { name: 'Silk Pants', set: 'cloth', slot: 'legs', kind: 'armor', style: 'cloth', armor: 3, cost: { cloth: 6 }, tier: 75, craftLevel: 110 },
+    'rune-gloves': { name: 'Runecloth Gloves', set: 'cloth', slot: 'hands', kind: 'armor', style: 'cloth', armor: 3, cost: { cloth: 6, gem: 1 }, tier: 150, craftLevel: 165 },
+    'rune-shoulders': { name: 'Runecloth Shoulders', set: 'cloth', slot: 'shoulders', kind: 'armor', style: 'cloth', armor: 4, cost: { cloth: 8, gem: 1 }, tier: 150, craftLevel: 175 },
+    'rune-cloak': { name: 'Runecloth Cloak', set: 'cloth', slot: 'cloak', kind: 'armor', style: 'cloth', armor: 3, cost: { cloth: 6, gem: 1 }, tier: 150, craftLevel: 190 },
+    'arcane-gloves': { name: 'Arcanoweave Gloves', set: 'cloth', slot: 'hands', kind: 'armor', style: 'cloth', magic: true, armor: 4, cost: { cloth: 8, gem: 2 }, tier: 225, craftLevel: 240 },
+    'arcane-shoulders': { name: 'Arcanoweave Shoulders', set: 'cloth', slot: 'shoulders', kind: 'armor', style: 'cloth', magic: true, armor: 5, cost: { cloth: 10, gem: 2 }, tier: 225, craftLevel: 250 },
+    'arcane-cloak': { name: 'Arcanoweave Cloak', set: 'cloth', slot: 'cloak', kind: 'armor', style: 'cloth', magic: true, armor: 4, cost: { cloth: 8, gem: 2 }, tier: 225, craftLevel: 270 },
     'cured-jerkin': { name: 'Cured Jerkin', set: 'leather', slot: 'chest', kind: 'armor', style: 'leather', armor: 5, cost: { leather: 8 }, tier: 75, craftLevel: 75 },
     'cured-boots': { name: 'Cured Boots', set: 'leather', slot: 'feet', kind: 'armor', style: 'leather', armor: 3, cost: { leather: 5 }, tier: 75, craftLevel: 100 },
     'thick-jerkin': { name: 'Thick Jerkin', set: 'leather', slot: 'chest', kind: 'armor', style: 'leather', armor: 7, cost: { leather: 10 }, tier: 150, craftLevel: 150 },
     'thick-cap': { name: 'Thick Cap', set: 'leather', slot: 'head', kind: 'armor', style: 'leather', armor: 5, cost: { leather: 6 }, tier: 150, craftLevel: 180 },
     'hardened-jerkin': { name: 'Hardened Jerkin', set: 'leather', slot: 'chest', kind: 'armor', style: 'leather', armor: 9, cost: { leather: 12, gem: 1 }, tier: 225, craftLevel: 225 },
     'hardened-cap': { name: 'Hardened Cap', set: 'leather', slot: 'head', kind: 'armor', style: 'leather', armor: 6, cost: { leather: 8, gem: 1 }, tier: 225, craftLevel: 260 },
+    'cured-gloves': { name: 'Cured Gloves', set: 'leather', slot: 'hands', kind: 'armor', style: 'leather', armor: 3, cost: { leather: 5 }, tier: 75, craftLevel: 90 },
+    'cured-shoulders': { name: 'Cured Shoulders', set: 'leather', slot: 'shoulders', kind: 'armor', style: 'leather', armor: 3, cost: { leather: 6 }, tier: 75, craftLevel: 110 },
+    'thick-gloves': { name: 'Thick Gloves', set: 'leather', slot: 'hands', kind: 'armor', style: 'leather', armor: 4, cost: { leather: 7 }, tier: 150, craftLevel: 165 },
+    'thick-boots': { name: 'Thick Boots', set: 'leather', slot: 'feet', kind: 'armor', style: 'leather', armor: 5, cost: { leather: 8 }, tier: 150, craftLevel: 175 },
+    'thick-shoulders': { name: 'Thick Shoulders', set: 'leather', slot: 'shoulders', kind: 'armor', style: 'leather', armor: 5, cost: { leather: 8 }, tier: 150, craftLevel: 190 },
+    'hardened-gloves': { name: 'Hardened Gloves', set: 'leather', slot: 'hands', kind: 'armor', style: 'leather', armor: 6, cost: { leather: 9, gem: 1 }, tier: 225, craftLevel: 240 },
+    'hardened-boots': { name: 'Hardened Boots', set: 'leather', slot: 'feet', kind: 'armor', style: 'leather', armor: 7, cost: { leather: 10, gem: 1 }, tier: 225, craftLevel: 250 },
+    'hardened-cloak': { name: 'Hardened Cloak', set: 'leather', slot: 'cloak', kind: 'armor', style: 'leather', armor: 5, cost: { leather: 8, gem: 1 }, tier: 225, craftLevel: 270 },
     'steel-breastplate': { name: 'Steel Breastplate', set: 'plate', slot: 'chest', kind: 'armor', style: 'plate', armor: 7, cost: { ore: 8, stone: 2 }, tier: 75, craftLevel: 75 },
     'steel-helm': { name: 'Steel Helm', set: 'plate', slot: 'head', kind: 'armor', style: 'plate', armor: 5, cost: { ore: 5, stone: 1 }, tier: 75, craftLevel: 100 },
     'mithril-breastplate': { name: 'Mithril Breastplate', set: 'plate', slot: 'chest', kind: 'armor', style: 'plate', armor: 9, cost: { ore: 10, stone: 3, gem: 1 }, tier: 150, craftLevel: 150 },
@@ -1865,12 +1881,24 @@ const RECIPES = {
     'mithril-staff': { name: 'Mithril Staff', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'staff', armor: 0, cost: { wood: 8, gem: 1 }, tier: 150, craftLevel: 180 },
     'thorium-sword': { name: 'Thorium Sword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', armor: 0, cost: { ore: 8, wood: 2, gem: 2 }, tier: 225, craftLevel: 225 },
     'thorium-staff': { name: 'Thorium Staff', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'staff', armor: 0, cost: { wood: 10, gem: 2 }, tier: 225, craftLevel: 260 },
+    'ash-bow': { name: 'Ash Bow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'bow', armor: 0, cost: { wood: 5 }, tier: 75, craftLevel: 85 },
+    'recurve-bow': { name: 'Recurve Bow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'bow', armor: 0, cost: { wood: 8 }, tier: 150, craftLevel: 160 },
+    'longbow': { name: 'Longbow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'bow', armor: 0, cost: { wood: 10, gem: 1 }, tier: 225, craftLevel: 240 },
+    'bone-wand': { name: 'Bone Wand', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'wand', armor: 0, cost: { wood: 4, gem: 1 }, tier: 75, craftLevel: 90 },
+    'shadow-wand': { name: 'Shadow Wand', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'wand', armor: 0, cost: { wood: 6, gem: 1 }, tier: 150, craftLevel: 170 },
+    'void-wand': { name: 'Void Wand', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'wand', armor: 0, cost: { wood: 8, gem: 2 }, tier: 225, craftLevel: 250 },
     'bright-blade': { name: 'Bright Rune Blade', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'sword', magic: true, armor: 0, cost: { ore: 3, wood: 1, gem: 1 }, tier: 75, craftLevel: 75 },
     'bright-staff': { name: 'Bright Staff', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'staff', magic: true, armor: 0, cost: { wood: 3, gem: 2 }, tier: 75, craftLevel: 100 },
     'sun-blade': { name: 'Sun Blade', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'sword', magic: true, armor: 0, cost: { ore: 4, gem: 2 }, tier: 150, craftLevel: 150 },
     'sun-staff': { name: 'Sun Staff', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'staff', magic: true, armor: 0, cost: { wood: 4, gem: 3 }, tier: 150, craftLevel: 180 },
     'star-blade': { name: 'Star Blade', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'sword', magic: true, armor: 0, cost: { ore: 6, gem: 3 }, tier: 225, craftLevel: 225 },
     'star-staff': { name: 'Star Staff', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'staff', magic: true, armor: 0, cost: { wood: 6, gem: 4 }, tier: 225, craftLevel: 260 },
+    'hawk-bow': { name: 'Hawk Bow', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'bow', magic: true, armor: 0, cost: { wood: 4, gem: 1 }, tier: 75, craftLevel: 90 },
+    'eagle-bow': { name: 'Eagle Bow', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'bow', magic: true, armor: 0, cost: { wood: 6, gem: 2 }, tier: 150, craftLevel: 170 },
+    'phoenix-bow': { name: 'Phoenix Bow', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'bow', magic: true, armor: 0, cost: { wood: 8, gem: 3 }, tier: 225, craftLevel: 250 },
+    'ember-wand': { name: 'Ember Wand', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'wand', magic: true, armor: 0, cost: { wood: 3, gem: 2 }, tier: 75, craftLevel: 100 },
+    'hex-wand': { name: 'Hex Wand', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'wand', magic: true, armor: 0, cost: { wood: 4, gem: 3 }, tier: 150, craftLevel: 180 },
+    'soul-wand': { name: 'Soul Wand', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'wand', magic: true, armor: 0, cost: { wood: 6, gem: 4 }, tier: 225, craftLevel: 260 },
     'strong-health': { name: 'Strong Health Potion', set: 'alchemy', kind: 'health', amount: 55, cost: { herb: 6, powder: 1 }, tier: 75, craftLevel: 75 },
     'strong-mana': { name: 'Strong Mana Potion', set: 'alchemy', kind: 'mana', amount: 40, cost: { herb: 6, powder: 1 }, tier: 75, craftLevel: 100 },
     'mighty-health': { name: 'Mighty Health Potion', set: 'alchemy', kind: 'health', amount: 80, cost: { herb: 8, powder: 2 }, tier: 150, craftLevel: 150 },
@@ -1886,11 +1914,11 @@ const RECIPES = {
 };
 
 const CRAFT_SETS = {
-    cloth: { name: 'Clothworking', cost: 12, rarity: 1, text: 'Hat, robe, gloves, pants, and shoes.' },
-    leather: { name: 'Leatherworking', cost: 20, rarity: 2, text: 'Cap, jerkin, gloves, pants, and boots.' },
+    cloth: { name: 'Clothworking', cost: 12, rarity: 1, text: 'Cloth armor for mages and warlocks.' },
+    leather: { name: 'Leatherworking', cost: 20, rarity: 2, text: 'Leather armor for hunters.' },
     plate: { name: 'Armorsmithing', cost: 30, rarity: 3, text: 'Helm, breastplate, gauntlets, greaves, and sabatons.' },
-    weapon: { name: 'Weaponsmithing', cost: 16, rarity: 1, text: 'Iron sword and oak staff.' },
-    magic: { name: 'Spellforging', cost: 28, rarity: 4, text: 'Rune blade and arcane staff.' },
+    weapon: { name: 'Weaponsmithing', cost: 16, rarity: 1, text: 'Swords, staves, bows, and wands.' },
+    magic: { name: 'Spellforging', cost: 28, rarity: 4, text: 'Enchanted blades, staves, bows, and wands.' },
     alchemy: { name: 'Alchemy', cost: 18, rarity: 2, text: 'Health and mana potions from herbs.' },
     explosive: { name: 'Explosives', cost: 22, rarity: 2, text: 'Bombs from powder and stone.' }
 };
@@ -2071,6 +2099,16 @@ function loadCharacter(prof) {
         skills[setId] = { level, xp: Math.max(0, Math.round(Number(cur.xp) || 0)), tiers };
     }
     prof.craftSkill = skills;
+    for (const [setId, skill] of Object.entries(skills)) {
+        for (const tier of skill.tiers) {
+            for (const id of Object.keys(RECIPES)) {
+                const recipe = RECIPES[id];
+                if (recipe.set !== setId || (recipe.tier || 0) !== tier || recipe.loot || seen.has(id)) continue;
+                prof.recipes.push(id);
+                seen.add(id);
+            }
+        }
+    }
     loadQuests(prof);
 }
 
