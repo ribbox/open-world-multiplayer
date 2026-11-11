@@ -2266,8 +2266,14 @@ function refreshDerived(player) {
     player.maxMana = nextMana;
 }
 
+function pointsEarned(level) {
+    const lv = level || 1;
+    if (lv < 5) return 0;
+    return 1 + Math.floor((lv - 5) / 2);
+}
+
 function talentPoints(player) {
-    return Math.max(0, (player.level || 1) - 1 - ranksSpent(player));
+    return Math.max(0, pointsEarned(player.level) - ranksSpent(player));
 }
 
 function ranksSpent(player) {
