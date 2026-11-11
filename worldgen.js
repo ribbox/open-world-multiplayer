@@ -816,7 +816,8 @@ export function applyWorldConfig(config) {
                 shop: String(camp.shop || '').trim().slice(0, 16),
                 trainer: String(camp.trainer || '').trim().slice(0, 16),
                 quest: String(camp.quest || '').trim().slice(0, 16),
-                inn: String(camp.inn || 'Innkeeper').trim().slice(0, 16) || 'Innkeeper'
+                inn: String(camp.inn || 'Innkeeper').trim().slice(0, 16) || 'Innkeeper',
+                travel: !!camp.travel
             });
         }
         for (const node of (Array.isArray(zone.nodes) ? zone.nodes : []).slice(0, 160)) {
@@ -828,6 +829,13 @@ export function applyWorldConfig(config) {
             designedNodes.push(placed);
         }
         designedZones.push(entry);
+    }
+    if (!designedZones.some(zone => zone.camps.some(camp => camp.travel))) {
+        for (const zone of designedZones) {
+            if (!zone.camps.length) continue;
+            zone.camps[0].travel = true;
+            break;
+        }
     }
     const roads = Array.isArray(config && config.roads) ? config.roads : [];
     for (const road of roads.slice(0, 40)) {

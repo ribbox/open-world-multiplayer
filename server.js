@@ -116,7 +116,7 @@ const CIVILIANS = [
     { id: 'mira', name: 'Mira', role: 'shop', title: 'Shop assistant', tint: '#f1c40f', x: 10, z: 4, text: 'I buy what you carry and sell potions and crafting skills. Bring coins.' },
     { id: 'bram', name: 'Bram', role: 'trainer', title: 'Trainer', tint: '#5dade2', x: -10, z: 4, text: 'Choose a class, then train your spells with me. I also teach crafting tiers.' },
     { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' },
-    { id: 'holt', name: 'Holt', role: 'inn', title: 'Innkeeper', tint: '#e67e22', x: GLADE_INN.x, z: GLADE_INN.z, text: 'I keep the inn. Set your rest here, then press H to return. I also have a spare sack if you clear some wolves.' },
+    { id: 'holt', name: 'Holt', role: 'inn', title: 'Travel inn', tint: '#e67e22', x: GLADE_INN.x, z: GLADE_INN.z, travel: true, text: 'This is the travel inn. Set your rest here, or travel to another land. Press H to return.' },
     { id: 'nessa', name: 'Nessa', role: 'bank', title: 'Banker', tint: '#f4d03f', x: GLADE_INN.x + 3.2, z: GLADE_INN.z + 1.2, text: 'The vault is only here, in the main settlement. I will hold what you do not want to carry.' },
     { id: 'wren', name: 'Wren', role: 'quest', title: 'Fen watcher', tint: '#5dade2', x: 160, z: 30, text: 'The chapel drowned, but the prior did not. Clear the fen, then take a party of four through the portal.' }
 ];
@@ -127,16 +127,20 @@ function pushCampRole(list, camp, zone, index, role, title, tint, text) {
     if (!name) return;
     const spot = campSpot(camp.layout, role, camp.x, camp.z);
     if (!campStanding(spot.x, spot.z)) return;
+    const travel = role === 'inn' && !!camp.travel;
     list.push({
         id: 'd' + role + '-' + zone.id + '-' + index,
         name,
         role,
-        title,
+        title: travel ? 'Travel inn' : title,
         tint,
         x: spot.x,
         z: spot.z,
-        text,
-        quest: ''
+        text: travel
+            ? 'This is the travel inn in ' + zone.name + '. Set your rest here, or travel to another land. Press H to return.'
+            : text,
+        quest: '',
+        travel
     });
 }
 
@@ -152,10 +156,11 @@ function campStanding(x, z) {
 function mapSpawn() {
     if (customMap()) {
         const sites = campSites();
-        if (sites[0]) {
-            const spot = campSpot(sites[0].layout || 'hamlet', 'inn', sites[0].x, sites[0].z);
-            if (onLand(spot.x, spot.z)) return { x: spot.x, z: spot.z, name: 'Inn', mapId: currentMapId() };
-            if (onLand(sites[0].x, sites[0].z)) return { x: sites[0].x, z: sites[0].z, name: 'Camp', mapId: currentMapId() };
+        const hub = sites.find(site => site.travel) || sites[0];
+        if (hub) {
+            const spot = campSpot(hub.layout || 'hamlet', 'inn', hub.x, hub.z);
+            if (onLand(spot.x, spot.z)) return { x: spot.x, z: spot.z, name: hub.travel ? 'Travel inn' : 'Inn', mapId: currentMapId() };
+            if (onLand(hub.x, hub.z)) return { x: hub.x, z: hub.z, name: 'Camp', mapId: currentMapId() };
         }
         const zone = listDesignedZones()[0];
         if (zone && zone.points && zone.points[0]) return { x: zone.points[0][0], z: zone.points[0][1], name: zone.name || 'Camp', mapId: currentMapId() };
@@ -192,7 +197,7 @@ function rebuildCivilians() {
         for (const zone of listDesignedZones()) {
             zone.camps.forEach((camp, index) => {
                 if (!campStanding(camp.x, camp.z)) return;
-                pushCampRole(CIVILIANS, camp, zone, index, 'inn', 'Innkeeper', '#e67e22', 'I keep the inn in ' + zone.name + '. Set your rest here, then press H to return.');
+                pushCampRole(CIVILIANS, camp, zone, index, 'inn', 'Innkeeper', '#e67e22', 'I keep the inn in ' + zone.name + '. Set your rest here, then press H to return. Travel is only from the dedicated inn.');
                 pushCampRole(CIVILIANS, camp, zone, index, 'shop', 'Shop', '#f1c40f', 'I buy and sell in ' + zone.name + '.');
                 pushCampRole(CIVILIANS, camp, zone, index, 'trainer', 'Trainer', '#5dade2', 'I train spells in ' + zone.name + '.');
                 pushCampRole(CIVILIANS, camp, zone, index, 'quest', 'Quest giver', '#2ecc71', 'I keep the road through ' + zone.name + '.');
@@ -217,22 +222,17 @@ function rebuildCivilians() {
             });
         }
         if (customMap() && !CIVILIANS.slice(before).some(civ => civ.role === 'bank')) {
-            const spawn = mapSpawn();
-            let best = null;
-            for (const civ of CIVILIANS.slice(before)) {
-                if (civ.role !== 'inn') continue;
-                const dist = Math.hypot(civ.x - spawn.x, civ.z - spawn.z);
-                if (!best || dist < best.dist) best = { dist, civ };
-            }
-            if (best) {
+            const inns = CIVILIANS.slice(before).filter(civ => civ.role === 'inn');
+            const hub = inns.find(civ => civ.travel) || inns[0];
+            if (hub) {
                 CIVILIANS.push({
                     id: 'nessa',
                     name: 'Nessa',
                     role: 'bank',
                     title: 'Banker',
                     tint: '#f4d03f',
-                    x: best.civ.x + 2.4,
-                    z: best.civ.z,
+                    x: hub.x + 2.4,
+                    z: hub.z,
                     text: 'The vault is only here, in the main settlement. I will hold what you do not want to carry.'
                 });
             }
@@ -250,7 +250,7 @@ function rebuildCivilians() {
 
 function campSites() {
     const sites = [];
-    if (!customMap() && onLand(0, 6)) sites.push({ id: 'glade', x: 0, z: 6, layout: 'hamlet' });
+    if (!customMap() && onLand(0, 6)) sites.push({ id: 'glade', x: 0, z: 6, layout: 'hamlet', travel: true });
     if (!customMap()) {
         for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
             for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
@@ -266,7 +266,7 @@ function campSites() {
     for (const zone of listDesignedZones()) {
         zone.camps.forEach((camp, index) => {
             if (!campStanding(camp.x, camp.z)) return;
-            sites.push({ id: 'dcamp-' + zone.id + '-' + index, x: camp.x, z: camp.z, layout: camp.layout || 'hamlet' });
+            sites.push({ id: 'dcamp-' + zone.id + '-' + index, x: camp.x, z: camp.z, layout: camp.layout || 'hamlet', travel: !!camp.travel });
         });
     }
     return sites;
@@ -310,7 +310,7 @@ rebuildCivilians();
 
 function publicCivilian(civ) {
     const quests = Array.isArray(civ.quests) ? civ.quests : (civ.quest ? [civ.quest] : []);
-    return { id: civ.id, name: civ.name, role: civ.role, title: civ.title, tint: civ.tint, x: civ.x, z: civ.z, text: civ.text, quest: quests[0] || '', quests, dungeonId: civ.dungeonId || '' };
+    return { id: civ.id, name: civ.name, role: civ.role, title: civ.title, tint: civ.tint, x: civ.x, z: civ.z, text: civ.text, quest: quests[0] || '', quests, dungeonId: civ.dungeonId || '', travel: !!civ.travel };
 }
 
 const QUEST_TYPES = ['kill', 'gather', 'named', 'protect'];
@@ -472,6 +472,14 @@ function nearCivilian(player, id) {
 
 function nearRole(player, role) {
     return CIVILIANS.find(civ => civ.role === role && (!civ.mapId || !player.mapId || civ.mapId === player.mapId) && Math.hypot(civ.x - player.x, civ.z - player.z) <= 3.6) || null;
+}
+
+function nearTravelInn(player) {
+    return CIVILIANS.find(civ => civ.role === 'inn' && civ.travel && (!civ.mapId || !player.mapId || civ.mapId === player.mapId) && Math.hypot(civ.x - player.x, civ.z - player.z) <= 3.6) || null;
+}
+
+function travelGate(mapId) {
+    return CIVILIANS.find(civ => civ.role === 'inn' && civ.travel && (civ.mapId || '') === (mapId || '')) || null;
 }
 
 function placePlayer(player, data) {
@@ -4552,8 +4560,13 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'travel', ok: false, reason: 'That land is for level ' + dest.maxLevel + ' and under' });
                 return;
             }
-            if (!nearRole(player, 'inn')) {
-                send(ws, { type: 'travel', ok: false, reason: 'Travel from an inn' });
+            if (!nearTravelInn(player)) {
+                send(ws, { type: 'travel', ok: false, reason: 'Travel only from a dedicated inn' });
+                return;
+            }
+            const gate = travelGate(dest.id);
+            if (!gate) {
+                send(ws, { type: 'travel', ok: false, reason: 'That land has no travel inn' });
                 return;
             }
             if (dest.id === (player.mapId || '')) {
@@ -4571,7 +4584,6 @@ wss.on('connection', (ws) => {
             }
             player.mapId = dest.id;
             activateMap(dest.id);
-            const gate = mapSpawn();
             player.x = gate.x;
             player.z = gate.z;
             player.y = terrainHeight(player.x, player.z);

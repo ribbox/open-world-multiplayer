@@ -724,7 +724,7 @@
         A/D or Left/Right: Turn. The camera follows behind unless you are holding the right mouse button<br>
         Space: Jump &nbsp; Shift: Sprint<br>
         H: Return to the inn where you set your rest. Stand still for a moment. Moving or combat cancels it<br>
-        Inn Travel: Move to another map. Every map stays open. A new map is the default world until it is edited<br>
+        Inn Travel: Only a dedicated travel inn can send you to another map. You arrive at that land's travel inn<br>
         1-8: Action bar &nbsp; [ ]: Change page. A slot darkens while that action cools down<br>
         Right-click a slot to assign a trained action<br>
         E: Gather if something is close, otherwise attack your target<br>
@@ -4978,7 +4978,7 @@
                 group.add(label);
                 group.userData.label = label;
                 scene.add(group);
-                worldCivs.set(civ.id, { group, id: civ.id, name: civ.name, title: civ.title, role: civ.role, text: civ.text, quest: civ.quest || '', quests: civ.quests || (civ.quest ? [civ.quest] : []), tint: civ.tint, dungeonId: civ.dungeonId || '', bob: Math.random() * Math.PI * 2 });
+                worldCivs.set(civ.id, { group, id: civ.id, name: civ.name, title: civ.title, role: civ.role, text: civ.text, quest: civ.quest || '', quests: civ.quests || (civ.quest ? [civ.quest] : []), tint: civ.tint, dungeonId: civ.dungeonId || '', travel: !!civ.travel, bob: Math.random() * Math.PI * 2 });
             }
 
             function spawnCivilians(list) {
@@ -6555,7 +6555,7 @@
                 else if (entry.role === 'trainer') tabs.push(['talents', 'Talents'], ['craft', 'Craft']);
                 else if (entry.role === 'inn') {
                     tabs.push(['rest', 'Rest']);
-                    if (travelMaps.length > 1) tabs.push(['travel', 'Travel']);
+                    if (entry.travel && travelMaps.length > 1) tabs.push(['travel', 'Travel']);
                 }
                 else if (entry.role === 'bank') tabs.push(['vault', 'Vault']);
                 if (offeredHere(entry).length) tabs.push(['quests', 'Quests']);
@@ -6849,7 +6849,7 @@
                     parent.appendChild(hint);
                 } else if (tab === 'travel') {
                     const note = document.createElement('p');
-                    note.textContent = 'Every land stays open. You need the level, and you cannot travel while fighting.';
+                    note.textContent = 'Only this inn travels between lands. You need the level, and you cannot travel while fighting. You arrive at that land\'s travel inn.';
                     parent.appendChild(note);
                     for (const map of travelMaps) {
                         const line = document.createElement('div');

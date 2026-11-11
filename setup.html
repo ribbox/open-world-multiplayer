@@ -59,7 +59,7 @@
                 <button type="button" id="tabDungeons">Dungeons</button>
             </div>
             <div id="panelMap">
-                <p>Drag the map to move it, and scroll to zoom. Draw a zone or the world edge. A zone that crosses the coast is cut back to the shoreline. Chop tree and Mine rock can be gathered. Tree and Rock are scenery and cannot. Place a camp, then choose its buildings. Every camp has an innkeeper. Shop, trainer, and quest giver are optional. The Road tool connects two camps. Click the first camp, add bends if you need them, click the next camp, then Finish outline. Straight or organic applies to each new stretch. Erase removes the single tree, rock, herb, or camp you click. Undo takes back the last change.</p>
+                <p>Drag the map to move it, and scroll to zoom. Draw a zone or the world edge. A zone that crosses the coast is cut back to the shoreline. Chop tree and Mine rock can be gathered. Tree and Rock are scenery and cannot. Place a camp, then choose its buildings. Every camp has an innkeeper. Mark one camp as the travel inn. Only that inn can send players to another map. Shop, trainer, and quest giver are optional. The Road tool connects two camps. Click the first camp, add bends if you need them, click the next camp, then Finish outline. Straight or organic applies to each new stretch. Erase removes the single tree, rock, herb, or camp you click. Undo takes back the last change.</p>
                 <div class="row">
                     <button type="button" id="editZones" class="on">Zones</button>
                     <button type="button" id="editBounds">World edge</button>
@@ -72,7 +72,7 @@
                 <button type="button" id="deleteZone">Delete zone</button>
                 <button type="button" id="clearBounds">Clear world edge</button>
                 <h2>Maps</h2>
-                <p>Every map stays open. Players travel from an inn once they meet the level. A new map is the default world until you draw on it.</p>
+                <p>Every map stays open. Players travel only from a camp marked as the travel inn, and they arrive at the travel inn of the other map. A new map is the default world until you draw on it.</p>
                 <label>Map</label>
                 <select id="mapPick"></select>
                 <label>Map name</label>
@@ -221,6 +221,8 @@
                 if (!map.bounds) map.bounds = { half: 900, edge: 'hills', swim: 14, maxSlope: 0.7, points: [], edges: [] };
                 if (!map.name) map.name = 'Lands';
                 if (!map.minLevel) map.minLevel = 1;
+                const camps = (map.zones || []).flatMap(zone => zone.camps || []);
+                if (camps.length && !camps.some(camp => camp.travel)) camps[0].travel = true;
             }
         }
         function workingIntoMap() {
@@ -285,6 +287,13 @@
             };
         }
 
+        function mapCamps() {
+            const rows = [];
+            for (const zone of config.zones || []) {
+                for (const camp of zone.camps || []) rows.push(camp);
+            }
+            return rows;
+        }
         function note(text) { document.getElementById('note').textContent = text || ''; }
         async function api(path, options = {}) {
             const headers = { ...(options.headers || {}) };
@@ -430,6 +439,25 @@
                     innName.value = camp.inn;
                 });
                 block.appendChild(labelWrap('Innkeeper', innName));
+                const travelOn = document.createElement('input');
+                travelOn.type = 'checkbox';
+                travelOn.checked = !!camp.travel;
+                travelOn.addEventListener('change', () => {
+                    remember();
+                    if (travelOn.checked) {
+                        for (const zone of config.zones) {
+                            for (const other of zone.camps || []) other.travel = false;
+                        }
+                        camp.travel = true;
+                    } else if (mapCamps().filter(other => other.travel).length <= 1) {
+                        camp.travel = true;
+                        travelOn.checked = true;
+                    } else camp.travel = false;
+                    renderFields();
+                });
+                const travelLine = document.createElement('label');
+                travelLine.append(travelOn, document.createTextNode(' Travel inn'));
+                block.appendChild(travelLine);
                 for (const [key, caption] of [['shop', 'Shop'], ['trainer', 'Trainer'], ['quest', 'Quest giver']]) {
                     const on = document.createElement('input');
                     on.type = 'checkbox';
@@ -1182,6 +1210,8 @@
                 const entry = config.zones[hit.zi];
                 if (hit.kind === 'camp') {
                     entry.camps.splice(hit.ci, 1);
+                    const left = mapCamps();
+                    if (left.length && !left.some(camp => camp.travel)) left[0].travel = true;
                     note('Camp removed');
                 } else {
                     const node = entry.nodes[hit.ni];
@@ -1200,7 +1230,8 @@
             if (tool === 'camp') {
                 remember();
                 const preset = CAMP_PRESETS[current.camps.length % CAMP_PRESETS.length];
-                current.camps.push({ x: point[0], z: point[1], layout: preset.layout, shop: preset.shop, trainer: preset.trainer, quest: preset.quest, inn: preset.inn });
+                const travel = !mapCamps().some(camp => camp.travel);
+                current.camps.push({ x: point[0], z: point[1], layout: preset.layout, shop: preset.shop, trainer: preset.trainer, quest: preset.quest, inn: preset.inn, travel });
                 renderFields();
             }
             else if (NODES.includes(tool)) {
