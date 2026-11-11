@@ -8109,6 +8109,21 @@
                             else showMessage('Hit');
                         }
                         else showMessage('Hit');
+                    } else if (data.type === 'civMove') {
+                        for (const row of data.civs || []) {
+                            const entry = worldCivs.get(row.id);
+                            if (entry) {
+                                entry.group.position.x = row.x;
+                                entry.group.position.z = row.z;
+                                entry.group.position.y = entry.dungeonId ? 0.2 : terrainHeight(row.x, row.z);
+                                if (row.rotY != null) entry.group.rotation.y = row.rotY;
+                            }
+                            const pending = pendingCivilians && pendingCivilians.find(civ => civ.id === row.id);
+                            if (pending) {
+                                pending.x = row.x;
+                                pending.z = row.z;
+                            }
+                        }
                     } else if (data.type === 'npcs') {
                         syncNpcs(data.npcs || []);
                     } else if (data.type === 'npcUnload') {

@@ -305,7 +305,7 @@ function questBlurb(quest) {
         const who = quest.named || many;
         text = 'Gather ' + quest.count + ' ' + (quest.item || 'items') + '. ' + who + ' sometimes leave them in a chest.';
     } else if (quest.type === 'named') text = 'Kill ' + (quest.elite ? 'the elite ' : '') + (quest.named || label) + '.';
-    else if (quest.type === 'protect') text = 'Protect ' + (quest.named || 'the villager') + '. Defeat ' + quest.count + ' attackers.';
+    else if (quest.type === 'protect') text = 'Protect ' + (quest.named || 'the villager') + '. They leave the camp. Defeat ' + quest.count + ' attackers.';
     else text = 'Kill ' + quest.count + ' ' + many + '.';
     if (quest.dungeonId) {
         const cave = dungeonById(quest.dungeonId);
@@ -641,6 +641,108 @@ function giverOf(quest) {
         || null;
 }
 
+function beginEscort(civ, quest) {
+    if (civ.homeX == null) {
+        civ.homeX = civ.x;
+        civ.homeZ = civ.z;
+    }
+    const site = settlementAt(civ.homeX, civ.homeZ) || { x: civ.homeX, z: civ.homeZ };
+    let dx = civ.homeX - site.x;
+    let dz = civ.homeZ - site.z;
+    if (Math.hypot(dx, dz) < 0.8) {
+        dx = 1;
+        dz = 0.35;
+    }
+    const len = Math.hypot(dx, dz) || 1;
+    civ.escort = {
+        questId: quest.id,
+        dx: dx / len,
+        dz: dz / len,
+        outsideAt: inSettlement(civ.x, civ.z) ? 0 : Date.now()
+    };
+}
+
+function protectPressure(escort, quest, now) {
+    if (!escort || !escort.outsideAt) return { count: 0, interval: 3600 };
+    const seconds = (now - escort.outsideAt) / 1000;
+    if (seconds < 3) return { count: 0, interval: 3600 };
+    const count = Math.max(1, Math.min(quest.count, 1 + Math.floor((seconds - 3) / 10)));
+    const interval = Math.max(1100, 3400 - seconds * 55);
+    return { count, interval };
+}
+
+function stepCiv(civ, gx, gz, stepMax) {
+    let dx = gx - civ.x;
+    let dz = gz - civ.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.6) return false;
+    const step = Math.min(stepMax, dist);
+    dx /= dist;
+    dz /= dist;
+    const held = clampWorld(civ.x + dx * step, civ.z + dz * step, 2);
+    if (!onLand(held.x, held.z)) {
+        if (civ.escort) {
+            const c = Math.cos(0.9);
+            const s = Math.sin(0.9);
+            const ndx = civ.escort.dx * c - civ.escort.dz * s;
+            const ndz = civ.escort.dx * s + civ.escort.dz * c;
+            civ.escort.dx = ndx;
+            civ.escort.dz = ndz;
+        }
+        return false;
+    }
+    civ.x = held.x;
+    civ.z = held.z;
+    civ.rotY = Math.atan2(dx, dz);
+    return true;
+}
+
+let lastCivMove = 0;
+function tickEscorts(dt, now) {
+    let moved = false;
+    for (const civ of CIVILIANS) {
+        if (!civ.escort) continue;
+        const quest = QUESTS[civ.escort.questId];
+        const active = quest && someoneNeeds(civ.escort.questId) && (quest.guardHp || 0) > 0;
+        if (!active) {
+            if (civ.homeX == null) {
+                civ.escort = null;
+                continue;
+            }
+            if (stepCiv(civ, civ.homeX, civ.homeZ, 2.4 * dt)) moved = true;
+            if (Math.hypot(civ.x - civ.homeX, civ.z - civ.homeZ) < 0.8) {
+                civ.x = civ.homeX;
+                civ.z = civ.homeZ;
+                civ.escort = null;
+                moved = true;
+            }
+            continue;
+        }
+        const site = settlementAt(civ.homeX, civ.homeZ) || { x: civ.homeX, z: civ.homeZ };
+        const goal = SETTLEMENT_RADIUS + 22;
+        if (stepCiv(civ, site.x + civ.escort.dx * goal, site.z + civ.escort.dz * goal, 2.2 * dt)) moved = true;
+        if (!inSettlement(civ.x, civ.z) && !civ.escort.outsideAt) civ.escort.outsideAt = now;
+    }
+    if (moved && now - lastCivMove > 200) {
+        lastCivMove = now;
+        const civs = CIVILIANS.filter(civ => civ.escort || (civ.homeX != null && Math.hypot(civ.x - civ.homeX, civ.z - civ.homeZ) > 0.4));
+        if (civs.length) broadcast({ type: 'civMove', civs: civs.map(civ => ({ id: civ.id, x: civ.x, z: civ.z, rotY: civ.rotY || 0 })) });
+    }
+}
+
+function attackSpot(civ, index) {
+    const escort = civ.escort || { dx: 1, dz: 0 };
+    let dist = 12 + index * 4;
+    for (let n = 0; n < 6; n++) {
+        const px = civ.x + escort.dx * dist + escort.dz * ((index % 3) - 1) * 3;
+        const pz = civ.z + escort.dz * dist - escort.dx * ((index % 3) - 1) * 3;
+        const edge = clampWorld(px, pz, 2);
+        if (onLand(edge.x, edge.z) && !inSettlement(edge.x, edge.z)) return edge;
+        dist += 6;
+    }
+    return clampWorld(civ.x + escort.dx * 16, civ.z + escort.dz * 16, 2);
+}
+
 function protectTarget(quest) {
     return civInZone(quest.zoneId, quest.protectRole, quest.protectCamp, quest.named)
         || CIVILIANS.find(civ => civ.name.toLowerCase() === String(quest.named || '').toLowerCase())
@@ -866,15 +968,21 @@ function syncQuestActors(now) {
             const spot = spotNear(giver.x, giver.z, 1);
             spawnQuestMob(quest, id, 0, spot.x, spot.z, '');
         } else if (quest.type === 'protect') {
-            if (!someoneNeeds(id)) continue;
+            if (!someoneNeeds(id)) {
+                for (const npc of [...npcs.values()]) if (npc.questId === id) dropQuestMob(npc);
+                continue;
+            }
             const civ = protectTarget(quest);
             if (!civ) continue;
             if (!quest.guardMax) quest.guardMax = 50 + quest.count * 20;
             if (!quest.guardHp) quest.guardHp = quest.guardMax;
+            if (!civ.escort || civ.escort.questId !== id) beginEscort(civ, quest);
+            const pressure = protectPressure(civ.escort, quest, now);
+            quest.attackEvery = pressure.interval;
             const alive = [...npcs.values()].filter(npc => npc.questId === id && (npc.alive || npc.respawnAt > now));
-            for (let i = alive.length; i < quest.count; i++) {
-                const spot = spotNear(civ.x, civ.z, i + 1);
-                spawnQuestMob(quest, id, i, spot.x, spot.z, civ.id);
+            for (let i = alive.length; i < pressure.count; i++) {
+                const spot = attackSpot(civ, alive.length + i + 1);
+                spawnQuestMob(quest, id, now + i, spot.x, spot.z, civ.id);
             }
         }
     }
@@ -3230,6 +3338,7 @@ function tickNpcs() {
     const now = Date.now();
     const dt = Math.min(0.1, (now - lastNpcTick) / 1000);
     lastNpcTick = now;
+    tickEscorts(dt, now);
     refreshNpcZones();
     for (const area of activeAreas.values()) tickAreaSpawns(area, now);
 
@@ -3255,14 +3364,14 @@ function tickNpcs() {
                 const row = entry.quests && entry.quests[npc.questId];
                 return row && row.state === 'active' && !row.failed && Math.hypot(entry.x - civ.x, entry.z - civ.z) < 42;
             });
-            if (civ && quest && playerNear && !nearestPlayer(npc, AGGRO_RANGE)) {
+            if (civ && quest && playerNear && !nearestPlayer(npc, AGGRO_RANGE) && !inSettlement(civ.x, civ.z)) {
                 const dx = civ.x - npc.x;
                 const dz = civ.z - npc.z;
                 const dist = Math.hypot(dx, dz) || 0;
                 npc.rotY = Math.atan2(dx, dz);
                 if (dist <= 1.8) {
                     if (now >= npc.attackAt) {
-                        npc.attackAt = now + 1500;
+                        npc.attackAt = now + (quest.attackEvery || 2800);
                         quest.guardHp = (quest.guardHp || 0) - 4;
                         if (quest.guardHp <= 0) failProtect(npc.questId);
                     }

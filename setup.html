@@ -1449,7 +1449,7 @@
             if (quest.custom && quest.text) return quest.text;
             if (quest.type === 'gather') return 'Gather ' + (quest.count || 1) + ' ' + (quest.item || 'items') + '. ' + (quest.named || many) + ' drop them.';
             if (quest.type === 'named') return 'Kill ' + (quest.elite ? 'the elite ' : '') + (quest.named || label) + '.';
-            if (quest.type === 'protect') return 'Protect ' + (quest.named || 'the villager') + '. Defeat ' + (quest.count || 1) + ' attackers.';
+            if (quest.type === 'protect') return 'Protect ' + (quest.named || 'the villager') + '. They leave the camp. Defeat ' + (quest.count || 1) + ' attackers.';
             return 'Kill ' + (quest.count || 1) + ' ' + many + '.';
         }
         function renderQuests() {
