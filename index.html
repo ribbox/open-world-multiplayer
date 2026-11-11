@@ -1668,7 +1668,8 @@
                 if (pendingCivilians) spawnCivilians(pendingCivilians);
                 console.log('NPC models loaded', npcModels.size);
             }
-            function groundCreature(model, height) {
+            function groundCreature(model, height, yaw) {
+                if (yaw) model.rotation.y = yaw;
                 model.updateWorldMatrix(true, true);
                 const box = new THREE.Box3().setFromObject(model);
                 const h = Math.max(0.001, box.max.y - box.min.y);
@@ -1928,7 +1929,7 @@
                 loader.load(
                     NPC_FILES[kind] || ('/models/' + kind + '.glb'),
                     (gltf) => {
-                        groundCreature(gltf.scene, CREATURE_HEIGHT[kind] || 1.4);
+                        groundCreature(gltf.scene, CREATURE_HEIGHT[kind] || 1.4, kind === 'spider' ? -Math.PI / 2 : 0);
                         if (NPC_FILES[kind]) gltf.scene.userData.noGait = true;
                         if (NPC_COLOR[kind]) {
                             const tint = new THREE.Color(NPC_COLOR[kind]);
