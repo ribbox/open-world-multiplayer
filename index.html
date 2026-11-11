@@ -1652,12 +1652,6 @@
                 shop: '/models/low-poly-person.glb',
                 quest: '/models/cat-person_untextured.glb'
             };
-            const NPC_COLOR = {
-                wolf: 0x8e969b,
-                ogre: 0x6e4b2a,
-                shop: 0xc4a574,
-                quest: 0xb08968
-            };
             const NPC_MODEL_KINDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist', 'shop', 'trainer', 'quest'];
             let npcLoadsLeft = NPC_MODEL_KINDS.length;
             function finishNpcModels() {
@@ -1680,6 +1674,100 @@
                 model.position.x -= (grounded.min.x + grounded.max.x) / 2;
                 model.position.z -= (grounded.min.z + grounded.max.z) / 2;
                 model.userData.foot = model.position.y;
+            }
+            function surfaceColor(kind, x, y, z, headZ) {
+                const ax = Math.abs(x);
+                if (kind === 'shop') {
+                    if (y > 0.42 && y < 0.68 && ax > 0.28) return [0.8, 0.62, 0.48];
+                    if (y > 0.78) {
+                        if (y > 0.91) return [0.25, 0.16, 0.11];
+                        if (y > 0.84 && y < 0.9 && z > 0.02 && ax > 0.05 && ax < 0.2) return [0.12, 0.14, 0.16];
+                        return [0.8, 0.62, 0.48];
+                    }
+                    if (y > 0.5) return [0.22, 0.4, 0.58];
+                    if (y > 0.44) return [0.45, 0.3, 0.14];
+                    if (y > 0.12) return [0.3, 0.25, 0.2];
+                    return [0.14, 0.11, 0.09];
+                }
+                if (kind === 'quest') {
+                    if (y > 0.93 && ax > 0.08) return [0.28, 0.16, 0.12];
+                    if (y > 0.9 && ax > 0.1 && ax < 0.26) return [0.72, 0.45, 0.48];
+                    if (y > 0.8 && y < 0.9 && z > 0.06 && ax > 0.05 && ax < 0.22) return [0.15, 0.55, 0.28];
+                    if (y > 0.76 && y < 0.84 && z > 0.1 && ax < 0.06) return [0.42, 0.2, 0.22];
+                    if (y > 0.74 && z > 0.08 && ax < 0.14) return [0.78, 0.64, 0.48];
+                    if (y < 0.08 || (y > 0.42 && y < 0.7 && ax > 0.34)) return [0.26, 0.16, 0.11];
+                    if (y > 0.4 && y < 0.66 && ax < 0.16) return [0.18, 0.38, 0.28];
+                    return [0.55, 0.38, 0.24];
+                }
+                if (kind === 'wolf') {
+                    const along = z * headZ;
+                    if (along > 0.32 && y > 0.55 && y < 0.72 && ax > 0.04 && ax < 0.16) return [0.12, 0.42, 0.18];
+                    if (along > 0.4 && y > 0.48 && ax < 0.08) return [0.1, 0.08, 0.08];
+                    if (y > 0.72 && along > 0.15) return [0.3, 0.28, 0.28];
+                    if (y < 0.22 && ax > 0.12) return [0.22, 0.2, 0.2];
+                    if (y < 0.38 && ax < 0.14) return [0.76, 0.74, 0.68];
+                    if (y > 0.5) return [0.32, 0.34, 0.36];
+                    return [0.55, 0.56, 0.58];
+                }
+                if (y > 0.86) return [0.16, 0.12, 0.09];
+                if (y > 0.72 && y < 0.82 && z > 0.04 && ax > 0.04 && ax < 0.16) return [0.55, 0.12, 0.08];
+                if (y > 0.32 && y < 0.48 && ax < 0.18) return [0.36, 0.22, 0.12];
+                if (y > 0.28 && y < 0.36) return [0.18, 0.12, 0.08];
+                if (y < 0.16) return [0.28, 0.34, 0.18];
+                return [0.46, 0.56, 0.32];
+            }
+            function paintParts(model, kind) {
+                model.updateWorldMatrix(true, true);
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                const cx = (box.min.x + box.max.x) / 2;
+                const cz = (box.min.z + box.max.z) / 2;
+                const sx = size.x || 1;
+                const sy = size.y || 1;
+                const sz = size.z || 1;
+                let headZ = 1;
+                const probe = new THREE.Vector3();
+                if (kind === 'wolf') {
+                    let best = -1;
+                    model.traverse(obj => {
+                        if (!obj.isMesh || !obj.geometry) return;
+                        const attr = obj.geometry.getAttribute('position');
+                        if (!attr) return;
+                        const step = Math.max(1, Math.floor(attr.count / 80));
+                        for (let i = 0; i < attr.count; i += step) {
+                            probe.fromBufferAttribute(attr, i);
+                            obj.localToWorld(probe);
+                            const y = (probe.y - box.min.y) / sy;
+                            const z = (probe.z - cz) / sz;
+                            if (y > 0.62 && Math.abs(z) > best) {
+                                best = Math.abs(z);
+                                headZ = Math.sign(z) || 1;
+                            }
+                        }
+                    });
+                }
+                const point = new THREE.Vector3();
+                model.traverse(obj => {
+                    if (!obj.isMesh || !obj.geometry) return;
+                    const geo = obj.geometry;
+                    const attr = geo.getAttribute('position');
+                    if (!attr) return;
+                    const colors = new Float32Array(attr.count * 3);
+                    for (let i = 0; i < attr.count; i++) {
+                        point.fromBufferAttribute(attr, i);
+                        obj.localToWorld(point);
+                        const tone = surfaceColor(kind, (point.x - cx) / sx, (point.y - box.min.y) / sy, (point.z - cz) / sz, headZ);
+                        colors[i * 3] = tone[0];
+                        colors[i * 3 + 1] = tone[1];
+                        colors[i * 3 + 2] = tone[2];
+                    }
+                    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+                    for (const mat of mats) {
+                        mat.vertexColors = true;
+                        if (mat.color) mat.color.set(0xffffff);
+                    }
+                });
             }
             function plantFeet(model) {
                 model.updateWorldMatrix(true, true);
@@ -1931,17 +2019,7 @@
                     (gltf) => {
                         groundCreature(gltf.scene, CREATURE_HEIGHT[kind] || 1.4, kind === 'spider' ? -Math.PI / 2 : 0);
                         if (NPC_FILES[kind]) gltf.scene.userData.noGait = true;
-                        if (NPC_COLOR[kind]) {
-                            const tint = new THREE.Color(NPC_COLOR[kind]);
-                            gltf.scene.traverse(obj => {
-                                if (!obj.isMesh || !obj.material) return;
-                                const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-                                for (const mat of mats) {
-                                    if (mat.map || mat.vertexColors) continue;
-                                    if (mat.color) mat.color.copy(tint);
-                                }
-                            });
-                        }
+                        if (kind === 'wolf' || kind === 'ogre' || kind === 'shop' || kind === 'quest') paintParts(gltf.scene, kind);
                         npcModels.set(kind, gltf.scene);
                         finishNpcModels();
                     },
