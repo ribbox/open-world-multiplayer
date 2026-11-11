@@ -79,17 +79,17 @@ These are drawn on the character while that tool is in use. They are not separat
 | --- | --- | --- |
 | models/player.glb | Player | |
 | models/npc.glb | | |
-| * models/wild_pigboar_meshy.glb | Wild boar | https://skfb.ly/p9qVQ |
-| * models/low_poly_wolf.glb | Wolf | https://skfb.ly/698Sv  |
-| * models/low-poly_spider.glb | Moss spider | https://skfb.ly/6YONM |
+| models/wild_pigboar_meshy.glb | Wild boar | https://skfb.ly/p9qVQ |
+| models/low_poly_wolf.glb | Wolf | https://skfb.ly/698Sv  |
+| models/low-poly_spider.glb | Moss spider | https://skfb.ly/6YONM |
 | models/bandit.glb | Bandit | |
-| * models/ogre_lowpoly.glb | Hill ogre | https://skfb.ly/n5ifd0a |
+| models/ogre_lowpoly.glb | Hill ogre | https://skfb.ly/n5ifd0a |
 | models/wisp.glb | Fen wisp | |
 | models/knight.glb | Plate knight | |
 | models/cultist.glb | Cultist | |
-| * models/low-poly-person.glb | Shop assistant, innkeeper | https://skfb.ly/oSywH |
+| models/low-poly-person.glb | Shop assistant, innkeeper | https://skfb.ly/oSywH |
 | models/trainer.glb | Trainer | |
-| * models/cat-person_untextured.glb | Quest giver | https://skfb.ly/opyOG |
+| models/cat-person_untextured.glb | Quest giver | https://skfb.ly/opyOG |
 | models/camp.glb | Camp | Done |
 | models/inn.glb | Inn | Done |
 | models/cabin.glb | Cabin | Done |

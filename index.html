@@ -1644,7 +1644,20 @@
             targetRing.visible = false;
             scene.add(targetRing);
 
-            const NPC_FILES = { boar: '/models/wild_pigboar_meshy.glb' };
+            const NPC_FILES = {
+                boar: '/models/wild_pigboar_meshy.glb',
+                wolf: '/models/low_poly_wolf.glb',
+                spider: '/models/low-poly_spider.glb',
+                ogre: '/models/ogre_lowpoly.glb',
+                shop: '/models/low-poly-person.glb',
+                quest: '/models/cat-person_untextured.glb'
+            };
+            const NPC_COLOR = {
+                wolf: 0x8e969b,
+                ogre: 0x6e4b2a,
+                shop: 0xc4a574,
+                quest: 0xb08968
+            };
             const NPC_MODEL_KINDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist', 'shop', 'trainer', 'quest'];
             let npcLoadsLeft = NPC_MODEL_KINDS.length;
             function finishNpcModels() {
@@ -1880,7 +1893,7 @@
                 }
             }
             function updateGait(root, delta, speed) {
-                if (!root) return;
+                if (!root || root.userData.noGait) return;
                 prepareWalker(root);
                 const walker = root.userData.walker;
                 if (!walker) return;
@@ -1916,6 +1929,18 @@
                     NPC_FILES[kind] || ('/models/' + kind + '.glb'),
                     (gltf) => {
                         groundCreature(gltf.scene, CREATURE_HEIGHT[kind] || 1.4);
+                        if (NPC_FILES[kind]) gltf.scene.userData.noGait = true;
+                        if (NPC_COLOR[kind]) {
+                            const tint = new THREE.Color(NPC_COLOR[kind]);
+                            gltf.scene.traverse(obj => {
+                                if (!obj.isMesh || !obj.material) return;
+                                const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+                                for (const mat of mats) {
+                                    if (mat.map || mat.vertexColors) continue;
+                                    if (mat.color) mat.color.copy(tint);
+                                }
+                            });
+                        }
                         npcModels.set(kind, gltf.scene);
                         finishNpcModels();
                     },
