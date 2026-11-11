@@ -2497,6 +2497,103 @@ function grantCraftXp(player, recipe) {
     return name + ' +' + gain;
 }
 
+function craftCount(player, recipe) {
+    let count = Infinity;
+    for (const [kind, qty] of Object.entries(recipe.cost || {})) {
+        if (qty <= 0) continue;
+        count = Math.min(count, Math.floor(countKind(player, kind) / qty));
+    }
+    return Number.isFinite(count) ? Math.max(0, count) : 0;
+}
+
+function craftStatus(player) {
+    const job = player.crafting;
+    if (!job) return null;
+    const recipe = RECIPES[job.recipe];
+    return {
+        recipe: job.recipe,
+        name: recipe ? recipe.name : 'Item',
+        made: job.made,
+        total: job.total,
+        ms: 3000,
+        until: job.nextAt
+    };
+}
+
+function startCraft(player, id, count) {
+    if (player.crafting) return 'Already crafting';
+    const recipe = RECIPES[id];
+    if (!recipe) return 'Unknown recipe';
+    if (!player.recipes.includes(id)) return 'Recipe not learned';
+    const skill = ensureCraftSkill(player, recipe.set) || { level: 1, xp: 0, tiers: [0] };
+    const tier = recipe.tier || 0;
+    if (!(skill.tiers || [0]).includes(tier)) return 'Train tier ' + tier + ' at a trainer';
+    if (skill.level < tier) return 'Requires crafting level ' + tier;
+    const can = craftCount(player, recipe);
+    if (can < 1) {
+        const [kind, qty] = Object.entries(recipe.cost || {})[0] || ['materials', 1];
+        return 'Need ' + qty + ' ' + (MATERIAL_NAMES[kind] || kind);
+    }
+    const asked = count === 'all' ? can : Math.max(1, Math.min(200, Math.round(Number(count) || 1)));
+    const total = Math.min(can, asked);
+    player.crafting = { recipe: id, left: total, made: 0, total, nextAt: Date.now() + 3000 };
+    return null;
+}
+
+function tickCrafting(now) {
+    for (const player of players.values()) {
+        const job = player.crafting;
+        if (!job || now < job.nextAt) continue;
+        const recipe = RECIPES[job.recipe];
+        const error = craftItem(player, job.recipe);
+        if (error) {
+            const made = job.made;
+            const name = recipe ? recipe.name : 'item';
+            player.crafting = null;
+            player.craftNote = '';
+            send(player.ws, {
+                type: 'character',
+                ok: false,
+                reason: made ? 'Crafted ' + made + ' ' + name + '. ' + error : error,
+                craft: null,
+                character: publicCharacter(player),
+                inventory: inventoryOf(player),
+                ...statsOf(player)
+            });
+            continue;
+        }
+        job.made += 1;
+        job.left -= 1;
+        if (job.left <= 0) {
+            const name = recipe ? recipe.name : 'item';
+            const note = 'Crafted ' + job.made + ' ' + name + (player.craftNote ? ' · ' + player.craftNote : '');
+            player.craftNote = '';
+            player.crafting = null;
+            send(player.ws, {
+                type: 'character',
+                ok: true,
+                note,
+                craft: null,
+                character: publicCharacter(player),
+                inventory: inventoryOf(player),
+                ...statsOf(player)
+            });
+        } else {
+            job.nextAt = now + 3000;
+            player.craftNote = '';
+            send(player.ws, {
+                type: 'character',
+                ok: true,
+                quiet: true,
+                craft: craftStatus(player),
+                character: publicCharacter(player),
+                inventory: inventoryOf(player),
+                ...statsOf(player)
+            });
+        }
+    }
+}
+
 function craftItem(player, id) {
     const recipe = RECIPES[id];
     if (!recipe) return 'Unknown recipe';
@@ -2508,8 +2605,6 @@ function craftItem(player, id) {
     for (const [kind, qty] of Object.entries(recipe.cost)) {
         if (countKind(player, kind) < qty) return 'Need ' + qty + ' ' + (MATERIAL_NAMES[kind] || kind);
     }
-    normalizeSlots(player);
-    if (!player.slots.some(slot => !slot)) return 'Inventory full';
     for (const [kind, qty] of Object.entries(recipe.cost)) takeKind(player, kind, qty);
     const made = statsForRecipe(recipe);
     const rest = addToSlots(player, {
@@ -3339,6 +3434,7 @@ function tickNpcs() {
     const dt = Math.min(0.1, (now - lastNpcTick) / 1000);
     lastNpcTick = now;
     tickEscorts(dt, now);
+    tickCrafting(now);
     refreshNpcZones();
     for (const area of activeAreas.values()) tickAreaSpawns(area, now);
 
@@ -4668,11 +4764,17 @@ wss.on('connection', (ws) => {
         }
 
         if (data.type === 'craft') {
-            const recipe = RECIPES[data.recipe];
-            const error = craftItem(player, data.recipe);
-            const extra = !error && player.craftNote ? ' · ' + player.craftNote : '';
-            player.craftNote = '';
-            send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : ('Crafted ' + (recipe ? recipe.name : 'item') + extra), character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            const error = startCraft(player, data.recipe, data.count);
+            send(ws, {
+                type: 'character',
+                ok: !error,
+                quiet: !error,
+                reason: error || '',
+                craft: error ? null : craftStatus(player),
+                character: publicCharacter(player),
+                inventory: inventoryOf(player),
+                ...statsOf(player)
+            });
             return;
         }
 

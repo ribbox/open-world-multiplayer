@@ -493,6 +493,8 @@
             position: absolute; left: 0; top: 0; bottom: 0;
             background: linear-gradient(180deg, #ffe58a 0%, #e0b123 55%, #8a6a10 100%);
         }
+        .craft-actions { display: flex; gap: 4px; flex: none; }
+        .craft-job { margin: 0 0 8px; }
         .text-btn { padding: 3px 8px; }
         .text-btn:disabled { opacity: 0.45; cursor: default; }
         #sheetClose { float: right; }
@@ -7054,12 +7056,29 @@
                     parent.appendChild(line);
                 }
             }
+            let craftJob = null;
             function renderCraft(body) {
                 const craft = character.craft || { sets: {}, recipes: {} };
                 const known = new Set(character.recipes || []);
                 const skills = character.craftSkill || {};
+                if (craftJob) {
+                    const job = document.createElement('div');
+                    job.className = 'craft-job';
+                    const label = document.createElement('div');
+                    label.id = 'craftJobLabel';
+                    label.textContent = 'Crafting ' + craftJob.name;
+                    const track = document.createElement('div');
+                    track.className = 'craft-track';
+                    const fill = document.createElement('div');
+                    fill.id = 'craftJobFill';
+                    fill.className = 'craft-fill';
+                    track.appendChild(fill);
+                    job.appendChild(label);
+                    job.appendChild(track);
+                    body.appendChild(job);
+                }
                 const note = document.createElement('div');
-                note.textContent = 'Making items raises the skill. Low items give less as you improve. Higher items give more. Tiers at 75, 150, and 225 are taught by a trainer.';
+                note.textContent = 'Each item takes 3 seconds. x1, x10, or all you have materials for.';
                 body.appendChild(note);
                 const groups = {};
                 for (const [id, recipe] of Object.entries(craft.recipes || {})) {
@@ -7077,29 +7096,38 @@
                         line.appendChild(itemCanvas(recipe));
                         const label = document.createElement('div');
                         const cost = Object.entries(recipe.cost || {}).map(([kind, qty]) => qty + ' ' + kind).join(', ');
-                        const ready = Object.entries(recipe.cost || {}).every(([kind, qty]) => haveKind(kind) >= qty);
+                        const costs = Object.entries(recipe.cost || {});
+                        const can = costs.length ? costs.reduce((n, [kind, qty]) => Math.min(n, qty > 0 ? Math.floor(haveKind(kind) / qty) : n), Infinity) : 0;
                         const bits = statBits(recipe);
                         const gain = craftXpGain(recipe.craftLevel || 1, skill.level);
                         const tier = recipe.tier || 0;
                         const trained = (skill.tiers || [0]).includes(tier);
-                        label.textContent = recipe.name + (tier ? ' · tier ' + tier : '') + (bits.length ? ' · ' + bits.join(' ') : '') + (recipe.armor ? ' · armor ' + recipe.armor : '') + ' · ' + cost + (gain ? ' · +' + gain + ' skill' : '');
+                        const open = trained && skill.level >= tier;
+                        label.textContent = recipe.name + (open && can > 0 ? ' x' + can : '') + (tier ? ' · tier ' + tier : '') + (bits.length ? ' · ' + bits.join(' ') : '') + (recipe.armor ? ' · armor ' + recipe.armor : '') + ' · ' + cost + (gain ? ' · +' + gain + ' skill' : '');
                         bindItemTip(line, recipe, ['Click Craft']);
                         line.appendChild(label);
-                        const button = document.createElement('button');
-                        button.type = 'button';
-                        button.className = 'text-btn';
-                        if (!trained) {
-                            button.textContent = 'Train ' + tier;
+                        if (!open) {
+                            const button = document.createElement('button');
+                            button.type = 'button';
+                            button.className = 'text-btn';
+                            button.textContent = !trained ? 'Train ' + tier : 'Needs ' + tier;
                             button.disabled = true;
-                        } else if (skill.level < tier) {
-                            button.textContent = 'Needs ' + tier;
-                            button.disabled = true;
+                            line.appendChild(button);
                         } else {
-                            button.textContent = 'Craft';
-                            button.disabled = !ready;
-                            button.addEventListener('click', () => sendCharacter('craft', { recipe: id }));
+                            const actions = document.createElement('div');
+                            actions.className = 'craft-actions';
+                            for (const [text, count] of [['x1', 1], ['x10', 10], ['All', 'all']]) {
+                                const button = document.createElement('button');
+                                button.type = 'button';
+                                button.className = 'text-btn';
+                                button.textContent = text;
+                                const need = count === 'all' ? 1 : count;
+                                button.disabled = !!craftJob || can < need;
+                                if (!button.disabled) button.addEventListener('click', () => sendCharacter('craft', { recipe: id, count }));
+                                actions.appendChild(button);
+                            }
+                            line.appendChild(actions);
                         }
-                        line.appendChild(button);
                         body.appendChild(line);
                     }
                 }
@@ -7302,6 +7330,14 @@
 
             function animate() {
                 requestAnimationFrame(animate);
+                if (craftJob) {
+                    const fill = document.getElementById('craftJobFill');
+                    const label = document.getElementById('craftJobLabel');
+                    const span = craftJob.ms || 3000;
+                    const left = Math.max(0, (craftJob.until || 0) - Date.now());
+                    if (fill) fill.style.width = Math.max(0, Math.min(100, (1 - left / span) * 100)) + '%';
+                    if (label) label.textContent = 'Crafting ' + craftJob.name + ' ' + (Math.min(craftJob.total, craftJob.made + 1)) + '/' + craftJob.total;
+                }
                 const delta = Math.min(clock.getDelta(), 0.05);
 
                 let turnInput = 0;
@@ -8348,6 +8384,7 @@
                             }
                         }
                     } else if (data.type === 'character') {
+                        if (Object.prototype.hasOwnProperty.call(data, 'craft')) craftJob = data.craft || null;
                         if (data.inventory) applyInventory(data.inventory);
                         applyStats(data);
                         if (Array.isArray(data.actionbar)) actionBar = data.actionbar;
