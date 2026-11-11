@@ -3471,6 +3471,58 @@
             const cameraRaycaster = new THREE.Raycaster();
             const allColliders = [];
 
+            function campWarmth(wx, wz) {
+                if (!lastCamps || !lastCamps.length) return 0;
+                let warmth = 0;
+                for (const site of lastCamps) {
+                    const d = Math.hypot(wx - site.x, wz - site.z);
+                    if (d >= 28) continue;
+                    const wash = d > 25.6 ? 0.7 : 0.28 * (1 - d / 28);
+                    if (wash > warmth) warmth = wash;
+                }
+                return warmth;
+            }
+
+            function groundColor(wx, wz, y) {
+                const cliff = worldShape().edge === 'hills' && boundaryInset(wx, wz) < 18;
+                const sand = sandReady && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
+                const grass = !sand && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
+                const tint = grass || sand
+                    ? [1, 1, 1]
+                    : y < WATER_LEVEL - 0.15
+                    ? [0.07, 0.2, 0.3]
+                    : y < WATER_LEVEL + 0.55
+                    ? [0.76, 0.68, 0.42]
+                    : cliff || y > 11 ? [0.45, 0.42, 0.36]
+                    : y > 7.5 ? [0.42, 0.48, 0.34]
+                    : y > 4.2 ? [0.32, 0.5, 0.22]
+                    : [0.16, 0.46, 0.15];
+                const warmth = y >= WATER_LEVEL + 0.15 ? campWarmth(wx, wz) : 0;
+                if (warmth > 0) {
+                    const gold = [0.96, 0.78, 0.4];
+                    tint[0] += (gold[0] - tint[0]) * warmth;
+                    tint[1] += (gold[1] - tint[1]) * warmth;
+                    tint[2] += (gold[2] - tint[2]) * warmth;
+                }
+                return { tint, sand, grass };
+            }
+
+            function retintGround() {
+                for (const mesh of terrainMeshes) {
+                    const geo = mesh.geometry;
+                    const pos = geo.attributes.position;
+                    const colors = geo.attributes.color;
+                    if (!pos || !colors) continue;
+                    const ox = mesh.parent ? mesh.parent.position.x : 0;
+                    const oz = mesh.parent ? mesh.parent.position.z : 0;
+                    for (let i = 0; i < pos.count; i++) {
+                        const tint = groundColor(ox + pos.getX(i), oz + pos.getZ(i), pos.getY(i)).tint;
+                        colors.setXYZ(i, tint[0], tint[1], tint[2]);
+                    }
+                    colors.needsUpdate = true;
+                }
+            }
+
             function addTerrain(group, cx, cz) {
                 const seg = 48;
                 const geo = new THREE.PlaneGeometry(chunkSize, chunkSize, seg, seg);
@@ -3479,7 +3531,6 @@
                 const colors = new Float32Array(pos.count * 3);
                 const biome = new Float32Array(pos.count);
                 const uv = geo.attributes.uv;
-                const edgeKind = worldShape().edge;
                 let wet = false;
                 for (let i = 0; i < pos.count; i++) {
                     const wx = cx * chunkSize + pos.getX(i);
@@ -3488,23 +3539,11 @@
                     pos.setY(i, y);
                     uv.setXY(i, wx / 20, wz / 20);
                     if (y < WATER_LEVEL + 0.15) wet = true;
-                    const cliff = edgeKind === 'hills' && boundaryInset(wx, wz) < 18;
-                    const sand = sandReady && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
-                    const grass = !sand && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
-                    biome[i] = sand ? 2 : grass ? 1 : 0;
-                    const tint = grass || sand
-                        ? [1, 1, 1]
-                        : y < WATER_LEVEL - 0.15
-                        ? [0.07, 0.2, 0.3]
-                        : y < WATER_LEVEL + 0.55
-                        ? [0.76, 0.68, 0.42]
-                        : cliff || y > 11 ? [0.45, 0.42, 0.36]
-                        : y > 7.5 ? [0.42, 0.48, 0.34]
-                        : y > 4.2 ? [0.32, 0.5, 0.22]
-                        : [0.16, 0.46, 0.15];
-                    colors[i * 3] = tint[0];
-                    colors[i * 3 + 1] = tint[1];
-                    colors[i * 3 + 2] = tint[2];
+                    const painted = groundColor(wx, wz, y);
+                    biome[i] = painted.sand ? 2 : painted.grass ? 1 : 0;
+                    colors[i * 3] = painted.tint[0];
+                    colors[i * 3 + 1] = painted.tint[1];
+                    colors[i * 3 + 2] = painted.tint[2];
                 }
                 geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                 geo.setAttribute('biome', new THREE.BufferAttribute(biome, 1));
@@ -5051,6 +5090,7 @@
                 campRoot = new THREE.Group();
                 scene.add(campRoot);
                 for (const site of lastCamps) buildCamp(campRoot, site);
+                retintGround();
             }
 
             let civZoneKey = '';
