@@ -1746,7 +1746,7 @@ const ABILITY_COOLDOWN = {
     'wing-clip': 8000,
     'multi-shot': 8000,
     'kill-shot': 8000,
-    wand: 1400,
+    wand: 1000,
     'shadow-bolt': 2000,
     'drain-life': 5000,
     curse: 8000,

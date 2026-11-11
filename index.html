@@ -1995,19 +1995,19 @@
                 execute: { name: 'Execute', short: 'Exe', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Double damage under 35% health. 8s.' },
                 cleave: { name: 'Cleave', short: 'Clv', kind: 'spell', weapon: 'sword', hint: 'Warrior talent spell. Hits the target and anyone beside them. 8s.' },
                 whirlwind: { name: 'Whirlwind', short: 'Spin', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Hits every hostile around you. 12s.' },
-                staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'A magic bolt from an equipped staff. 1.2s.' },
+                staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'A magic bolt from an equipped staff. 1s, and it keeps going once you attack.' },
                 'arcane-bolt': { name: 'Arcane Missile', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Ranks 3 and 5 fire extra bolts. 1.8s.' },
                 'frost-bolt': { name: 'Frost Bolt', short: 'Frost', kind: 'spell', weapon: 'staff', hint: 'Mage spell. A bolt that slows. 2.2s.' },
                 'arcane-surge': { name: 'Arcane Surge', short: 'Srg', kind: 'spell', weapon: 'staff', hint: 'Mage talent spell. 8s.' },
                 mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Restore health. 5s.' },
                 barrier: { name: 'Barrier', short: 'Bar', kind: 'spell', weapon: 'staff', hint: 'Mage spell. A shield that soaks the next hits. 18s.' },
                 'frost-nova': { name: 'Frost Nova', short: 'Nova', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Frost and a slow around you. 14s.' },
-                bow: { name: 'Bow', short: 'Bow', kind: 'weapon', weapon: 'bow', hint: 'A ranged shot. A higher rank hits harder. 1.4s.' },
+                bow: { name: 'Bow', short: 'Bow', kind: 'weapon', weapon: 'bow', hint: 'A ranged shot. A higher rank hits harder. 1s, and it keeps going once you attack.' },
                 'aimed-shot': { name: 'Aimed Shot', short: 'Aim', kind: 'spell', weapon: 'bow', hint: 'Hunter spell. A heavy shot. 6s.' },
                 'wing-clip': { name: 'Wing Clip', short: 'Clip', kind: 'spell', weapon: 'bow', hint: 'Hunter spell. A shot that slows. 8s.' },
                 'multi-shot': { name: 'Multi-Shot', short: 'Multi', kind: 'spell', weapon: 'bow', hint: 'Hunter spell. Hits the target and anyone beside them. 8s.' },
                 'kill-shot': { name: 'Kill Shot', short: 'Kill', kind: 'spell', weapon: 'bow', hint: 'Hunter spell. Double damage under 35% health. 8s.' },
-                wand: { name: 'Wand', short: 'Wnd', kind: 'weapon', weapon: 'wand', hint: 'A shadow bolt. 1.4s.' },
+                wand: { name: 'Wand', short: 'Wnd', kind: 'weapon', weapon: 'wand', hint: 'A shadow bolt. 1s, and it keeps going once you attack.' },
                 'shadow-bolt': { name: 'Shadow Bolt', short: 'Shd', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. A hard bolt. 2s.' },
                 'drain-life': { name: 'Drain Life', short: 'Drain', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. The damage returns as health. 5s.' },
                 curse: { name: 'Curse', short: 'Curse', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. A bolt that slows. 8s.' },
@@ -4158,26 +4158,50 @@
                 showMessage('Returning to ' + (boundSpawn.name || 'the inn') + '…');
             }
 
-            function tryAttack(ability) {
+            let autoAttack = false;
+            let autoSentAt = 0;
+            let lastAttackAuto = false;
+            let autoNote = '';
+            let autoNoteAt = 0;
+
+            function basicAttackId() {
+                const byClass = { warrior: 'sword', mage: 'staff', hunter: 'bow', warlock: 'wand' }[character && character.class];
+                if (byClass) return byClass;
+                return { sword: 'sword', staff: 'staff', bow: 'bow', wand: 'wand' }[equippedWeapon] || null;
+            }
+
+            function basicInRange(aimed, id) {
+                const reach = { sword: 2.6, staff: 8, bow: 9, wand: 8 }[id] || 2.6;
+                const dx = aimed.group.position.x - characterGroup.position.x;
+                const dz = aimed.group.position.z - characterGroup.position.z;
+                return dx * dx + dz * dz <= (reach + 0.35) * (reach + 0.35);
+            }
+
+            function tryAttack(ability, auto) {
                 const action = ACTIONS[ability];
                 if (!action || !action.weapon) return;
                 if (ghost) {
-                    showMessage('You are a ghost');
-                    return;
-                }
-                if (cooling(ability)) {
-                    showMessage('Not ready');
+                    if (!auto) showMessage('You are a ghost');
+                    autoAttack = false;
                     return;
                 }
                 const aimed = currentTarget();
+                const offensive = ability !== 'mend' && ability !== 'barrier';
+                if (!auto && offensive && aimed && aimed.kind === 'npc') autoAttack = true;
+                if (cooling(ability)) {
+                    if (!auto) showMessage('Not ready');
+                    return;
+                }
                 if (aimed && aimed.kind === 'civil') {
-                    showMessage('They are not hostile');
+                    if (!auto) showMessage('They are not hostile');
                     return;
                 }
                 if (ability !== 'mend' && (!aimed || aimed.kind !== 'npc')) {
-                    showMessage('Select a target');
+                    if (!auto) showMessage('Select a target');
+                    autoAttack = false;
                     return;
                 }
+                if (auto && aimed && !basicInRange(aimed, ability)) return;
                 if (aimed) {
                     const dx = aimed.group.position.x - characterGroup.position.x;
                     const dz = aimed.group.position.z - characterGroup.position.z;
@@ -4187,12 +4211,16 @@
                 currentTool = action.weapon;
                 updateToolUI();
                 renderBar();
-                if (!playSwing()) return;
+                if (swinging) {
+                    if (!auto) return;
+                } else if (!playSwing()) return;
                 sfx(ability === 'mend' || ability === 'drain-life' ? 'heal' : ability === 'barrier' ? 'shield' : (ability === 'frost-bolt' || ability === 'frost-nova') ? 'frost' : (action.weapon === 'staff' || action.weapon === 'wand') ? 'spell' : 'swing');
                 if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
-                    showMessage('Not connected');
+                    if (!auto) showMessage('Not connected');
                     return;
                 }
+                lastAttackAuto = !!auto;
+                if (auto || ability === basicAttackId()) autoSentAt = Date.now();
                 gameSocket.send(JSON.stringify({
                     type: 'attack',
                     ability,
@@ -4203,6 +4231,26 @@
                     tool: action.weapon
                 }));
                 holdAction(ability);
+                if (!auto && offensive) {
+                    const basic = basicAttackId();
+                    if (basic && basic !== ability && !cooling(basic)) tryAttack(basic, true);
+                }
+            }
+
+            function tickAutoAttack() {
+                if (!autoAttack) return;
+                if (ghost) {
+                    autoAttack = false;
+                    return;
+                }
+                const aimed = currentTarget();
+                if (!aimed || aimed.kind !== 'npc') {
+                    autoAttack = false;
+                    return;
+                }
+                const id = basicAttackId();
+                if (!id || cooling(id) || Date.now() - autoSentAt < 1000) return;
+                tryAttack(id, true);
             }
 
             function currentTarget() {
@@ -5982,7 +6030,7 @@
             }
 
             const CD_MS = {
-                sword: 1200, 'power-strike': 6000, cleave: 8000,
+                sword: 1000, staff: 1000, bow: 1000, wand: 1000, 'power-strike': 6000, cleave: 8000,
                 'arcane-bolt': 1800, 'arcane-surge': 8000, mend: 5000,
                 health: 12000, mana: 12000, potion: 12000, bomb: 4000
             };
@@ -7411,6 +7459,7 @@
                 }
 
                 if (hearth && (turnInput || moving || keys.space)) cancelHearth('Hearth interrupted');
+                tickAutoAttack();
                 if (hearth) {
                     turnInput = 0;
                     yawRate = 0;
@@ -8333,8 +8382,20 @@
                         if (!data.ok) {
                             if (data.mana != null || data.hp != null) applyStats(data);
                             if (data.reason === 'Not ready' && data.cd) armCooldown(data.ability, data.cd, data.cdMax);
-                            if (data.reason !== 'Not ready') sfx('deny');
-                            showMessage(data.reason || 'Miss');
+                            const stopAuto = data.reason === 'This camp is safe' || data.reason === 'You are a ghost' || data.reason === 'No target' || data.reason === 'Cannot attack a player';
+                            if (lastAttackAuto && stopAuto) autoAttack = false;
+                            if (lastAttackAuto) {
+                                const now = Date.now();
+                                if (data.reason !== autoNote || now - autoNoteAt > 2000) {
+                                    autoNote = data.reason || 'Miss';
+                                    autoNoteAt = now;
+                                    if (data.reason !== 'Not ready') sfx('deny');
+                                    showMessage(autoNote);
+                                }
+                            } else {
+                                if (data.reason !== 'Not ready') sfx('deny');
+                                showMessage(data.reason || 'Miss');
+                            }
                         }
                         else {
                             if (data.cd) armCooldown(data.ability, data.cd, data.cdMax);
