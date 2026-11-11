@@ -1728,20 +1728,20 @@ const ABILITIES = {
     'soul-burn': { weapon: 'wand', mana: 14, range: 8, bolt: true, execute: 2, damage: (level) => 8 + level * 2 }
 };
 const ABILITY_COOLDOWN = {
-    sword: 1200,
+    sword: 1000,
     'power-strike': 6000,
     hamstring: 8000,
     execute: 8000,
     cleave: 8000,
     whirlwind: 12000,
-    staff: 1200,
+    staff: 1000,
     'arcane-bolt': 1800,
     'frost-bolt': 2200,
     'arcane-surge': 8000,
     mend: 5000,
     barrier: 18000,
     'frost-nova': 14000,
-    bow: 1400,
+    bow: 1000,
     'aimed-shot': 6000,
     'wing-clip': 8000,
     'multi-shot': 8000,
