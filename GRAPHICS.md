@@ -82,7 +82,7 @@ These are drawn on the character while that tool is in use. They are not separat
 | models/wild_pigboar_meshy.glb | Wild boar | https://skfb.ly/p9qVQ |
 | models/low_poly_wolf.glb | Wolf | https://skfb.ly/698Sv  |
 | models/low-poly_spider.glb | Moss spider | https://skfb.ly/6YONM |
-| models/bandit.glb | Bandit | |
+| models/bandit.glb | Bandit, hooded and rigged | |
 | models/ogre_lowpoly.glb | Hill ogre | https://skfb.ly/n5ifd0a |
 | models/wisp.glb | Fen wisp | |
 | models/knight.glb | Plate knight | |
