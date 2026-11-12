@@ -555,16 +555,20 @@
         }
         #pick[hidden] { display: none; }
         #pickCard {
-            width: min(760px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: hidden;
+            width: min(760px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto;
             box-sizing: border-box;
             background: rgba(16, 18, 24, 0.96); border: 1px solid rgba(214, 176, 96, 0.55);
             border-radius: 10px; padding: 14px 12px 12px;
         }
-        #pickCard h1 { margin: 0 0 6px; font-size: 22px; color: #f1c40f; }
-        #pickNote { margin: 0 0 12px; color: #c9c2b4; font-size: 13px; line-height: 1.4; }
+        #pickCard h1 { margin: 0 0 10px; font-size: 22px; color: #f1c40f; }
+        #pickCard h2 { margin: 0 0 4px; font-size: 15px; color: #f3e2b3; font-weight: 600; }
+        #pickSlots { margin: 0 0 8px; color: #c9c2b4; font-size: 12px; }
+        #pickNote { margin: 0 0 8px; color: #e07464; font-size: 12px; }
+        #pickNote[hidden] { display: none; }
         #pickBody { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
         #pickNew { flex: 1 1 58%; min-width: 0; margin-top: 0; }
-        #pickList { flex: 1 1 42%; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+        #pickPlay { flex: 1 1 42%; min-width: 0; }
+        #pickList { display: flex; flex-direction: column; gap: 6px; }
         .pick-row {
             display: flex; gap: 8px; align-items: center; width: 100%; margin: 0; padding: 6px 8px;
             background: rgba(255,255,255,0.04); border: 1px solid rgba(214,176,96,0.28);
@@ -574,6 +578,15 @@
         .pick-play strong { display: block; font-size: 16px; color: #f4efe4; }
         .pick-play span span { color: #c9c2b4; font-size: 12px; }
         .pick-del { border: 0; background: transparent; color: #e0a15a; cursor: pointer; font-size: 18px; line-height: 1; }
+        .pick-confirm {
+            flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+            color: #e0a15a; font-size: 12px;
+        }
+        .pick-confirm input {
+            flex: 1; min-width: 88px; color: #f4efe4; background: rgba(0,0,0,0.35);
+            border: 1px solid rgba(214,176,96,0.45); border-radius: 4px; padding: 4px 6px;
+        }
+        .pick-confirm button { padding: 4px 8px; }
         .pick-face, .pick-class img, .pick-mini img {
             object-fit: cover; background: #1a241c; border-radius: 4px;
         }
@@ -725,16 +738,21 @@
     <div id="pick">
         <div id="pickCard">
             <h1>Characters</h1>
-            <p id="pickNote">Choose who to play. A new character picks a class here.</p>
             <div id="pickBody">
                 <form id="pickNew">
+                    <h2>Pick a new character</h2>
+                    <p id="pickSlots">8 slots available</p>
+                    <p id="pickNote" hidden></p>
                     <div id="pickClasses"></div>
                     <div id="pickCreate">
                         <input id="pickName" maxlength="16" placeholder="New name" autocomplete="off">
                         <button type="submit">Create</button>
                     </div>
                 </form>
-                <div id="pickList"></div>
+                <div id="pickPlay">
+                    <h2>Choose who to play</h2>
+                    <div id="pickList"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -8516,9 +8534,11 @@
                     img.alt = CLASS_LABEL[id];
                     const label = document.createElement('span');
                     label.textContent = CLASS_LABEL[id];
-                    button.append(img, label);
+                    button.append(label, img);
                     button.addEventListener('click', () => {
                         chosenClass = id;
+                        const note = document.getElementById('pickNote');
+                        if (note) note.hidden = true;
                         renderClassChoices();
                     });
                     box.appendChild(button);
@@ -8537,7 +8557,6 @@
 
             function renderPick() {
                 const list = document.getElementById('pickList');
-                const form = document.getElementById('pickNew');
                 list.replaceChildren();
                 for (const row of roster) {
                     const line = document.createElement('div');
@@ -8560,10 +8579,34 @@
                     del.setAttribute('aria-label', 'Remove ' + (row.name || 'character'));
                     del.textContent = '×';
                     del.addEventListener('click', () => {
-                        if (!confirm('Remove ' + (row.name || 'this character') + ' from the list? The save stays on the server.')) return;
-                        roster = roster.filter(item => item.id !== row.id);
-                        storeRoster();
-                        renderPick();
+                        if (line.querySelector('.pick-confirm')) return;
+                        const box = document.createElement('div');
+                        box.className = 'pick-confirm';
+                        const ask = document.createElement('span');
+                        ask.textContent = 'Are you sure? Type delete to remove ' + (row.name || 'this character') + '.';
+                        const typed = document.createElement('input');
+                        typed.maxLength = 12;
+                        typed.placeholder = 'delete';
+                        typed.autocomplete = 'off';
+                        const yes = document.createElement('button');
+                        yes.type = 'button';
+                        yes.className = 'text-btn';
+                        yes.textContent = 'Delete';
+                        yes.disabled = true;
+                        const no = document.createElement('button');
+                        no.type = 'button';
+                        no.className = 'text-btn';
+                        no.textContent = 'Cancel';
+                        typed.addEventListener('input', () => { yes.disabled = typed.value.trim().toLowerCase() !== 'delete'; });
+                        yes.addEventListener('click', () => {
+                            roster = roster.filter(item => item.id !== row.id);
+                            storeRoster();
+                            renderPick();
+                        });
+                        no.addEventListener('click', () => box.remove());
+                        box.append(ask, typed, yes, no);
+                        line.appendChild(box);
+                        typed.focus();
                     });
                     line.append(play);
                     if (!row.class) {
@@ -8591,7 +8634,13 @@
                     line.appendChild(del);
                     list.appendChild(line);
                 }
-                form.hidden = roster.length >= 8;
+                const open = Math.max(0, 8 - roster.length);
+                const slots = document.getElementById('pickSlots');
+                if (slots) slots.textContent = open ? open + (open === 1 ? ' slot available' : ' slots available') + ' of 8' : 'No slots available';
+                document.getElementById('pickClasses').hidden = open === 0;
+                document.getElementById('pickCreate').hidden = open === 0;
+                const note = document.getElementById('pickNote');
+                if (note && open === 0) note.hidden = true;
                 renderClassChoices();
             }
 
@@ -8633,10 +8682,13 @@
             document.getElementById('pickNew').addEventListener('submit', (event) => {
                 event.preventDefault();
                 if (roster.length >= 8) return;
+                const note = document.getElementById('pickNote');
                 if (!chosenClass) {
-                    document.getElementById('pickNote').textContent = 'Choose a class, then create the character.';
+                    note.hidden = false;
+                    note.textContent = 'Choose a class, then create the character.';
                     return;
                 }
+                note.hidden = true;
                 const input = document.getElementById('pickName');
                 const name = input.value.trim().slice(0, 16) || 'Player';
                 input.value = '';
