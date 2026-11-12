@@ -2155,6 +2155,10 @@
                         const yaw = kind === 'spider' ? -Math.PI / 2 : kind === 'wolf' ? Math.PI : kind === 'quest' ? Math.PI / 2 : 0;
                         groundCreature(gltf.scene, CREATURE_HEIGHT[kind] || 1.4, yaw);
                         if (NPC_FILES[kind]) gltf.scene.userData.noGait = true;
+                        if (gltf.animations && gltf.animations.length) {
+                            gltf.scene.userData.clips = gltf.animations;
+                            gltf.scene.userData.noGait = true;
+                        }
                         if (kind === 'wolf' || kind === 'ogre' || kind === 'shop' || kind === 'quest') paintParts(gltf.scene, kind);
                         npcModels.set(kind, gltf.scene);
                         finishNpcModels();
@@ -5664,20 +5668,43 @@
                 const key = (kind === 'inn' || kind === 'bank' || kind === 'broker') && !npcModels.has(kind) ? 'shop' : kind;
                 const template = npcModels.get(key) || npcModels.get('boar');
                 if (!template) return null;
-                const model = template.clone(true);
+                const model = template.userData.clips ? cloneSkinned(template) : template.clone(true);
                 model.traverse(obj => {
                     if (!obj.isMesh || !obj.material) return;
-                    obj.material = Array.isArray(obj.material) ? obj.material.map(mat => {
+                    const cloneMat = (mat) => {
                         const next = mat.clone();
+                        if (obj.isSkinnedMesh) next.skinning = true;
                         if (next.userData && next.userData.bold) markBold(next);
                         return next;
-                    }) : (() => {
-                        const next = obj.material.clone();
-                        if (next.userData && next.userData.bold) markBold(next);
-                        return next;
-                    })();
+                    };
+                    obj.material = Array.isArray(obj.material) ? obj.material.map(cloneMat) : cloneMat(obj.material);
                 });
+                startNpcRig(model);
                 return model;
+            }
+            function startNpcRig(model) {
+                const clips = model && model.userData.clips;
+                if (!clips || !clips.length) return;
+                const mixer = new THREE.AnimationMixer(model);
+                const idle = clips.find(clip => clip.name === 'idle') || clips[0];
+                mixer.clipAction(idle).play();
+                model.userData.mixer = mixer;
+                model.userData.rigMoving = false;
+            }
+            function setRigMove(model, speed) {
+                const mixer = model && model.userData.mixer;
+                if (!mixer) return;
+                const moving = speed > 0.35;
+                if (model.userData.rigMoving === moving) return;
+                const clips = model.userData.clips || [];
+                const walk = clips.find(clip => clip.name === 'walk');
+                const idle = clips.find(clip => clip.name === 'idle') || clips[0];
+                if (!walk || !idle) return;
+                model.userData.rigMoving = moving;
+                const next = mixer.clipAction(moving ? walk : idle);
+                const prev = mixer.clipAction(moving ? idle : walk);
+                next.reset().setEffectiveWeight(1).play();
+                next.crossFadeFrom(prev, 0.18, true);
             }
 
             function ensureCivilian(civ) {
@@ -8437,13 +8464,17 @@
                     entry.gx = entry.group.position.x;
                     entry.gz = entry.group.position.z;
                     if (body) {
-                        updateGait(body, delta, moved / Math.max(delta, 0.016));
+                        const speed = moved / Math.max(delta, 0.016);
+                        setRigMove(body, speed);
+                        if (body.userData.mixer) body.userData.mixer.update(delta);
+                        updateGait(body, delta, speed);
                         body.position.y = (body.userData.foot || 0) + Math.sin(performance.now() * 0.004 + (entry.bob || 0)) * (entry.group.userData.bobAmp || 0);
                     }
                 }
                 for (const entry of worldCivs.values()) {
                     entry.group.position.y = entry.dungeonId ? 0.2 : terrainHeight(entry.group.position.x, entry.group.position.z);
                     const body = entry.group.userData.body;
+                    if (body && body.userData.mixer) body.userData.mixer.update(delta);
                     if (body) body.position.y = (body.userData.foot || 0) + Math.sin(performance.now() * 0.003 + (entry.bob || 0)) * (entry.group.userData.bobAmp || 0);
                     const mark = entry.group.userData.questMark;
                     if (mark && mark.visible) mark.position.y = (entry.group.userData.labelY || 2.2) + 0.72 + Math.sin(performance.now() * 0.004 + entry.bob) * 0.05;
