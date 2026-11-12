@@ -1453,11 +1453,28 @@ function spawnAmbient(area) {
     npcs.set(npc.id, npc);
 }
 
+function fillArea(area, cap) {
+    let guard = 0;
+    while (livingInArea(area) < cap && guard < cap * 4) {
+        const before = npcs.size;
+        spawnAmbient(area);
+        guard++;
+        if (npcs.size === before && guard > cap) break;
+    }
+}
+
 function tickAreaSpawns(area, now) {
     if (area.mapId) activateMap(area.mapId);
     const rules = spawnRules(area);
     let plan = zoneSpawns.get(area.key);
-    if (!plan || now >= plan.until) {
+    if (!plan) {
+        fillArea(area, rules.cap);
+        const times = [];
+        for (let i = 0; i < rules.perMin; i++) times.push(now + Math.random() * 60000);
+        times.sort((a, b) => a - b);
+        plan = { until: now + 60000, times };
+        zoneSpawns.set(area.key, plan);
+    } else if (now >= plan.until) {
         const times = [];
         for (let i = 0; i < rules.perMin; i++) times.push(now + Math.random() * 60000);
         times.sort((a, b) => a - b);
