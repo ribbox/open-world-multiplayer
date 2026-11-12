@@ -1755,12 +1755,14 @@
                 wolf: '/models/low_poly_wolf.glb',
                 spider: '/models/low-poly_spider.glb',
                 ogre: '/models/ogre_lowpoly.glb',
-                shop: '/models/low-poly-person.glb',
-                quest: '/models/cat-person_untextured.glb',
+                shop: '/models/merchant.glb',
+                inn: '/models/innkeeper.glb',
+                bank: '/models/banker.glb',
+                quest: '/models/questgiver.glb',
                 trainer: '/models/trainer.glb',
                 broker: '/models/broker.glb'
             };
-            const NPC_MODEL_KINDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist', 'shop', 'trainer', 'broker', 'quest'];
+            const NPC_MODEL_KINDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist', 'shop', 'inn', 'bank', 'trainer', 'broker', 'quest'];
             const npcClips = new Map();
             let npcLoadsLeft = NPC_MODEL_KINDS.length;
             function finishNpcModels() {
@@ -1921,7 +1923,7 @@
             const CREATURE_HEIGHT = {
                 boar: 0.9, wolf: 1.05, spider: 0.62, wisp: 0.9,
                 bandit: 1.7, ogre: 2.15, knight: 1.85, cultist: 1.75,
-                shop: 1.7, trainer: 1.7, broker: 1.68, quest: 1.7
+                shop: 1.7, inn: 1.7, bank: 1.72, trainer: 1.7, broker: 1.68, quest: 1.7
             };
             const gaitRests = new Map();
             function cloneRestGeometry(geo) {
@@ -2159,14 +2161,14 @@
                 loader.load(
                     NPC_FILES[kind] || ('/models/' + kind + '.glb'),
                     (gltf) => {
-                        const yaw = kind === 'spider' ? -Math.PI / 2 : kind === 'wolf' ? Math.PI : kind === 'quest' ? Math.PI / 2 : 0;
+                        const yaw = kind === 'spider' ? -Math.PI / 2 : kind === 'wolf' ? Math.PI : 0;
                         groundCreature(gltf.scene, CREATURE_HEIGHT[kind] || 1.4, yaw);
                         if (NPC_FILES[kind]) gltf.scene.userData.noGait = true;
                         if (gltf.animations && gltf.animations.length) {
                             npcClips.set(gltf.scene, gltf.animations);
                             gltf.scene.userData.noGait = true;
                         }
-                        if (kind === 'wolf' || kind === 'ogre' || kind === 'shop' || kind === 'quest') paintParts(gltf.scene, kind);
+                        if (kind === 'wolf' || kind === 'ogre') paintParts(gltf.scene, kind);
                         npcModels.set(kind, gltf.scene);
                         finishNpcModels();
                     },
@@ -5728,8 +5730,6 @@
                 }
                 const body = cloneNpcModel(civ.role);
                 if (!body) return;
-                if (civ.role === 'inn') tintHostile(body, civ.tint || '#e67e22', 0.55);
-                if (civ.role === 'bank') tintHostile(body, civ.tint || '#f4d03f', 0.45);
                 plantFeet(body);
                 const group = new THREE.Group();
                 body.updateWorldMatrix(true, true);

@@ -87,10 +87,12 @@ These are drawn on the character while that tool is in use. They are not separat
 | models/wisp.glb | Fen wisp | |
 | models/knight.glb | Plate knight | |
 | models/cultist.glb | Cultist | |
-| models/low-poly-person.glb | Shop assistant, innkeeper | https://skfb.ly/oSywH |
+| models/merchant.glb | Merchant | |
+| models/innkeeper.glb | Innkeeper | |
+| models/banker.glb | Banker | |
 | models/trainer.glb | Trainer | |
 | models/broker.glb | Market broker | |
-| models/cat-person_untextured.glb | Quest giver | https://skfb.ly/opyOG |
+| models/questgiver.glb | Quest giver | |
 | models/camp.glb | Camp | Done |
 | models/inn.glb | Inn | Done |
 | models/cabin.glb | Cabin | Done |
