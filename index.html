@@ -555,22 +555,22 @@
         }
         #pick[hidden] { display: none; }
         #pickCard {
-            width: min(760px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto;
+            width: min(760px, calc(100vw - 16px)); max-height: calc(100vh - 12px); overflow: hidden;
             box-sizing: border-box;
             background: rgba(16, 18, 24, 0.96); border: 1px solid rgba(214, 176, 96, 0.55);
-            border-radius: 10px; padding: 14px 12px 12px;
+            border-radius: 10px; padding: 10px 12px 10px;
         }
-        #pickCard h1 { margin: 0 0 10px; font-size: 22px; color: #f1c40f; }
-        #pickCard h2 { margin: 0 0 4px; font-size: 15px; color: #f3e2b3; font-weight: 600; }
-        #pickNote { margin: 0 0 8px; color: #e07464; font-size: 12px; }
+        #pickCard h1 { margin: 0 0 6px; font-size: 20px; color: #f1c40f; }
+        #pickCard h2 { margin: 0 0 4px; font-size: 14px; color: #f3e2b3; font-weight: 600; }
+        #pickNote { margin: 0 0 6px; color: #e07464; font-size: 12px; }
         #pickNote[hidden] { display: none; }
         #pickBody { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
         #pickNew { flex: 1 1 54%; min-width: 0; margin-top: 0; }
-        #pickPlay { flex: 1 1 46%; min-width: 0; }
+        #pickPlay { flex: 1 1 46%; min-width: 0; position: relative; }
         #pickList { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
         .pick-slot {
-            position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px;
-            min-width: 0; padding: 4px; margin: 0;
+            position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px;
+            min-width: 0; padding: 3px; margin: 0;
             background: rgba(255,255,255,0.04); border: 1px solid rgba(214,176,96,0.28);
             border-radius: 6px; color: inherit; box-sizing: border-box;
         }
@@ -578,7 +578,7 @@
             width: 100%; font-size: 11px; font-weight: 700; color: #f4efe4; text-align: center;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .pick-slot .sub { color: #c9c2b4; font-size: 10px; text-align: center; line-height: 1.2; }
+        .pick-slot .sub { color: #c9c2b4; font-size: 10px; text-align: center; line-height: 1.1; }
         .pick-play {
             width: 100%; display: block; padding: 0; background: transparent; border: 0; cursor: pointer;
         }
@@ -587,8 +587,10 @@
             color: #e0a15a; cursor: pointer; font-size: 14px; line-height: 1;
         }
         .pick-confirm {
-            grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-            color: #e0a15a; font-size: 12px; padding: 4px 0;
+            position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+            display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+            color: #e0a15a; font-size: 12px; padding: 6px;
+            background: rgba(16, 18, 24, 0.96); border: 1px solid rgba(214,176,96,0.45); border-radius: 6px;
         }
         .pick-confirm input {
             flex: 1; min-width: 88px; color: #f4efe4; background: rgba(0,0,0,0.35);
@@ -598,7 +600,7 @@
         .pick-face, .pick-class img, .pick-mini img {
             object-fit: cover; background: #1a241c; border-radius: 4px;
         }
-        .pick-face { width: 100%; aspect-ratio: 2 / 3; display: block; }
+        .pick-face { width: 100%; height: calc((100vh - 250px) / 4); max-height: 150px; aspect-ratio: auto; display: block; object-fit: cover; object-position: center 18%; }
         .pick-slot.empty { opacity: 0.72; cursor: pointer; border-style: dashed; font: inherit; }
         .pick-face.empty {
             display: block; background: #1a241c;
@@ -612,15 +614,15 @@
         .pick-mini img { width: 100%; height: 100%; display: block; }
         .pick-slot .pick-minis { flex-wrap: wrap; justify-content: center; }
         .pick-slot .pick-mini { width: 16px; height: 22px; }
-        #pickClasses { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 90%; margin: 0 auto 8px; }
+        #pickClasses { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; margin: 0 auto 6px; }
         .pick-class {
-            display: flex; flex-direction: column; align-items: center; gap: 4px;
-            padding: 5px; color: inherit; cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+            padding: 4px; color: inherit; cursor: pointer;
             background: rgba(255,255,255,0.04); border: 1px solid rgba(214,176,96,0.28); border-radius: 6px;
         }
         .pick-class.on { border-color: #f1c40f; }
-        .pick-class img { width: 100%; aspect-ratio: 2 / 3; max-height: 30vh; }
-        .pick-class span { font-size: 13px; }
+        .pick-class img { width: 100%; aspect-ratio: 2 / 3; max-height: calc((100vh - 300px) / 2); object-fit: cover; object-position: center 18%; }
+        .pick-class span { font-size: 12px; }
         #pickCreate { display: flex; gap: 6px; width: 90%; margin: 0 auto; }
         #pickName {
             flex: 1; min-width: 0; font-size: 16px; color: #f4efe4;
