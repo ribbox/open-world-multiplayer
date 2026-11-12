@@ -562,25 +562,33 @@
         }
         #pickCard h1 { margin: 0 0 10px; font-size: 22px; color: #f1c40f; }
         #pickCard h2 { margin: 0 0 4px; font-size: 15px; color: #f3e2b3; font-weight: 600; }
-        #pickSlots { margin: 0 0 8px; color: #c9c2b4; font-size: 12px; }
         #pickNote { margin: 0 0 8px; color: #e07464; font-size: 12px; }
         #pickNote[hidden] { display: none; }
         #pickBody { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
-        #pickNew { flex: 1 1 58%; min-width: 0; margin-top: 0; }
-        #pickPlay { flex: 1 1 42%; min-width: 0; }
-        #pickList { display: flex; flex-direction: column; gap: 6px; }
-        .pick-row {
-            display: flex; gap: 8px; align-items: center; width: 100%; margin: 0; padding: 6px 8px;
+        #pickNew { flex: 1 1 54%; min-width: 0; margin-top: 0; }
+        #pickPlay { flex: 1 1 46%; min-width: 0; }
+        #pickList { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .pick-slot {
+            position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px;
+            min-width: 0; padding: 4px; margin: 0;
             background: rgba(255,255,255,0.04); border: 1px solid rgba(214,176,96,0.28);
-            border-radius: 6px; color: inherit; text-align: left; box-sizing: border-box; flex-wrap: wrap;
+            border-radius: 6px; color: inherit; box-sizing: border-box;
         }
-        .pick-play { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: transparent; border: 0; color: inherit; text-align: left; cursor: pointer; padding: 0; }
-        .pick-play strong { display: block; font-size: 16px; color: #f4efe4; }
-        .pick-play span span { color: #c9c2b4; font-size: 12px; }
-        .pick-del { border: 0; background: transparent; color: #e0a15a; cursor: pointer; font-size: 18px; line-height: 1; }
+        .pick-slot strong {
+            width: 100%; font-size: 11px; font-weight: 700; color: #f4efe4; text-align: center;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .pick-slot .sub { color: #c9c2b4; font-size: 10px; text-align: center; line-height: 1.2; }
+        .pick-play {
+            width: 100%; display: block; padding: 0; background: transparent; border: 0; cursor: pointer;
+        }
+        .pick-del {
+            position: absolute; top: 1px; right: 2px; border: 0; background: transparent;
+            color: #e0a15a; cursor: pointer; font-size: 14px; line-height: 1;
+        }
         .pick-confirm {
-            flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-            color: #e0a15a; font-size: 12px;
+            grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+            color: #e0a15a; font-size: 12px; padding: 4px 0;
         }
         .pick-confirm input {
             flex: 1; min-width: 88px; color: #f4efe4; background: rgba(0,0,0,0.35);
@@ -590,10 +598,8 @@
         .pick-face, .pick-class img, .pick-mini img {
             object-fit: cover; background: #1a241c; border-radius: 4px;
         }
-        .pick-face { width: 64px; height: 84px; flex: 0 0 auto; }
-        .pick-row.empty { opacity: 0.72; cursor: pointer; border-style: dashed; font: inherit; color: inherit; }
-        .pick-row.empty strong { display: block; font-size: 16px; color: #f4efe4; }
-        .pick-row.empty span span { color: #c9c2b4; font-size: 12px; }
+        .pick-face { width: 100%; aspect-ratio: 2 / 3; display: block; }
+        .pick-slot.empty { opacity: 0.72; cursor: pointer; border-style: dashed; font: inherit; }
         .pick-face.empty {
             display: block; background: #1a241c;
             box-shadow: inset 0 0 0 1px rgba(214,176,96,0.28);
@@ -604,6 +610,8 @@
             border-radius: 4px; background: transparent; cursor: pointer;
         }
         .pick-mini img { width: 100%; height: 100%; display: block; }
+        .pick-slot .pick-minis { flex-wrap: wrap; justify-content: center; }
+        .pick-slot .pick-mini { width: 16px; height: 22px; }
         #pickClasses { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 90%; margin: 0 auto 8px; }
         .pick-class {
             display: flex; flex-direction: column; align-items: center; gap: 4px;
@@ -747,7 +755,6 @@
             <div id="pickBody">
                 <form id="pickNew">
                     <h2>Pick a new character</h2>
-                    <p id="pickSlots">8 slots available</p>
                     <p id="pickNote" hidden></p>
                     <div id="pickClasses"></div>
                     <div id="pickCreate">
@@ -8566,26 +8573,25 @@
                 list.replaceChildren();
                 for (const row of roster) {
                     const line = document.createElement('div');
-                    line.className = 'pick-row';
+                    line.className = 'pick-slot';
+                    const title = document.createElement('strong');
+                    title.textContent = row.name || 'Player';
                     const play = document.createElement('button');
                     play.type = 'button';
                     play.className = 'pick-play';
                     play.appendChild(faceImage(row));
-                    const words = document.createElement('span');
-                    const title = document.createElement('strong');
-                    title.textContent = row.name || 'Player';
-                    const sub = document.createElement('span');
-                    sub.textContent = (CLASS_LABEL[row.class] || 'No class yet') + ' · level ' + (row.level || 1);
-                    words.append(title, sub);
-                    play.appendChild(words);
                     if (row.class) play.addEventListener('click', () => playCharacter(row.id));
+                    const sub = document.createElement('span');
+                    sub.className = 'sub';
+                    sub.textContent = (CLASS_LABEL[row.class] || 'No class') + ' · ' + (row.level || 1);
                     const del = document.createElement('button');
                     del.type = 'button';
                     del.className = 'pick-del';
                     del.setAttribute('aria-label', 'Remove ' + (row.name || 'character'));
                     del.textContent = '×';
                     del.addEventListener('click', () => {
-                        if (line.querySelector('.pick-confirm')) return;
+                        const old = list.querySelector('.pick-confirm');
+                        if (old) old.remove();
                         const box = document.createElement('div');
                         box.className = 'pick-confirm';
                         const ask = document.createElement('span');
@@ -8611,10 +8617,10 @@
                         });
                         no.addEventListener('click', () => box.remove());
                         box.append(ask, typed, yes, no);
-                        line.appendChild(box);
+                        list.appendChild(box);
                         typed.focus();
                     });
-                    line.append(play);
+                    line.append(title, play, sub, del);
                     if (!row.class) {
                         const picks = document.createElement('div');
                         picks.className = 'pick-minis';
@@ -8637,31 +8643,24 @@
                         }
                         line.appendChild(picks);
                     }
-                    line.appendChild(del);
                     list.appendChild(line);
                 }
                 const open = Math.max(0, 8 - roster.length);
                 for (let i = 0; i < open; i++) {
                     const line = document.createElement('button');
                     line.type = 'button';
-                    line.className = 'pick-row empty';
-                    const face = document.createElement('span');
-                    face.className = 'pick-face empty';
-                    const words = document.createElement('span');
+                    line.className = 'pick-slot empty';
                     const title = document.createElement('strong');
                     title.textContent = 'Empty';
-                    const sub = document.createElement('span');
-                    sub.textContent = 'Open slot';
-                    words.append(title, sub);
-                    line.append(face, words);
+                    const face = document.createElement('span');
+                    face.className = 'pick-face empty';
+                    line.append(title, face);
                     line.addEventListener('click', () => {
                         const name = document.getElementById('pickName');
-                        if (name && !name.hidden) name.focus();
+                        if (name) name.focus();
                     });
                     list.appendChild(line);
                 }
-                const slots = document.getElementById('pickSlots');
-                if (slots) slots.textContent = open ? open + (open === 1 ? ' slot available' : ' slots available') + ' of 8' : 'No slots available';
                 document.getElementById('pickClasses').hidden = open === 0;
                 document.getElementById('pickCreate').hidden = open === 0;
                 const note = document.getElementById('pickNote');
