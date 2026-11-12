@@ -382,7 +382,16 @@
         #trade h2 { margin: 0 0 8px; font-size: 18px; color: #f1c40f; }
         #trade .tabs { display: flex; gap: 4px; margin-bottom: 8px; }
         #trade .trade-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
-        #trade .trade-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+        #trade .trade-row > div:first-child { flex: 1; min-width: 0; }
+        #trade .trade-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+        #trade .trade-form { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 4px; }
+        #trade .trade-line { display: flex; gap: 8px; align-items: center; }
+        #trade .trade-line select, #trade .trade-line .trade-name { flex: 1; min-width: 0; }
+        #trade .trade-qty { width: 64px; flex: 0 0 auto; }
+        #trade .trade-price { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        #trade .money-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        #trade .money-field input { width: 100%; box-sizing: border-box; }
+        #trade .money-field span { font-size: 12px; }
         #trade input, #trade select { background: #111; color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 6px; }
         #trade .muted { color: #bbb; font-size: 12px; margin: 4px 0; }
         #shop h2 { margin: 0 0 8px; font-size: 18px; color: #f1c40f; }
@@ -2806,32 +2815,67 @@
                 if (rows.some(row => String(row.index) === String(tradeDraft.index))) select.value = String(tradeDraft.index);
                 else tradeDraft.index = select.value;
             }
-            function tradeAmountFields(parent) {
-                const qty = document.createElement('input');
-                qty.type = 'number';
-                qty.min = '1';
-                qty.value = String(tradeDraft.qty || 1);
-                qty.style.width = '52px';
-                qty.title = 'How many';
-                qty.placeholder = 'qty';
-                qty.addEventListener('input', () => { tradeDraft.qty = Math.max(1, Math.round(Number(qty.value) || 1)); });
-                parent.appendChild(qty);
+            function tradePriceRow() {
+                const row = document.createElement('div');
+                row.className = 'trade-price';
                 const money = [['gold', 'gold', 'money-gold'], ['silver', 'silver', 'money-silver'], ['coins', 'coins', 'money-coin']];
                 for (const [key, label, tone] of money) {
+                    const field = document.createElement('label');
+                    field.className = 'money-field';
                     const input = document.createElement('input');
                     input.type = 'number';
                     input.min = '0';
-                    input.value = String(tradeDraft[key] || '');
-                    input.style.width = '52px';
+                    input.value = tradeDraft[key] ? String(tradeDraft[key]) : '';
                     input.placeholder = '0';
-                    input.title = label;
                     input.addEventListener('input', () => { tradeDraft[key] = Math.max(0, Math.round(Number(input.value) || 0)); });
-                    parent.appendChild(input);
                     const tag = document.createElement('span');
                     tag.className = tone;
                     tag.textContent = label;
-                    parent.appendChild(tag);
+                    field.appendChild(input);
+                    field.appendChild(tag);
+                    row.appendChild(field);
                 }
+                return row;
+            }
+            function appendTradeForm(panel, options) {
+                const form = document.createElement('div');
+                form.className = 'trade-form';
+                const line = document.createElement('div');
+                line.className = 'trade-line';
+                if (options.name) {
+                    const nameLine = document.createElement('div');
+                    nameLine.className = 'trade-line';
+                    const name = document.createElement('input');
+                    name.className = 'trade-name';
+                    name.maxLength = 16;
+                    name.placeholder = 'Player name';
+                    name.value = tradeDraft.name;
+                    name.addEventListener('input', () => { tradeDraft.name = name.value; });
+                    nameLine.appendChild(name);
+                    form.appendChild(nameLine);
+                }
+                const select = document.createElement('select');
+                fillTradeSelect(select);
+                select.addEventListener('change', () => { tradeDraft.index = select.value; });
+                line.appendChild(select);
+                const qty = document.createElement('input');
+                qty.className = 'trade-qty';
+                qty.type = 'number';
+                qty.min = '1';
+                qty.value = String(tradeDraft.qty || 1);
+                qty.title = 'How many';
+                qty.addEventListener('input', () => { tradeDraft.qty = Math.max(1, Math.round(Number(qty.value) || 1)); });
+                line.appendChild(qty);
+                form.appendChild(line);
+                form.appendChild(tradePriceRow());
+                const go = document.createElement('button');
+                go.type = 'button';
+                go.className = 'text-btn gold-btn';
+                go.textContent = options.label;
+                go.disabled = options.disabled(select);
+                go.addEventListener('click', () => options.send(select));
+                form.appendChild(go);
+                panel.appendChild(form);
             }
             function tradeLine(text, buttonLabel, onClick, gold) {
                 const row = document.createElement('div');
@@ -2841,6 +2885,7 @@
                 row.appendChild(label);
                 if (buttonLabel) {
                     const actions = document.createElement('div');
+                    actions.className = 'trade-actions';
                     const labels = Array.isArray(buttonLabel) ? buttonLabel : [buttonLabel];
                     const clicks = Array.isArray(onClick) ? onClick : [onClick];
                     labels.forEach((name, i) => {
@@ -2898,21 +2943,11 @@
                     who.className = 'muted';
                     who.textContent = target ? 'Target: ' + target.name + '. Stay within 8 meters.' : 'Target a player first. Stay within 8 meters.';
                     panel.appendChild(who);
-                    const form = document.createElement('div');
-                    form.className = 'trade-form';
-                    const select = document.createElement('select');
-                    fillTradeSelect(select);
-                    select.addEventListener('change', () => { tradeDraft.index = select.value; });
-                    form.appendChild(select);
-                    tradeAmountFields(form);
-                    const go = document.createElement('button');
-                    go.type = 'button';
-                    go.className = 'text-btn gold-btn';
-                    go.textContent = 'Offer';
-                    go.disabled = !target || select.value === '';
-                    go.addEventListener('click', () => sendTrade('offer', { targetId: target.id, index: Number(select.value), qty: tradeDraft.qty, price: tradePriceCoins() }));
-                    form.appendChild(go);
-                    panel.appendChild(form);
+                    appendTradeForm(panel, {
+                        label: 'Offer',
+                        disabled: (select) => !target || select.value === '',
+                        send: (select) => sendTrade('offer', { targetId: target.id, index: Number(select.value), qty: tradeDraft.qty, price: tradePriceCoins() })
+                    });
                 } else if (tradeTab === 'mail') {
                     if (!tradeBook.mail.length) {
                         const empty = document.createElement('div');
@@ -2930,27 +2965,12 @@
                             true
                         ));
                     }
-                    const form = document.createElement('div');
-                    form.className = 'trade-form';
-                    const name = document.createElement('input');
-                    name.maxLength = 16;
-                    name.placeholder = 'Player name';
-                    name.value = tradeDraft.name;
-                    name.addEventListener('input', () => { tradeDraft.name = name.value; });
-                    form.appendChild(name);
-                    const select = document.createElement('select');
-                    fillTradeSelect(select);
-                    select.addEventListener('change', () => { tradeDraft.index = select.value; });
-                    form.appendChild(select);
-                    tradeAmountFields(form);
-                    const go = document.createElement('button');
-                    go.type = 'button';
-                    go.className = 'text-btn gold-btn';
-                    go.textContent = 'Send';
-                    go.disabled = select.value === '';
-                    go.addEventListener('click', () => sendTrade('mail', { to: tradeDraft.name, index: Number(select.value), qty: tradeDraft.qty, price: tradePriceCoins() }));
-                    form.appendChild(go);
-                    panel.appendChild(form);
+                    appendTradeForm(panel, {
+                        name: true,
+                        label: 'Send',
+                        disabled: (select) => select.value === '',
+                        send: (select) => sendTrade('mail', { to: tradeDraft.name, index: Number(select.value), qty: tradeDraft.qty, price: tradePriceCoins() })
+                    });
                 } else {
                     if (!tradeBook.market.length) {
                         const empty = document.createElement('div');
@@ -2964,21 +2984,11 @@
                         if (row.mine) panel.appendChild(tradeLine(text, 'Cancel', () => sendTrade('unlist', { id: row.id })));
                         else panel.appendChild(tradeLine(text, 'Buy', () => sendTrade('buy', { id: row.id }), true));
                     }
-                    const form = document.createElement('div');
-                    form.className = 'trade-form';
-                    const select = document.createElement('select');
-                    fillTradeSelect(select);
-                    select.addEventListener('change', () => { tradeDraft.index = select.value; });
-                    form.appendChild(select);
-                    tradeAmountFields(form);
-                    const go = document.createElement('button');
-                    go.type = 'button';
-                    go.className = 'text-btn gold-btn';
-                    go.textContent = 'List';
-                    go.disabled = select.value === '';
-                    go.addEventListener('click', () => sendTrade('list', { index: Number(select.value), qty: tradeDraft.qty, price: tradePriceCoins() }));
-                    form.appendChild(go);
-                    panel.appendChild(form);
+                    appendTradeForm(panel, {
+                        label: 'List',
+                        disabled: (select) => select.value === '',
+                        send: (select) => sendTrade('list', { index: Number(select.value), qty: tradeDraft.qty, price: tradePriceCoins() })
+                    });
                 }
                 const close = document.createElement('button');
                 close.type = 'button';
