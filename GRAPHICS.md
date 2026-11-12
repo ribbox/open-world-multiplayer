@@ -89,6 +89,7 @@ These are drawn on the character while that tool is in use. They are not separat
 | models/cultist.glb | Cultist | |
 | models/low-poly-person.glb | Shop assistant, innkeeper | https://skfb.ly/oSywH |
 | models/trainer.glb | Trainer | |
+| models/broker.glb | Market broker | |
 | models/cat-person_untextured.glb | Quest giver | https://skfb.ly/opyOG |
 | models/camp.glb | Camp | Done |
 | models/inn.glb | Inn | Done |

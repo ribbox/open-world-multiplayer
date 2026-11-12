@@ -1756,9 +1756,11 @@
                 spider: '/models/low-poly_spider.glb',
                 ogre: '/models/ogre_lowpoly.glb',
                 shop: '/models/low-poly-person.glb',
-                quest: '/models/cat-person_untextured.glb'
+                quest: '/models/cat-person_untextured.glb',
+                trainer: '/models/trainer.glb',
+                broker: '/models/broker.glb'
             };
-            const NPC_MODEL_KINDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist', 'shop', 'trainer', 'quest'];
+            const NPC_MODEL_KINDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist', 'shop', 'trainer', 'broker', 'quest'];
             const npcClips = new Map();
             let npcLoadsLeft = NPC_MODEL_KINDS.length;
             function finishNpcModels() {
@@ -1919,7 +1921,7 @@
             const CREATURE_HEIGHT = {
                 boar: 0.9, wolf: 1.05, spider: 0.62, wisp: 0.9,
                 bandit: 1.7, ogre: 2.15, knight: 1.85, cultist: 1.75,
-                shop: 1.7, trainer: 1.7, quest: 1.7
+                shop: 1.7, trainer: 1.7, broker: 1.68, quest: 1.7
             };
             const gaitRests = new Map();
             function cloneRestGeometry(geo) {
@@ -5728,7 +5730,6 @@
                 if (!body) return;
                 if (civ.role === 'inn') tintHostile(body, civ.tint || '#e67e22', 0.55);
                 if (civ.role === 'bank') tintHostile(body, civ.tint || '#f4d03f', 0.45);
-                if (civ.role === 'broker') tintHostile(body, civ.tint || '#d4a017', 0.5);
                 plantFeet(body);
                 const group = new THREE.Group();
                 body.updateWorldMatrix(true, true);
