@@ -1159,10 +1159,13 @@
             return (name) => { try { if (bank[name]) bank[name](); } catch (err) { /* ignore a blocked audio device */ } };
         })();
 
+        let pendingTalents = 0;
         function showLevel(level) {
             const banner = document.getElementById('levelBanner');
             if (!banner || !level) return;
-            banner.textContent = 'Level ' + level;
+            const extra = pendingTalents > 0 ? '  +' + pendingTalents + (pendingTalents === 1 ? ' point' : ' points') : '';
+            pendingTalents = 0;
+            banner.textContent = 'Level ' + level + extra;
             banner.classList.remove('show');
             void banner.offsetWidth;
             banner.classList.add('show');
@@ -2141,7 +2144,7 @@
                 loader.load(
                     NPC_FILES[kind] || ('/models/' + kind + '.glb'),
                     (gltf) => {
-                        const yaw = kind === 'spider' ? -Math.PI / 2 : kind === 'quest' ? Math.PI / 2 : 0;
+                        const yaw = kind === 'spider' ? -Math.PI / 2 : kind === 'wolf' ? Math.PI : kind === 'quest' ? Math.PI / 2 : 0;
                         groundCreature(gltf.scene, CREATURE_HEIGHT[kind] || 1.4, yaw);
                         if (NPC_FILES[kind]) gltf.scene.userData.noGait = true;
                         if (kind === 'wolf' || kind === 'ogre' || kind === 'shop' || kind === 'quest') paintParts(gltf.scene, kind);
@@ -2375,6 +2378,14 @@
                     stats.strength = data.stats.strength || 0;
                     stats.stamina = data.stats.stamina || 0;
                     stats.intellect = data.stats.intellect || 0;
+                }
+                if (data.points != null && data.points !== character.points) {
+                    const gained = data.points - (character.points || 0);
+                    character.points = data.points;
+                    if (data.leveled && gained > 0) pendingTalents = gained;
+                    const sheet = document.getElementById('sheet');
+                    if (sheet && sheet.classList.contains('open')) renderSheet();
+                    if (document.getElementById('talk').classList.contains('open')) refreshOpenTalk();
                 }
                 updateStatsUI();
                 rememberCharacter();

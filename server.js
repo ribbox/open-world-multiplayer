@@ -1646,6 +1646,7 @@ function statsOf(player) {
         maxMana: player.maxMana,
         absorb: Date.now() < (player.absorbUntil || 0) ? Math.floor(player.absorb || 0) : 0,
         armor: player.armor,
+        points: talentPoints(player),
         stats: player.stats || { strength: 0, stamina: 0, intellect: 0 }
     };
 }
