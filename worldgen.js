@@ -705,6 +705,10 @@ export function zoneCampPlan(zx, zz) {
         const spot = campSpot(layout, person.role, camp.x, camp.z);
         person.x = spot.x;
         person.z = spot.z;
+        let h = 2166136261;
+        for (let i = 0; i < person.id.length; i++) h = Math.imul(h ^ person.id.charCodeAt(i), 16777619);
+        h >>>= 0;
+        person.rotY = Math.atan2(camp.x - person.x, camp.z - person.z) + ((h % 9) - 4) * 0.42;
     }
     return { id: 'camp-' + zx + '-' + zz, x: camp.x, z: camp.z, layout, folk };
 }

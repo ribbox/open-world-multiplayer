@@ -5739,6 +5739,7 @@
                 group.userData.labelY = bounds.max.y + 0.22;
                 group.userData.bobAmp = 0.03;
                 group.position.set(civ.x, civ.dungeonId ? 0.2 : terrainHeight(civ.x, civ.z), civ.z);
+                group.rotation.y = civ.rotY || 0;
                 group.userData.civilId = civ.id;
                 const label = makeCivSprite(civ.name, civ.title, civ.tint);
                 label.position.y = group.userData.labelY;
@@ -5746,7 +5747,7 @@
                 group.add(label);
                 group.userData.label = label;
                 scene.add(group);
-                worldCivs.set(civ.id, { group, id: civ.id, name: civ.name, title: civ.title, role: civ.role, text: civ.text, quest: civ.quest || '', quests: civ.quests || (civ.quest ? [civ.quest] : []), tint: civ.tint, dungeonId: civ.dungeonId || '', travel: !!civ.travel, bob: Math.random() * Math.PI * 2 });
+                worldCivs.set(civ.id, { group, id: civ.id, name: civ.name, title: civ.title, role: civ.role, text: civ.text, quest: civ.quest || '', quests: civ.quests || (civ.quest ? [civ.quest] : []), tint: civ.tint, dungeonId: civ.dungeonId || '', travel: !!civ.travel, bob: Math.random() * Math.PI * 2, tx: civ.x, tz: civ.z });
             }
 
             function spawnCivilians(list) {
@@ -8479,6 +8480,19 @@
                     }
                 }
                 for (const entry of worldCivs.values()) {
+                    if (!entry.dungeonId && entry.tx != null) {
+                        const dx = entry.tx - entry.group.position.x;
+                        const dz = entry.tz - entry.group.position.z;
+                        const dist = Math.hypot(dx, dz);
+                        if (dist > 0.001) {
+                            const step = Math.min(dist, delta * 1.5);
+                            entry.group.position.x += (dx / dist) * step;
+                            entry.group.position.z += (dz / dist) * step;
+                        }
+                        const pace = dist > 0.03 ? Math.min(1.5, dist / Math.max(delta, 0.016)) : 0;
+                        const body = entry.group.userData.body;
+                        if (body) setRigMove(body, pace);
+                    }
                     entry.group.position.y = entry.dungeonId ? 0.2 : terrainHeight(entry.group.position.x, entry.group.position.z);
                     const body = entry.group.userData.body;
                     if (body && body.userData.mixer) body.userData.mixer.update(delta);
@@ -9198,9 +9212,8 @@
                         for (const row of data.civs || []) {
                             const entry = worldCivs.get(row.id);
                             if (entry) {
-                                entry.group.position.x = row.x;
-                                entry.group.position.z = row.z;
-                                entry.group.position.y = entry.dungeonId ? 0.2 : terrainHeight(row.x, row.z);
+                                entry.tx = row.x;
+                                entry.tz = row.z;
                                 if (row.rotY != null) entry.group.rotation.y = row.rotY;
                             }
                             const pending = pendingCivilians && pendingCivilians.find(civ => civ.id === row.id);

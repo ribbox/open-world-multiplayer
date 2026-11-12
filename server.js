@@ -146,6 +146,46 @@ function pushCampRole(list, camp, zone, index, role, title, tint, text) {
         quest: '',
         travel
     });
+    const placed = list[list.length - 1];
+    placed.homeX = placed.x;
+    placed.homeZ = placed.z;
+    faceFolk(placed, camp.x, camp.z);
+}
+
+function folkHash(id) {
+    let h = 2166136261;
+    const s = String(id || 'folk');
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+    return h >>> 0;
+}
+
+function faceFolk(civ, campX, campZ) {
+    const h = folkHash(civ.id || civ.name);
+    const jitter = ((h % 9) - 4) * 0.42;
+    if (campX == null || campZ == null) civ.rotY = (h % 628) / 100;
+    else civ.rotY = Math.atan2(campX - civ.x, campZ - civ.z) + jitter;
+}
+
+function besideFolk(x, z, mapId) {
+    let px = x;
+    let pz = z;
+    for (let n = 0; n < 5; n++) {
+        const hit = CIVILIANS.find(civ => !civ.dungeonId && (civ.mapId || '') === (mapId || '') && Math.hypot(civ.x - px, civ.z - pz) < 1.7);
+        if (!hit) return { x: px, z: pz };
+        let dx = px - hit.x;
+        let dz = pz - hit.z;
+        if (Math.hypot(dx, dz) < 0.15) {
+            dx = 2.2;
+            dz = -1.4;
+        }
+        const len = Math.hypot(dx, dz) || 1;
+        const nx = hit.x + (dx / len) * 2.5;
+        const nz = hit.z + (dz / len) * 2.5;
+        if (!campStanding(nx, nz) && !onLand(nx, nz)) return { x: px + 2.2, z: pz - 1.4 };
+        px = nx;
+        pz = nz;
+    }
+    return { x: px, z: pz };
 }
 
 function onLand(x, z) {
@@ -163,14 +203,17 @@ function mapSpawn() {
         const hub = sites.find(site => site.travel) || sites[0];
         if (hub) {
             const spot = campSpot(hub.layout || 'hamlet', 'inn', hub.x, hub.z);
-            if (onLand(spot.x, spot.z)) return { x: spot.x, z: spot.z, name: hub.travel ? 'Travel inn' : 'Inn', mapId: currentMapId() };
+            if (onLand(spot.x, spot.z)) {
+                const clear = besideFolk(spot.x, spot.z, currentMapId());
+                return { x: clear.x, z: clear.z, name: hub.travel ? 'Travel inn' : 'Inn', mapId: currentMapId() };
+            }
             if (onLand(hub.x, hub.z)) return { x: hub.x, z: hub.z, name: 'Camp', mapId: currentMapId() };
         }
         const zone = listDesignedZones()[0];
         if (zone && zone.points && zone.points[0]) return { x: zone.points[0][0], z: zone.points[0][1], name: zone.name || 'Camp', mapId: currentMapId() };
     }
-    const home = { ...DEFAULT_SPAWN, mapId: currentMapId() };
-    return home;
+    const home = besideFolk(DEFAULT_SPAWN.x, DEFAULT_SPAWN.z, currentMapId());
+    return { x: home.x, z: home.z, name: DEFAULT_SPAWN.name, mapId: currentMapId() };
 }
 
 function rebuildCivilians() {
@@ -187,6 +230,9 @@ function rebuildCivilians() {
                 for (const civ of story) civ.id = brief.id + ':' + civ.id;
             }
             CIVILIANS.push(...story);
+            for (const civ of CIVILIANS.slice(before)) {
+                if (!civ.dungeonId && civ.rotY == null) faceFolk(civ, 0, 6);
+            }
             for (let zx = -WORLD_RADIUS; zx <= WORLD_RADIUS; zx++) {
                 for (let zz = -WORLD_RADIUS; zz <= WORLD_RADIUS; zz++) {
                     if (zx === 0 && zz === 0) continue;
@@ -246,6 +292,13 @@ function rebuildCivilians() {
             const civ = CIVILIANS[i];
             civ.mapId = brief.id || '';
             if (index > 0 && brief.id && !String(civ.id).startsWith(brief.id + ':')) civ.id = brief.id + ':' + civ.id;
+            if (!civ.dungeonId) {
+                if (civ.homeX == null) {
+                    civ.homeX = civ.x;
+                    civ.homeZ = civ.z;
+                }
+                if (civ.rotY == null) faceFolk(civ, null, null);
+            }
         }
         for (const site of campSites()) sites.push({ x: site.x, z: site.z, mapId: brief.id || '' });
     });
@@ -315,7 +368,7 @@ rebuildCivilians();
 
 function publicCivilian(civ) {
     const quests = Array.isArray(civ.quests) ? civ.quests : (civ.quest ? [civ.quest] : []);
-    return { id: civ.id, name: civ.name, role: civ.role, title: civ.title, tint: civ.tint, x: civ.x, z: civ.z, text: civ.text, quest: quests[0] || '', quests, dungeonId: civ.dungeonId || '', travel: !!civ.travel };
+    return { id: civ.id, name: civ.name, role: civ.role, title: civ.title, tint: civ.tint, x: civ.x, z: civ.z, rotY: civ.rotY || 0, text: civ.text, quest: quests[0] || '', quests, dungeonId: civ.dungeonId || '', travel: !!civ.travel };
 }
 
 const QUEST_TYPES = ['kill', 'gather', 'named', 'protect'];
@@ -787,6 +840,59 @@ function tickEscorts(dt, now) {
     if (moved && now - lastCivMove > 200) {
         lastCivMove = now;
         const civs = CIVILIANS.filter(civ => civ.escort || (civ.homeX != null && Math.hypot(civ.x - civ.homeX, civ.z - civ.homeZ) > 0.4));
+        if (civs.length) broadcast({ type: 'civMove', civs: civs.map(civ => ({ id: civ.id, x: civ.x, z: civ.z, rotY: civ.rotY || 0 })) });
+    }
+}
+
+function folkNear(civ) {
+    for (const player of players.values()) {
+        if ((player.mapId || '') !== (civ.mapId || '')) continue;
+        if (player.dungeonId) continue;
+        if (Math.hypot(player.x - (civ.homeX ?? civ.x), player.z - (civ.homeZ ?? civ.z)) < 64) return true;
+    }
+    return false;
+}
+
+let lastFolkMove = 0;
+function tickFolk(dt, now) {
+    let moved = false;
+    for (const civ of CIVILIANS) {
+        if (civ.dungeonId || civ.escort || civ.homeX == null) continue;
+        if (!folkNear(civ)) continue;
+        if ([...players.values()].some(player => (player.mapId || '') === (civ.mapId || '') && Math.hypot(player.x - civ.x, player.z - civ.z) < 2.4)) continue;
+        if (!civ.wander) civ.wander = { until: now + 600 + (folkHash(civ.id) % 2200), tx: civ.x, tz: civ.z };
+        if (now < civ.wander.until) continue;
+        let dx = civ.wander.tx - civ.x;
+        let dz = civ.wander.tz - civ.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 0.2) {
+            const ang = Math.random() * Math.PI * 2;
+            const rad = 0.35 + Math.random() * 1.15;
+            civ.wander.tx = civ.homeX + Math.sin(ang) * rad;
+            civ.wander.tz = civ.homeZ + Math.cos(ang) * rad;
+            civ.wander.until = now + 1600 + Math.random() * 2600;
+            civ.rotY = Math.atan2(civ.wander.tx - civ.x, civ.wander.tz - civ.z);
+            moved = true;
+            continue;
+        }
+        const step = Math.min(0.65 * dt, dist);
+        dx /= dist;
+        dz /= dist;
+        const held = clampWorld(civ.x + dx * step, civ.z + dz * step, 2);
+        if (!onLand(held.x, held.z) && !campStanding(held.x, held.z)) {
+            civ.wander.tx = civ.homeX;
+            civ.wander.tz = civ.homeZ;
+            civ.wander.until = now + 1400;
+            continue;
+        }
+        civ.x = held.x;
+        civ.z = held.z;
+        civ.rotY = Math.atan2(dx, dz);
+        moved = true;
+    }
+    if (moved && now - lastFolkMove > 180) {
+        lastFolkMove = now;
+        const civs = CIVILIANS.filter(civ => civ.wander && !civ.dungeonId && !civ.escort && folkNear(civ));
         if (civs.length) broadcast({ type: 'civMove', civs: civs.map(civ => ({ id: civ.id, x: civ.x, z: civ.z, rotY: civ.rotY || 0 })) });
     }
 }
@@ -4177,6 +4283,7 @@ function tickNpcs() {
     const dt = Math.min(0.1, (now - lastNpcTick) / 1000);
     lastNpcTick = now;
     tickEscorts(dt, now);
+    tickFolk(dt, now);
     tickCrafting(now);
     refreshNpcZones();
     for (const area of activeAreas.values()) tickAreaSpawns(area, now);
@@ -4460,6 +4567,11 @@ wss.on('connection', (ws) => {
                 partyId: null
             };
             players.set(persistentId, player);
+            if (!inside) {
+                const clear = besideFolk(player.x, player.z, player.mapId || '');
+                player.x = clear.x;
+                player.z = clear.z;
+            }
             if (!player.class && CLASS_KITS[data.class]) chooseClass(player, data.class);
             refreshDerived(player);
             revealFog(player);
@@ -4490,7 +4602,7 @@ wss.on('connection', (ws) => {
                 maps: scene.maps,
                 dungeons: scene.world.dungeons,
                 dungeon: player.dungeonId ? { id: player.dungeonId, x: player.x, y: 0.2, z: player.z } : null,
-                place: kicked,
+                place: inside ? null : { x: player.x, z: player.z },
                 trade: tradePayload(player).trade,
                 players: Array.from(players.entries())
                     .filter(([pid, p]) => pid !== persistentId && sameView(player, p))
@@ -5104,8 +5216,9 @@ wss.on('connection', (ws) => {
             }
             player.mapId = dest.id;
             activateMap(dest.id);
-            player.x = gate.x;
-            player.z = gate.z;
+            const arrived = besideFolk(gate.x, gate.z, player.mapId);
+            player.x = arrived.x;
+            player.z = arrived.z;
             player.y = terrainHeight(player.x, player.z);
             savePlayer(player);
             refreshNpcZones();
@@ -5152,8 +5265,9 @@ wss.on('connection', (ws) => {
                 player.mapId = destId;
                 activateMap(destId);
             }
-            player.x = home.x;
-            player.z = home.z;
+            const arrived = besideFolk(home.x, home.z, player.mapId || destId || '');
+            player.x = arrived.x;
+            player.z = arrived.z;
             player.y = terrainHeight(player.x, player.z);
             savePlayer(player);
             if (changed) refreshNpcZones();
