@@ -121,6 +121,7 @@ const CIVILIANS = [
     { id: 'sela', name: 'Sela', role: 'quest', title: 'Quest giver', tint: '#2ecc71', x: 0, z: 14, text: 'The boars are tearing up the glade.', quest: 'boar-tusks' },
     { id: 'holt', name: 'Holt', role: 'inn', title: 'Travel inn', tint: '#e67e22', x: GLADE_INN.x, z: GLADE_INN.z, travel: true, text: 'This is the travel inn. Set your rest here, or travel to another land. Press H to return.' },
     { id: 'nessa', name: 'Nessa', role: 'bank', title: 'Banker', tint: '#f4d03f', x: GLADE_INN.x + 3.2, z: GLADE_INN.z + 1.2, text: 'The vault is only here, in the main settlement. I will hold what you do not want to carry.' },
+    { id: 'quill', name: 'Quill', role: 'broker', title: 'Market broker', tint: '#d4a017', x: 6.2, z: 8.4, text: 'The board lists goods from every land. Only bag items that were never worn, and never taken from a named foe.' },
     { id: 'wren', name: 'Wren', role: 'quest', title: 'Fen watcher', tint: '#5dade2', x: 160, z: 30, text: 'The chapel drowned, but the prior did not. Clear the fen, then take a party of four through the portal.' }
 ];
 const STORY_CIVS = CIVILIANS.map(civ => ({ ...civ }));
@@ -144,6 +145,25 @@ function pushCampRole(list, camp, zone, index, role, title, tint, text) {
             : text,
         quest: '',
         travel
+    });
+}
+
+const BROKER_NAMES = ['Quill', 'Ned', 'Sable', 'Ivy', 'Piper'];
+
+function pushBroker(list, camp, zone, index) {
+    let spot = campSpot(camp.layout, 'broker', camp.x, camp.z);
+    if (!campStanding(spot.x, spot.z)) spot = { x: camp.x + 1.8, z: camp.z + 0.6 };
+    if (!campStanding(spot.x, spot.z)) return;
+    list.push({
+        id: 'dbroker-' + zone.id + '-' + index,
+        name: BROKER_NAMES[index % BROKER_NAMES.length],
+        role: 'broker',
+        title: 'Market broker',
+        tint: '#d4a017',
+        x: spot.x,
+        z: spot.z,
+        text: 'I keep the market board in ' + zone.name + '. List bag goods, or buy what others have listed.',
+        quest: ''
     });
 }
 
@@ -204,6 +224,7 @@ function rebuildCivilians() {
                 pushCampRole(CIVILIANS, camp, zone, index, 'shop', 'Shop', '#f1c40f', 'I buy and sell in ' + zone.name + '.');
                 pushCampRole(CIVILIANS, camp, zone, index, 'trainer', 'Trainer', '#5dade2', 'I train spells in ' + zone.name + '.');
                 pushCampRole(CIVILIANS, camp, zone, index, 'quest', 'Quest giver', '#2ecc71', 'I keep the road through ' + zone.name + '.');
+                pushBroker(CIVILIANS, camp, zone, index);
             });
         }
         for (const dungeon of listDungeons()) {
@@ -3739,6 +3760,39 @@ function takeBagItem(player, index, qty) {
     return { item: piece };
 }
 
+function takePurse(player, amount) {
+    const coins = cleanPrice(amount);
+    if (coins <= 0) return { error: 'Enter an amount' };
+    if ((player.coins || 0) < coins) return { error: 'Not enough coins' };
+    player.coins -= coins;
+    return { coins };
+}
+
+function offerLabel(offer) {
+    if (offer && offer.item) return offer.item.name + ((offer.item.qty || 1) > 1 ? ' x' + offer.item.qty : '');
+    if (offer && offer.coins) return offer.coins + ' coins';
+    return 'nothing';
+}
+
+function giveBack(ownerId, offer) {
+    if (!offer) return;
+    if (offer.coins && !offer.item) {
+        grantCoins(ownerId, offer.coins);
+        return;
+    }
+    if (!offer.item) return;
+    const owner = players.get(ownerId);
+    if (owner) {
+        const rest = addToSlots(owner, offer.item);
+        if (rest) parkLetter(ownerId, rest, 'Returned');
+        else savePlayer(owner);
+    } else parkLetter(ownerId, offer.item, 'Returned');
+}
+
+function nearBroker(player) {
+    return CIVILIANS.find(civ => civ.role === 'broker' && (civ.mapId || '') === (player.mapId || '') && !civ.dungeonId && Math.hypot(civ.x - player.x, civ.z - player.z) <= 3.6) || null;
+}
+
 function grantCoins(persistentId, amount) {
     if (!amount) return null;
     const online = players.get(persistentId);
@@ -3762,7 +3816,8 @@ function publicHand(offer) {
         fromName: offer.fromName,
         toId: offer.toId,
         toName: offer.toName,
-        item: copySlot(offer.item),
+        item: offer.item ? copySlot(offer.item) : null,
+        coins: offer.coins || 0,
         price: offer.price || 0
     };
 }
@@ -3775,7 +3830,8 @@ function tradePayload(player) {
             mail: mailbox(id).map(letter => ({
                 id: letter.id,
                 fromName: letter.fromName || 'Trade',
-                item: copySlot(letter.item),
+                item: letter.item ? copySlot(letter.item) : null,
+                coins: letter.coins || 0,
                 price: letter.price || 0,
                 note: letter.note || ''
             })),
@@ -3820,7 +3876,7 @@ function releaseHands(player) {
     if (!related.length) return;
     save.hands = save.hands.filter(row => row.fromId !== player.persistentId && row.toId !== player.persistentId);
     for (const offer of related) {
-        parkLetter(offer.fromId, offer.item, 'Offer cancelled');
+        giveBack(offer.fromId, offer);
         const target = players.get(offer.toId);
         if (target && target !== player) pushTrade(target, 'A trade offer was cancelled');
     }
@@ -3832,12 +3888,24 @@ function offerHand(player, data) {
     if (!tradeNear(player, target)) return 'Too far away';
     tradeSave();
     const old = save.hands.filter(row => row.fromId === player.persistentId);
-    const taken = takeBagItem(player, data.index, data.qty);
-    if (taken.error) return taken.error;
+    const gift = cleanPrice(data.gift);
+    const index = Number(data.index);
+    const sendingItem = Number.isFinite(index) && index >= 0 && player.slots[index];
+    let takenItem = null;
+    let takenCoins = 0;
+    if (!sendingItem) {
+        if (gift <= 0) return 'Choose an item or an amount';
+        const purse = takePurse(player, gift);
+        if (purse.error) return purse.error;
+        takenCoins = purse.coins;
+    } else {
+        const taken = takeBagItem(player, data.index, data.qty);
+        if (taken.error) return taken.error;
+        takenItem = taken.item;
+    }
     save.hands = save.hands.filter(row => row.fromId !== player.persistentId);
     for (const offer of old) {
-        const rest = addToSlots(player, offer.item);
-        if (rest) parkLetter(player.persistentId, rest, 'Previous offer returned');
+        giveBack(player.persistentId, offer);
         const previous = players.get(offer.toId);
         if (previous) pushTrade(previous, player.name + ' cancelled the offer');
     }
@@ -3847,15 +3915,17 @@ function offerHand(player, data) {
         fromName: player.name,
         toId: target.persistentId,
         toName: target.name,
-        item: taken.item,
-        price: cleanPrice(data.price),
+        item: takenItem,
+        coins: takenCoins,
+        price: takenItem ? cleanPrice(data.price) : 0,
         created: Date.now()
     });
     scheduleSave();
     savePlayer(player);
-    const price = cleanPrice(data.price);
+    const label = takenItem ? takenItem.name : (takenCoins + ' coins');
+    const price = takenItem ? cleanPrice(data.price) : 0;
     pushTrade(player, 'Offer sent to ' + target.name);
-    pushTrade(target, player.name + ' offers ' + taken.item.name + (price ? ' for ' + price + ' coins' : ' for free'));
+    pushTrade(target, player.name + ' offers ' + label + (price ? ' for ' + price + ' coins' : takenItem ? ' for free' : ''));
     return '';
 }
 
@@ -3866,20 +3936,22 @@ function answerHand(player, data) {
     if (!data.accept) {
         save.hands = save.hands.filter(row => row.id !== offer.id);
         scheduleSave();
+        giveBack(offer.fromId, offer);
         const seller = players.get(offer.fromId);
-        if (seller) {
-            const rest = addToSlots(seller, offer.item);
-            if (rest) parkLetter(offer.fromId, rest, player.name + ' declined');
-            else {
-                savePlayer(seller);
-                pushTrade(seller, player.name + ' declined');
-            }
-        } else parkLetter(offer.fromId, offer.item, player.name + ' declined');
+        if (seller) pushTrade(seller, player.name + ' declined');
         pushTrade(player, 'Declined');
         return '';
     }
     const seller = players.get(offer.fromId);
     if (!seller || !tradeNear(player, seller)) return 'They are too far away';
+    if (offer.coins && !offer.item) {
+        save.hands = save.hands.filter(row => row.id !== offer.id);
+        scheduleSave();
+        grantCoins(player.persistentId, offer.coins);
+        pushTrade(player, 'You took ' + offer.coins + ' coins');
+        pushTrade(seller, player.name + ' accepted ' + offer.coins + ' coins');
+        return '';
+    }
     const price = offer.price || 0;
     if ((player.coins || 0) < price) return 'Not enough coins';
     const rest = addToSlots(player, offer.item);
@@ -3899,9 +3971,7 @@ function cancelHand(player, id) {
     const offer = save.hands.find(row => row.id === String(id || '') && row.fromId === player.persistentId);
     if (!offer) return 'That offer is gone';
     save.hands = save.hands.filter(row => row.id !== offer.id);
-    const rest = addToSlots(player, offer.item);
-    if (rest) parkLetter(player.persistentId, rest, 'Offer cancelled');
-    else savePlayer(player);
+    giveBack(player.persistentId, offer);
     scheduleSave();
     pushTrade(player, 'Offer cancelled');
     const target = players.get(offer.toId);
@@ -3921,6 +3991,31 @@ function sendMail(player, data) {
     if (toId === player.persistentId) return 'You cannot mail yourself';
     const box = mailbox(toId);
     if (box.length >= 20) return 'Their mailbox is full';
+    const gift = cleanPrice(data.gift);
+    const index = Number(data.index);
+    const sendingItem = Number.isFinite(index) && index >= 0 && player.slots[index];
+    if (!sendingItem) {
+        if (gift <= 0) return 'Choose an item or an amount';
+        const purse = takePurse(player, gift);
+        if (purse.error) return purse.error;
+        box.push({
+            id: nextTradeId('m'),
+            fromId: player.persistentId,
+            fromName: player.name,
+            toId,
+            item: null,
+            coins: purse.coins,
+            price: 0,
+            note: '',
+            created: Date.now()
+        });
+        scheduleSave();
+        savePlayer(player);
+        pushTrade(player, 'Mailed ' + purse.coins + ' coins to ' + save.players[toId].name);
+        const dest = players.get(toId);
+        if (dest) pushTrade(dest, player.name + ' sent you coins');
+        return '';
+    }
     const taken = takeBagItem(player, data.index, data.qty);
     if (taken.error) return taken.error;
     const price = cleanPrice(data.price);
@@ -3946,6 +4041,15 @@ function takeMail(player, id) {
     const box = mailbox(player.persistentId);
     const letter = box.find(row => row.id === String(id || ''));
     if (!letter) return 'That letter is gone';
+    if (!letter.item) {
+        const coins = letter.coins || 0;
+        if (!coins) return 'That letter is empty';
+        save.mail[player.persistentId] = box.filter(row => row.id !== letter.id);
+        scheduleSave();
+        grantCoins(player.persistentId, coins);
+        pushTrade(player, 'Took ' + coins + ' coins');
+        return '';
+    }
     const price = letter.price || 0;
     if ((player.coins || 0) < price) return 'Not enough coins';
     const rest = addToSlots(player, letter.item);
@@ -3965,6 +4069,18 @@ function returnMail(player, id) {
     const box = mailbox(player.persistentId);
     const letter = box.find(row => row.id === String(id || ''));
     if (!letter) return 'That letter is gone';
+    if (!letter.item) {
+        const coins = letter.coins || 0;
+        save.mail[player.persistentId] = box.filter(row => row.id !== letter.id);
+        scheduleSave();
+        if (letter.fromId) {
+            grantCoins(letter.fromId, coins);
+            const dest = players.get(letter.fromId);
+            if (dest) pushTrade(dest, player.name + ' returned ' + coins + ' coins');
+        } else grantCoins(player.persistentId, coins);
+        pushTrade(player, 'Returned');
+        return '';
+    }
     if (letter.fromId) {
         const back = mailbox(letter.fromId);
         if (back.length >= 20) return 'Their mailbox is full';
@@ -4000,6 +4116,7 @@ function returnMail(player, id) {
 
 function listMarket(player, data) {
     tradeSave();
+    if (!nearBroker(player)) return 'Speak to a market broker';
     if (save.market.filter(row => row.sellerId === player.persistentId).length >= 8) return 'You already have 8 listings';
     const taken = takeBagItem(player, data.index, data.qty);
     if (taken.error) return taken.error;
@@ -4020,6 +4137,7 @@ function listMarket(player, data) {
 
 function buyMarket(player, id) {
     tradeSave();
+    if (!nearBroker(player)) return 'Speak to a market broker';
     const row = save.market.find(entry => entry.id === String(id || ''));
     if (!row) return 'That listing is gone';
     if (row.sellerId === player.persistentId) return 'That is your listing';
@@ -4040,6 +4158,7 @@ function buyMarket(player, id) {
 
 function cancelMarket(player, id) {
     tradeSave();
+    if (!nearBroker(player)) return 'Speak to a market broker';
     const row = save.market.find(entry => entry.id === String(id || '') && entry.sellerId === player.persistentId);
     if (!row) return 'That listing is gone';
     const rest = addToSlots(player, row.item);
