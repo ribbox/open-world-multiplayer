@@ -564,9 +564,23 @@
         #pickCard h2 { margin: 0 0 4px; font-size: 14px; color: #f3e2b3; font-weight: 600; }
         #pickNote { margin: 0 0 6px; color: #e07464; font-size: 12px; }
         #pickNote[hidden] { display: none; }
-        #pickBody { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
-        #pickNew { flex: 1 1 54%; min-width: 0; margin-top: 0; }
-        #pickPlay { flex: 1 1 46%; min-width: 0; position: relative; }
+        #pickBody { display: flex; gap: 0; align-items: stretch; min-width: 0; }
+        #pickNew { flex: 1 1 54%; min-width: 0; margin-top: 0; padding-right: 12px; }
+        #pickDivide { flex: 0 0 18px; position: relative; }
+        #pickDivide::before {
+            content: '';
+            position: absolute; left: 50%; top: 2px; bottom: 2px; width: 1px;
+            transform: translateX(-50%);
+            background: linear-gradient(180deg, transparent, rgba(226, 196, 138, 0.2) 6%, #e2c48a 46%, #e2c48a 54%, rgba(226, 196, 138, 0.2) 94%, transparent);
+        }
+        #pickDivide::after {
+            content: '';
+            position: absolute; left: 50%; top: 50%; width: 7px; height: 7px;
+            transform: translate(-50%, -50%) rotate(45deg);
+            background: #12141a; border: 1px solid #e2c48a;
+            box-shadow: 0 0 0 3px #12141a;
+        }
+        #pickPlay { flex: 1 1 46%; min-width: 0; position: relative; padding-left: 12px; }
         #pickList { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
         .pick-slot {
             position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px;
@@ -764,6 +778,7 @@
                         <button type="submit">Create</button>
                     </div>
                 </form>
+                <div id="pickDivide" aria-hidden="true"></div>
                 <div id="pickPlay">
                     <h2>Choose who to play</h2>
                     <div id="pickList"></div>
