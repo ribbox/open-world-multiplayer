@@ -667,11 +667,19 @@
             font-weight: bold; cursor: pointer; padding: 8px 12px;
         }
         #changeChar {
-            position: absolute; top: 202px; right: 12px; z-index: 12;
+            display: block; margin: 6px auto 0; pointer-events: auto;
             background: rgba(16, 18, 24, 0.82); color: #f4efe4;
             border: 1px solid rgba(214, 176, 96, 0.45); border-radius: 4px;
             font-size: 12px; padding: 5px 8px; cursor: pointer;
         }
+        #changeChar[hidden] { display: none; }
+        #mapAimTip {
+            position: fixed; z-index: 30; max-width: 220px; padding: 4px 8px;
+            background: rgba(8, 10, 16, 0.94); color: #fff;
+            border: 1px solid rgba(255,255,255,0.35); border-radius: 4px;
+            font-size: 12px; pointer-events: none;
+        }
+        #mapAimTip[hidden] { display: none; }
         #loadingCard { width: min(420px, 86vw); }
         #loadingTitle { font-size: 22px; margin-bottom: 16px; letter-spacing: 0.04em; }
         #loadingTrack {
@@ -805,7 +813,7 @@
             </div>
         </div>
     </div>
-    <button type="button" id="changeChar" hidden>Characters</button>
+    <div id="mapAimTip" hidden></div>
     <div id="info">
         <button type="button" id="hideInfo" aria-label="Hide instructions">×</button>
         <strong>Open World Prototype</strong><br>
@@ -915,7 +923,7 @@
     <div id="itemTip" hidden></div>
     <div id="talk"></div>
     <div id="actionPicker" hidden></div>
-    <div id="mapReadout"><div id="zoneName">Camp Glade</div><div id="zoneCoords">50.0, 50.0</div><div id="mapHint">Click for the world map</div></div>
+    <div id="mapReadout"><div id="zoneName">Camp Glade</div><div id="zoneCoords">50.0, 50.0</div><div id="mapHint">Click for the world map</div><button type="button" id="changeChar" hidden>Characters</button></div>
     <canvas id="minimap" width="180" height="180"></canvas>
     <div id="worldmap">
         <div id="worldmapPanel">
@@ -3387,6 +3395,28 @@
             // Minimap
             const minimapCanvas = document.getElementById('minimap');
             const minimapCtx = minimapCanvas.getContext('2d');
+            let mapAims = [];
+            const mapAimTip = document.getElementById('mapAimTip');
+            function showMapAim(event) {
+                const rect = minimapCanvas.getBoundingClientRect();
+                const x = (event.clientX - rect.left) * (minimapCanvas.width / rect.width);
+                const y = (event.clientY - rect.top) * (minimapCanvas.height / rect.height);
+                let best = null;
+                let bestD = 16 * 16;
+                for (const aim of mapAims) {
+                    const d = (aim.mx - x) ** 2 + (aim.mz - y) ** 2;
+                    if (d < bestD) { best = aim; bestD = d; }
+                }
+                if (!best) { mapAimTip.hidden = true; return; }
+                mapAimTip.hidden = false;
+                mapAimTip.textContent = best.label;
+                const left = Math.min(window.innerWidth - mapAimTip.offsetWidth - 8, event.clientX + 14);
+                const top = Math.min(window.innerHeight - 28, event.clientY + 14);
+                mapAimTip.style.left = Math.max(8, left) + 'px';
+                mapAimTip.style.top = Math.max(8, top) + 'px';
+            }
+            minimapCanvas.addEventListener('mousemove', showMapAim);
+            minimapCanvas.addEventListener('mouseleave', () => { mapAimTip.hidden = true; });
             const mapSize = 180;
             const mapScale = 1.8;
             const remotePlayers = new Map();
@@ -3495,19 +3525,19 @@
                     let spot = null;
                     if (turnIn) {
                         const giver = findQuestGiver(def);
-                        if (giver) spot = { x: giver.x, z: giver.z, kind: 'turnin' };
+                        if (giver) spot = { x: giver.x, z: giver.z, kind: 'turnin', name: def.name || 'Quest' };
                     }
                     if (!spot && !turnIn && def.dungeonId) {
                         const cave = dungeonById(def.dungeonId);
-                        if (cave && cave.portal) spot = { x: cave.portal.x, z: cave.portal.z, kind: 'dungeon' };
+                        if (cave && cave.portal) spot = { x: cave.portal.x, z: cave.portal.z, kind: 'dungeon', name: (def.name || 'Quest') + (cave.name ? ' · ' + cave.name : '') };
                     }
                     if (!spot && !turnIn && def.zoneId) {
                         const center = zoneCenter(def.zoneId);
-                        if (center) spot = { x: center.x, z: center.z, kind: 'zone' };
+                        if (center) spot = { x: center.x, z: center.z, kind: 'zone', name: def.name || 'Quest' };
                     }
                     if (!spot) {
                         const giver = findQuestGiver(def);
-                        if (giver) spot = { x: giver.x, z: giver.z, kind: turnIn ? 'turnin' : 'giver' };
+                        if (giver) spot = { x: giver.x, z: giver.z, kind: turnIn ? 'turnin' : 'giver', name: def.name || 'Quest' };
                     }
                     if (spot) marks.push(spot);
                 }
@@ -3516,6 +3546,7 @@
 
             function drawMinimap() {
                 updateCampBanner();
+                mapAims = [];
                 if (!activeCave) revealHere(characterGroup.position.x, characterGroup.position.z);
                 const ctx = minimapCtx;
                 ctx.clearRect(0, 0, mapSize, mapSize);
@@ -3761,11 +3792,13 @@
                 ctx.closePath();
                 ctx.fillStyle = '#4169E1';
                 ctx.fill();
-                function aimMarker(x, z, fill) {
+                function aimMarker(x, z, fill, label) {
                     const aim = project(x, z);
                     const adx = aim.mx - mapSize / 2;
                     const adz = aim.mz - mapSize / 2;
                     const adist = Math.hypot(adx, adz) || 1;
+                    let hx = aim.mx;
+                    let hz = aim.mz;
                     ctx.save();
                     ctx.fillStyle = fill;
                     ctx.strokeStyle = '#102018';
@@ -3780,7 +3813,9 @@
                         ctx.closePath();
                     } else {
                         const rim = radius - 11;
-                        ctx.translate(mapSize / 2 + (adx / adist) * rim, mapSize / 2 + (adz / adist) * rim);
+                        hx = mapSize / 2 + (adx / adist) * rim;
+                        hz = mapSize / 2 + (adz / adist) * rim;
+                        ctx.translate(hx, hz);
                         ctx.rotate(Math.atan2(adz, adx));
                         ctx.beginPath();
                         ctx.moveTo(9, 0);
@@ -3792,13 +3827,15 @@
                     ctx.fill();
                     ctx.stroke();
                     ctx.restore();
+                    if (label) mapAims.push({ mx: hx, mz: hz, label });
                 }
-                if (ghost && myCorpse) aimMarker(myCorpse.x, myCorpse.z, '#9ecbff');
-                if (waypoint) aimMarker(waypoint.x, waypoint.z, '#ffe14a');
+                if (ghost && myCorpse) aimMarker(myCorpse.x, myCorpse.z, '#9ecbff', 'Your body');
+                if (waypoint) aimMarker(waypoint.x, waypoint.z, '#ffe14a', 'Marker');
                 if (!activeCave) {
                     for (const mark of trackedQuestMarks()) {
                         const fill = mark.kind === 'turnin' ? '#2ecc71' : mark.kind === 'dungeon' ? '#c39bff' : mark.kind === 'giver' ? '#5dade2' : '#f1c40f';
-                        aimMarker(mark.x, mark.z, fill);
+                        const what = mark.kind === 'turnin' ? 'Turn in ' : mark.kind === 'dungeon' ? 'Portal ' : mark.kind === 'giver' ? 'Quest giver ' : '';
+                        aimMarker(mark.x, mark.z, fill, what + (mark.name || 'Quest'));
                     }
                 }
                 if (!document.getElementById('worldmap').classList.contains('open')) return;
