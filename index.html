@@ -778,6 +778,7 @@
     <div id="inventory">
         <div id="bagHead">
             <span id="bagLabel">Bag 0/16</span>
+            <button type="button" class="text-btn" id="tradeButton">Trade</button>
             <div id="coinLine">0 coins</div>
         </div>
         <div id="bagPockets"></div>
@@ -7746,7 +7747,8 @@
             document.getElementById('pagePrev').addEventListener('click', () => changePage(-1));
             document.getElementById('pageNext').addEventListener('click', () => changePage(1));
             document.getElementById('bagButton').addEventListener('click', toggleBag);
-            document.getElementById('tradeButton').addEventListener('click', () => toggleTrade());
+            const tradeButton = document.getElementById('tradeButton');
+            if (tradeButton) tradeButton.addEventListener('click', () => toggleTrade());
             document.getElementById('questButton').addEventListener('click', () => toggleQuestLog());
             document.getElementById('sheetButton').addEventListener('click', toggleSheet);
             document.getElementById('reclaimButton').addEventListener('click', tryReclaim);
