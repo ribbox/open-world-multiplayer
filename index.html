@@ -2749,7 +2749,13 @@
             }
             let tradeBook = { mail: [], market: [], incoming: [], outgoing: [] };
             let tradeTab = 'hand';
-            const tradeDraft = { index: '', qty: 1, price: 0, name: '' };
+            const tradeDraft = { index: '', qty: 1, gold: 0, silver: 0, coins: 0, name: '' };
+            function tradePriceCoins() {
+                const gold = Math.max(0, Math.round(Number(tradeDraft.gold) || 0));
+                const silver = Math.max(0, Math.round(Number(tradeDraft.silver) || 0));
+                const coins = Math.max(0, Math.round(Number(tradeDraft.coins) || 0));
+                return Math.min(100000000, gold * 10000 + silver * 100 + coins);
+            }
             function tradeableSlots() {
                 return (inventory.slots || []).map((slot, index) => ({ slot, index })).filter(row => row.slot && row.slot.kind !== 'quest' && !row.slot.worn && !row.slot.named);
             }
@@ -2805,19 +2811,27 @@
                 qty.type = 'number';
                 qty.min = '1';
                 qty.value = String(tradeDraft.qty || 1);
-                qty.style.width = '64px';
+                qty.style.width = '52px';
                 qty.title = 'How many';
+                qty.placeholder = 'qty';
                 qty.addEventListener('input', () => { tradeDraft.qty = Math.max(1, Math.round(Number(qty.value) || 1)); });
-                const price = document.createElement('input');
-                price.type = 'number';
-                price.min = '0';
-                price.value = String(tradeDraft.price || 0);
-                price.style.width = '96px';
-                price.title = 'Price in coins. 0 is free.';
-                price.placeholder = 'coins';
-                price.addEventListener('input', () => { tradeDraft.price = Math.max(0, Math.round(Number(price.value) || 0)); });
                 parent.appendChild(qty);
-                parent.appendChild(price);
+                const money = [['gold', 'gold', 'money-gold'], ['silver', 'silver', 'money-silver'], ['coins', 'coins', 'money-coin']];
+                for (const [key, label, tone] of money) {
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.min = '0';
+                    input.value = String(tradeDraft[key] || '');
+                    input.style.width = '52px';
+                    input.placeholder = '0';
+                    input.title = label;
+                    input.addEventListener('input', () => { tradeDraft[key] = Math.max(0, Math.round(Number(input.value) || 0)); });
+                    parent.appendChild(input);
+                    const tag = document.createElement('span');
+                    tag.className = tone;
+                    tag.textContent = label;
+                    parent.appendChild(tag);
+                }
             }
             function tradeLine(text, buttonLabel, onClick, gold) {
                 const row = document.createElement('div');
@@ -2865,7 +2879,7 @@
                 panel.appendChild(tabs);
                 const hint = document.createElement('div');
                 hint.className = 'muted';
-                hint.textContent = 'Bag items only. Worn gear and named drops stay bound. A price of 0 is free.';
+                hint.textContent = 'Bag items only. Worn gear and named drops stay bound. Set gold, silver, or coins. All zero is free.';
                 panel.appendChild(hint);
                 if (tradeTab === 'hand') {
                     for (const offer of tradeBook.incoming) {
@@ -2896,7 +2910,7 @@
                     go.className = 'text-btn gold-btn';
                     go.textContent = 'Offer';
                     go.disabled = !target || select.value === '';
-                    go.addEventListener('click', () => sendTrade('offer', { targetId: target.id, index: Number(select.value), qty: tradeDraft.qty, price: tradeDraft.price }));
+                    go.addEventListener('click', () => sendTrade('offer', { targetId: target.id, index: Number(select.value), qty: tradeDraft.qty, price: tradePriceCoins() }));
                     form.appendChild(go);
                     panel.appendChild(form);
                 } else if (tradeTab === 'mail') {
@@ -2934,7 +2948,7 @@
                     go.className = 'text-btn gold-btn';
                     go.textContent = 'Send';
                     go.disabled = select.value === '';
-                    go.addEventListener('click', () => sendTrade('mail', { to: tradeDraft.name, index: Number(select.value), qty: tradeDraft.qty, price: tradeDraft.price }));
+                    go.addEventListener('click', () => sendTrade('mail', { to: tradeDraft.name, index: Number(select.value), qty: tradeDraft.qty, price: tradePriceCoins() }));
                     form.appendChild(go);
                     panel.appendChild(form);
                 } else {
@@ -2962,7 +2976,7 @@
                     go.className = 'text-btn gold-btn';
                     go.textContent = 'List';
                     go.disabled = select.value === '';
-                    go.addEventListener('click', () => sendTrade('list', { index: Number(select.value), qty: tradeDraft.qty, price: tradeDraft.price }));
+                    go.addEventListener('click', () => sendTrade('list', { index: Number(select.value), qty: tradeDraft.qty, price: tradePriceCoins() }));
                     form.appendChild(go);
                     panel.appendChild(form);
                 }
