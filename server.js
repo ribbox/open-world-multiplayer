@@ -148,25 +148,6 @@ function pushCampRole(list, camp, zone, index, role, title, tint, text) {
     });
 }
 
-const BROKER_NAMES = ['Quill', 'Ned', 'Sable', 'Ivy', 'Piper'];
-
-function pushBroker(list, camp, zone, index) {
-    let spot = campSpot(camp.layout, 'broker', camp.x, camp.z);
-    if (!campStanding(spot.x, spot.z)) spot = { x: camp.x + 1.8, z: camp.z + 0.6 };
-    if (!campStanding(spot.x, spot.z)) return;
-    list.push({
-        id: 'dbroker-' + zone.id + '-' + index,
-        name: BROKER_NAMES[index % BROKER_NAMES.length],
-        role: 'broker',
-        title: 'Market broker',
-        tint: '#d4a017',
-        x: spot.x,
-        z: spot.z,
-        text: 'I keep the market board in ' + zone.name + '. List bag goods, or buy what others have listed.',
-        quest: ''
-    });
-}
-
 function onLand(x, z) {
     return boundaryInset(x, z) >= 6 && !waterAt(x, z);
 }
@@ -224,7 +205,7 @@ function rebuildCivilians() {
                 pushCampRole(CIVILIANS, camp, zone, index, 'shop', 'Shop', '#f1c40f', 'I buy and sell in ' + zone.name + '.');
                 pushCampRole(CIVILIANS, camp, zone, index, 'trainer', 'Trainer', '#5dade2', 'I train spells in ' + zone.name + '.');
                 pushCampRole(CIVILIANS, camp, zone, index, 'quest', 'Quest giver', '#2ecc71', 'I keep the road through ' + zone.name + '.');
-                pushBroker(CIVILIANS, camp, zone, index);
+                pushCampRole(CIVILIANS, camp, zone, index, 'broker', 'Market broker', '#d4a017', 'I keep the market board in ' + zone.name + '. List bag goods, or buy what others have listed.');
             });
         }
         for (const dungeon of listDungeons()) {

@@ -59,7 +59,7 @@
                 <button type="button" id="tabDungeons">Dungeons</button>
             </div>
             <div id="panelMap">
-                <p>Drag the map to move it, and scroll to zoom. Draw a zone or the world edge. A zone that crosses the coast is cut back to the shoreline. Chop tree and Mine rock can be gathered. Tree and Rock are scenery and cannot. Place a camp, then choose its buildings. Every camp has an innkeeper. Mark one camp as the travel inn. Only that inn can send players to another map. Shop, trainer, and quest giver are optional. The Road tool connects two camps. Click the first camp, add bends if you need them, click the next camp, then Finish outline. Straight or organic applies to each new stretch. Erase removes the single tree, rock, herb, or camp you click. Undo takes back the last change.</p>
+                <p>Drag the map to move it, and scroll to zoom. Draw a zone or the world edge. A zone that crosses the coast is cut back to the shoreline. Chop tree and Mine rock can be gathered. Tree and Rock are scenery and cannot. Place a camp, then choose its buildings. Every camp has an innkeeper. Mark one camp as the travel inn. Only that inn can send players to another map. Shop, trainer, quest giver, and market broker are optional. A market broker opens the market board. The Road tool connects two camps. Click the first camp, add bends if you need them, click the next camp, then Finish outline. Straight or organic applies to each new stretch. Erase removes the single tree, rock, herb, or camp you click. Undo takes back the last change.</p>
                 <div class="row">
                     <button type="button" id="editZones" class="on">Zones</button>
                     <button type="button" id="editBounds">World edge</button>
@@ -171,12 +171,12 @@
         const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes'];
         const CAMP_COLOR = { hamlet: '#f1c40f', outpost: '#c0392b', market: '#e67e22', shrine: '#5dade2', ruin: '#95a5a6', ashes: '#6e2c00' };
         const CAMP_PRESETS = [
-            { layout: 'hamlet', shop: 'Merchant', trainer: '', quest: '', inn: 'Innkeeper' },
-            { layout: 'outpost', shop: '', trainer: 'Warden', quest: '', inn: 'Innkeeper' },
-            { layout: 'market', shop: 'Vendor', trainer: '', quest: '', inn: 'Host' },
-            { layout: 'shrine', shop: '', trainer: '', quest: 'Guide', inn: 'Keeper' },
-            { layout: 'ruin', shop: '', trainer: '', quest: '', inn: 'Innkeeper' },
-            { layout: 'ashes', shop: '', trainer: 'Hermit', quest: '', inn: 'Hearth' }
+            { layout: 'hamlet', shop: 'Merchant', trainer: '', quest: '', inn: 'Innkeeper', broker: 'Broker' },
+            { layout: 'outpost', shop: '', trainer: 'Warden', quest: '', inn: 'Innkeeper', broker: '' },
+            { layout: 'market', shop: 'Vendor', trainer: '', quest: '', inn: 'Host', broker: 'Broker' },
+            { layout: 'shrine', shop: '', trainer: '', quest: 'Guide', inn: 'Keeper', broker: '' },
+            { layout: 'ruin', shop: '', trainer: '', quest: '', inn: 'Innkeeper', broker: '' },
+            { layout: 'ashes', shop: '', trainer: 'Hermit', quest: '', inn: 'Hearth', broker: '' }
         ];
         const NODES = ['tree', 'rock', 'plain-tree', 'plain-rock', 'herb', 'sulfur'];
         const KINDS = ['junk', 'coins', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'recipe', 'armor'];
@@ -415,6 +415,7 @@
             }
             current.camps.forEach((camp, index) => {
                 if (!CAMP_LAYOUTS.includes(camp.layout)) camp.layout = 'hamlet';
+                if (camp.broker == null) camp.broker = 'Broker';
                 const block = document.createElement('div');
                 block.className = 'camp';
                 const title = document.createElement('p');
@@ -459,7 +460,7 @@
                 const travelLine = document.createElement('label');
                 travelLine.append(travelOn, document.createTextNode(' Travel inn'));
                 block.appendChild(travelLine);
-                for (const [key, caption] of [['shop', 'Shop'], ['trainer', 'Trainer'], ['quest', 'Quest giver']]) {
+                for (const [key, caption] of [['shop', 'Shop'], ['trainer', 'Trainer'], ['quest', 'Quest giver'], ['broker', 'Market broker']]) {
                     const on = document.createElement('input');
                     on.type = 'checkbox';
                     on.checked = Boolean(camp[key]);
@@ -1276,7 +1277,7 @@
                 remember();
                 const preset = CAMP_PRESETS[current.camps.length % CAMP_PRESETS.length];
                 const travel = !mapCamps().some(camp => camp.travel);
-                current.camps.push({ x: point[0], z: point[1], layout: preset.layout, shop: preset.shop, trainer: preset.trainer, quest: preset.quest, inn: preset.inn, travel });
+                current.camps.push({ x: point[0], z: point[1], layout: preset.layout, shop: preset.shop, trainer: preset.trainer, quest: preset.quest, inn: preset.inn, broker: preset.broker || '', travel });
                 renderFields();
             }
             else if (NODES.includes(tool)) {

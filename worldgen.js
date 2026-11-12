@@ -820,6 +820,7 @@ export function applyWorldConfig(config) {
                 trainer: String(camp.trainer || '').trim().slice(0, 16),
                 quest: String(camp.quest || '').trim().slice(0, 16),
                 inn: String(camp.inn || 'Innkeeper').trim().slice(0, 16) || 'Innkeeper',
+                broker: camp.broker == null ? 'Broker' : String(camp.broker).trim().slice(0, 16),
                 travel: !!camp.travel
             });
         }
