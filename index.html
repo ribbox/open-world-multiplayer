@@ -372,6 +372,19 @@
             border-radius: 8px; padding: 14px 16px; z-index: 24; pointer-events: auto;
         }
         #shop.open { display: block; }
+        #trade {
+            display: none; position: absolute; left: 50%; top: 48px; transform: translateX(-50%);
+            width: min(460px, calc(100vw - 24px)); max-height: calc(100vh - 160px); overflow: auto;
+            background: rgba(16, 18, 24, 0.94); color: white; border: 1px solid #d6b060;
+            border-radius: 8px; padding: 14px 16px; z-index: 24; pointer-events: auto;
+        }
+        #trade.open { display: block; }
+        #trade h2 { margin: 0 0 8px; font-size: 18px; color: #f1c40f; }
+        #trade .tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+        #trade .trade-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        #trade .trade-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+        #trade input, #trade select { background: #111; color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 6px; }
+        #trade .muted { color: #bbb; font-size: 12px; margin: 4px 0; }
         #shop h2 { margin: 0 0 8px; font-size: 18px; color: #f1c40f; }
         #talkHint {
             display: none; position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%);
@@ -744,6 +757,7 @@
         Setup downloads quests and items, or copies them so you can paste into cell A1<br>
         Character sheet Craft tab makes gear. A shop sells health and mana potions, and has Buy and Sell tabs<br>
         100 coins make 1 silver, and 100 silver make 1 gold. Drag an item in the bag to move it. Bags go in the bag slots and add room. Nessa's bank is only in the main settlement<br>
+        Trade, on the bag, sends a bag item to a nearby player, by mail, or on the market. The price can be 0. Gear that was worn, and anything from a named foe, cannot be traded<br>
         The Drowned Chapel is east of the river. Wren's quests lead there. A party of four can enter. Move out of the black water<br>
         You can learn 2 crafting skills from a shop assistant. The shop also sells patterns once your skill is high enough. Making items raises the skill. A trainer teaches the next tier at 75, 150, and 225. Spiders drop silk. Rocks sometimes hold a gem<br>
         Gather herbs by hand and sulfur with a pickaxe<br>
@@ -816,6 +830,7 @@
     <div id="sheet"></div>
     <div id="questlog"></div>
     <div id="shop"></div>
+    <div id="trade"></div>
     <div id="talkHint"></div>
     <div id="itemTip" hidden></div>
     <div id="talk"></div>
@@ -2402,6 +2417,9 @@
                     if ((item.reqLevel || 1) > 1) push('Requires level ' + item.reqLevel, (item.reqLevel || 1) > (stats.level || 1));
                 }
                 if (item.qty > 1) push('Quantity ' + item.qty);
+                if (item.kind === 'quest') push('Cannot be traded');
+                else if (item.worn) push('Cannot be traded · was equipped');
+                else if (item.named) push('Cannot be traded · named drop');
                 return lines;
             }
             function hideItemTip() {
@@ -2631,7 +2649,7 @@
                             const next = inventory.slots.slice();
                             const target = next[to];
                             const stackLimit = { health: 5, mana: 5, bomb: 5, armor: 5, junk: 10, gem: 10, recipe: 10, quest: 10 }[slot.kind] || 1;
-                            const same = target && target.kind === slot.kind && target.name === slot.name && (target.amount || 0) === (slot.amount || 0) && (target.armor || 0) === (slot.armor || 0);
+                            const same = target && target.kind === slot.kind && target.name === slot.name && (target.amount || 0) === (slot.amount || 0) && (target.armor || 0) === (slot.armor || 0) && !!target.worn === !!slot.worn && !!target.named === !!slot.named;
                             if (same && (target.qty || 1) < stackLimit) {
                                 const take = Math.min(stackLimit - target.qty, slot.qty || 1);
                                 target.qty += take;
@@ -2727,6 +2745,232 @@
                 }
                 gameSocket.send(JSON.stringify({ type: 'use', slot: index }));
                 holdAction(slot.kind);
+            }
+            let tradeBook = { mail: [], market: [], incoming: [], outgoing: [] };
+            let tradeTab = 'hand';
+            const tradeDraft = { index: '', qty: 1, price: 0, name: '' };
+            function tradeableSlots() {
+                return (inventory.slots || []).map((slot, index) => ({ slot, index })).filter(row => row.slot && row.slot.kind !== 'quest' && !row.slot.worn && !row.slot.named);
+            }
+            function sendTrade(action, extra) {
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
+                gameSocket.send(JSON.stringify(Object.assign({ type: 'trade', action }, extra || {})));
+            }
+            function applyTrade(book, note) {
+                if (book) {
+                    tradeBook = {
+                        mail: book.mail || [],
+                        market: book.market || [],
+                        incoming: book.incoming || [],
+                        outgoing: book.outgoing || []
+                    };
+                }
+                const button = document.getElementById('tradeButton');
+                if (button) button.textContent = tradeBook.mail.length ? 'Trade (' + tradeBook.mail.length + ')' : 'Trade';
+                const panel = document.getElementById('trade');
+                if (panel && panel.classList.contains('open')) renderTrade();
+                if (note) showMessage(note);
+            }
+            function toggleTrade(force) {
+                const panel = document.getElementById('trade');
+                if (!panel) return;
+                const open = typeof force === 'boolean' ? force : !panel.classList.contains('open');
+                panel.classList.toggle('open', open);
+                if (!open) return;
+                renderTrade();
+                sendTrade('sync');
+            }
+            function fillTradeSelect(select) {
+                const rows = tradeableSlots();
+                select.textContent = '';
+                if (!rows.length) {
+                    const opt = document.createElement('option');
+                    opt.value = '';
+                    opt.textContent = 'Nothing tradeable';
+                    select.appendChild(opt);
+                    return;
+                }
+                for (const row of rows) {
+                    const opt = document.createElement('option');
+                    opt.value = String(row.index);
+                    opt.textContent = row.slot.name + ' ×' + (row.slot.qty || 1);
+                    select.appendChild(opt);
+                }
+                if (rows.some(row => String(row.index) === String(tradeDraft.index))) select.value = String(tradeDraft.index);
+                else tradeDraft.index = select.value;
+            }
+            function tradeAmountFields(parent) {
+                const qty = document.createElement('input');
+                qty.type = 'number';
+                qty.min = '1';
+                qty.value = String(tradeDraft.qty || 1);
+                qty.style.width = '64px';
+                qty.title = 'How many';
+                qty.addEventListener('input', () => { tradeDraft.qty = Math.max(1, Math.round(Number(qty.value) || 1)); });
+                const price = document.createElement('input');
+                price.type = 'number';
+                price.min = '0';
+                price.value = String(tradeDraft.price || 0);
+                price.style.width = '96px';
+                price.title = 'Price in coins. 0 is free.';
+                price.placeholder = 'coins';
+                price.addEventListener('input', () => { tradeDraft.price = Math.max(0, Math.round(Number(price.value) || 0)); });
+                parent.appendChild(qty);
+                parent.appendChild(price);
+            }
+            function tradeLine(text, buttonLabel, onClick, gold) {
+                const row = document.createElement('div');
+                row.className = 'trade-row';
+                const label = document.createElement('div');
+                label.textContent = text;
+                row.appendChild(label);
+                if (buttonLabel) {
+                    const actions = document.createElement('div');
+                    const labels = Array.isArray(buttonLabel) ? buttonLabel : [buttonLabel];
+                    const clicks = Array.isArray(onClick) ? onClick : [onClick];
+                    labels.forEach((name, i) => {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.className = 'text-btn' + (gold && i === 0 ? ' gold-btn' : '');
+                        button.textContent = name;
+                        button.addEventListener('click', clicks[i]);
+                        actions.appendChild(button);
+                    });
+                    row.appendChild(actions);
+                }
+                return row;
+            }
+            function renderTrade() {
+                const panel = document.getElementById('trade');
+                if (!panel) return;
+                const aimed = currentTarget();
+                const target = aimed && aimed.kind === 'player' ? aimed : null;
+                panel.textContent = '';
+                const title = document.createElement('h2');
+                title.textContent = 'Trade';
+                panel.appendChild(title);
+                const tabs = document.createElement('div');
+                tabs.className = 'tabs';
+                const tabNames = [['hand', 'Nearby'], ['mail', 'Mail' + (tradeBook.mail.length ? ' (' + tradeBook.mail.length + ')' : '')], ['market', 'Market']];
+                for (const [id, label] of tabNames) {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn';
+                    if (tradeTab === id) button.style.outline = '1px solid #f1c40f';
+                    button.textContent = label;
+                    button.addEventListener('click', () => { tradeTab = id; renderTrade(); });
+                    tabs.appendChild(button);
+                }
+                panel.appendChild(tabs);
+                const hint = document.createElement('div');
+                hint.className = 'muted';
+                hint.textContent = 'Bag items only. Worn gear and named drops stay bound. A price of 0 is free.';
+                panel.appendChild(hint);
+                if (tradeTab === 'hand') {
+                    for (const offer of tradeBook.incoming) {
+                        const cost = offer.price ? formatMoney(offer.price) : 'free';
+                        panel.appendChild(tradeLine(
+                            offer.fromName + ' offers ' + offer.item.name + ' ×' + (offer.item.qty || 1) + ' · ' + cost,
+                            ['Accept', 'No'],
+                            [() => sendTrade('answer', { id: offer.id, accept: true }), () => sendTrade('answer', { id: offer.id, accept: false })],
+                            true
+                        ));
+                    }
+                    for (const offer of tradeBook.outgoing) {
+                        panel.appendChild(tradeLine('Waiting on ' + offer.toName + ' · ' + offer.item.name + ' ×' + (offer.item.qty || 1), 'Cancel', () => sendTrade('cancel', { id: offer.id })));
+                    }
+                    const who = document.createElement('div');
+                    who.className = 'muted';
+                    who.textContent = target ? 'Target: ' + target.name + '. Stay within 8 meters.' : 'Target a player first. Stay within 8 meters.';
+                    panel.appendChild(who);
+                    const form = document.createElement('div');
+                    form.className = 'trade-form';
+                    const select = document.createElement('select');
+                    fillTradeSelect(select);
+                    select.addEventListener('change', () => { tradeDraft.index = select.value; });
+                    form.appendChild(select);
+                    tradeAmountFields(form);
+                    const go = document.createElement('button');
+                    go.type = 'button';
+                    go.className = 'text-btn gold-btn';
+                    go.textContent = 'Offer';
+                    go.disabled = !target || select.value === '';
+                    go.addEventListener('click', () => sendTrade('offer', { targetId: target.id, index: Number(select.value), qty: tradeDraft.qty, price: tradeDraft.price }));
+                    form.appendChild(go);
+                    panel.appendChild(form);
+                } else if (tradeTab === 'mail') {
+                    if (!tradeBook.mail.length) {
+                        const empty = document.createElement('div');
+                        empty.className = 'muted';
+                        empty.textContent = 'No mail.';
+                        panel.appendChild(empty);
+                    }
+                    for (const letter of tradeBook.mail) {
+                        const cost = letter.price ? formatMoney(letter.price) : 'free';
+                        const who = letter.note ? letter.note + ' · ' : ('From ' + letter.fromName + ' · ');
+                        panel.appendChild(tradeLine(
+                            who + letter.item.name + ' ×' + (letter.item.qty || 1) + ' · ' + cost,
+                            ['Take', 'Return'],
+                            [() => sendTrade('take', { id: letter.id }), () => sendTrade('return', { id: letter.id })],
+                            true
+                        ));
+                    }
+                    const form = document.createElement('div');
+                    form.className = 'trade-form';
+                    const name = document.createElement('input');
+                    name.maxLength = 16;
+                    name.placeholder = 'Player name';
+                    name.value = tradeDraft.name;
+                    name.addEventListener('input', () => { tradeDraft.name = name.value; });
+                    form.appendChild(name);
+                    const select = document.createElement('select');
+                    fillTradeSelect(select);
+                    select.addEventListener('change', () => { tradeDraft.index = select.value; });
+                    form.appendChild(select);
+                    tradeAmountFields(form);
+                    const go = document.createElement('button');
+                    go.type = 'button';
+                    go.className = 'text-btn gold-btn';
+                    go.textContent = 'Send';
+                    go.disabled = select.value === '';
+                    go.addEventListener('click', () => sendTrade('mail', { to: tradeDraft.name, index: Number(select.value), qty: tradeDraft.qty, price: tradeDraft.price }));
+                    form.appendChild(go);
+                    panel.appendChild(form);
+                } else {
+                    if (!tradeBook.market.length) {
+                        const empty = document.createElement('div');
+                        empty.className = 'muted';
+                        empty.textContent = 'The market is empty.';
+                        panel.appendChild(empty);
+                    }
+                    for (const row of tradeBook.market) {
+                        const cost = row.price ? formatMoney(row.price) : 'free';
+                        const text = row.item.name + ' ×' + (row.item.qty || 1) + ' · ' + cost + ' · ' + row.sellerName;
+                        if (row.mine) panel.appendChild(tradeLine(text, 'Cancel', () => sendTrade('unlist', { id: row.id })));
+                        else panel.appendChild(tradeLine(text, 'Buy', () => sendTrade('buy', { id: row.id }), true));
+                    }
+                    const form = document.createElement('div');
+                    form.className = 'trade-form';
+                    const select = document.createElement('select');
+                    fillTradeSelect(select);
+                    select.addEventListener('change', () => { tradeDraft.index = select.value; });
+                    form.appendChild(select);
+                    tradeAmountFields(form);
+                    const go = document.createElement('button');
+                    go.type = 'button';
+                    go.className = 'text-btn gold-btn';
+                    go.textContent = 'List';
+                    go.disabled = select.value === '';
+                    go.addEventListener('click', () => sendTrade('list', { index: Number(select.value), qty: tradeDraft.qty, price: tradeDraft.price }));
+                    form.appendChild(go);
+                    panel.appendChild(form);
+                }
+                const close = document.createElement('button');
+                close.type = 'button';
+                close.className = 'text-btn';
+                close.textContent = 'Close';
+                close.addEventListener('click', () => toggleTrade(false));
+                panel.appendChild(close);
             }
             updateInventoryUI();
 
@@ -7502,6 +7746,7 @@
             document.getElementById('pagePrev').addEventListener('click', () => changePage(-1));
             document.getElementById('pageNext').addEventListener('click', () => changePage(1));
             document.getElementById('bagButton').addEventListener('click', toggleBag);
+            document.getElementById('tradeButton').addEventListener('click', () => toggleTrade());
             document.getElementById('questButton').addEventListener('click', () => toggleQuestLog());
             document.getElementById('sheetButton').addEventListener('click', toggleSheet);
             document.getElementById('reclaimButton').addEventListener('click', tryReclaim);
@@ -8411,6 +8656,7 @@
                             document.getElementById('playerColor').style.background = data.color;
                         }
                         if (data.inventory) applyInventory(data.inventory);
+                        if (data.trade) applyTrade(data.trade, data.trade.mail && data.trade.mail.length ? 'You have mail' : '');
                         if (data.stats) applyStats(data.stats);
                         if (data.spawn) boundSpawn = data.spawn;
                         if (data.world) {
@@ -8569,6 +8815,11 @@
                         else if (data.note) showMessage(data.note);
                         if (Object.prototype.hasOwnProperty.call(data, 'party')) renderParty(data.party);
                         if (data.ok !== false) document.getElementById('partyPrompt').hidden = true;
+                    } else if (data.type === 'trade') {
+                        if (data.inventory) applyInventory(data.inventory);
+                        applyTrade(data.trade, data.reason || data.note || '');
+                        if (data.ok === false) sfx('deny');
+                        else if (data.note) sfx('bell');
                     } else if (data.type === 'hurt') {
                         if (hearth) cancelHearth('Hearth interrupted');
                         applyStats(data);

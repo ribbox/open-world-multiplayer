@@ -39,10 +39,13 @@ function loadSave() {
         const parsed = JSON.parse(fs.readFileSync(savePath, 'utf8'));
         return {
             resources: parsed.resources && typeof parsed.resources === 'object' ? parsed.resources : {},
-            players: parsed.players && typeof parsed.players === 'object' ? parsed.players : {}
+            players: parsed.players && typeof parsed.players === 'object' ? parsed.players : {},
+            mail: parsed.mail && typeof parsed.mail === 'object' ? parsed.mail : {},
+            market: Array.isArray(parsed.market) ? parsed.market : [],
+            hands: Array.isArray(parsed.hands) ? parsed.hands : []
         };
     } catch {
-        return { resources: {}, players: {} };
+        return { resources: {}, players: {}, mail: {}, market: [], hands: [] };
     }
 }
 
@@ -2949,6 +2952,7 @@ function equipItem(player, equipSlot, bagIndex) {
     }
     const piece = copySlot(item);
     piece.qty = 1;
+    piece.worn = true;
     item.qty -= 1;
     const worn = player.equipment[equipSlot];
     if (item.qty <= 0) player.slots[bagIndex] = null;
@@ -2985,7 +2989,7 @@ function equipBag(player, index) {
     if (!item || item.kind !== 'bag') return 'That is not a bag';
     const pocket = player.bags.findIndex(bag => !bag);
     if (pocket < 0) return 'Bag slots are full';
-    player.bags[pocket] = { kind: 'bag', name: item.name, qty: 1, slots: item.slots || 4, bag: item.bag || '' };
+    player.bags[pocket] = { kind: 'bag', name: item.name, qty: 1, slots: item.slots || 4, bag: item.bag || '', worn: true, named: !!item.named };
     item.qty -= 1;
     if (item.qty <= 0) player.slots[index] = null;
     normalizeSlots(player);
@@ -3123,6 +3127,7 @@ function sameStack(a, b) {
     if ((a.slot || '') !== (b.slot || '') || (a.weapon || '') !== (b.weapon || '')) return false;
     if ((a.reqLevel || 1) !== (b.reqLevel || 1)) return false;
     if (String(a.icon || '') !== String(b.icon || '')) return false;
+    if (!!a.worn !== !!b.worn || !!a.named !== !!b.named) return false;
     const as = a.stats || {};
     const bs = b.stats || {};
     return (as.strength || 0) === (bs.strength || 0) && (as.stamina || 0) === (bs.stamina || 0) && (as.intellect || 0) === (bs.intellect || 0);
@@ -3182,17 +3187,19 @@ function addToSlots(player, source) {
             stats: cleanStats(source.stats),
             reqLevel: Math.max(1, Math.round(Number(source.reqLevel) || 1)),
             slots: Math.max(0, Math.round(Number(source.slots) || 0)),
-            bag: source.bag ? String(source.bag).slice(0, 24) : ''
+            bag: source.bag ? String(source.bag).slice(0, 24) : '',
+            worn: !!source.worn,
+            named: !!source.named
         };
         qty -= take;
         if (qty <= 0) return null;
     }
-    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0, weapon: source.weapon || '', slot: source.slot || '', style: source.style || '', magic: !!source.magic, recipe: source.recipe || '', icon: source.icon ? String(source.icon).slice(0, 32) : '', stats: cleanStats(source.stats), reqLevel: Math.max(1, Math.round(Number(source.reqLevel) || 1)), slots: Math.max(0, Math.round(Number(source.slots) || 0)), bag: source.bag ? String(source.bag).slice(0, 24) : '' };
+    return { kind: source.kind, name: source.name, qty, amount: source.amount || 0, armor: source.armor || 0, weapon: source.weapon || '', slot: source.slot || '', style: source.style || '', magic: !!source.magic, recipe: source.recipe || '', icon: source.icon ? String(source.icon).slice(0, 32) : '', stats: cleanStats(source.stats), reqLevel: Math.max(1, Math.round(Number(source.reqLevel) || 1)), slots: Math.max(0, Math.round(Number(source.slots) || 0)), bag: source.bag ? String(source.bag).slice(0, 24) : '', worn: !!source.worn, named: !!source.named };
 }
 
 function copySlot(slot) {
     if (!slot) return null;
-    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0, weapon: slot.weapon || '', slot: slot.slot || '', style: slot.style || '', magic: !!slot.magic, recipe: slot.recipe || '', icon: slot.icon ? String(slot.icon).slice(0, 32) : '', stats: cleanStats(slot.stats), reqLevel: Math.max(1, Math.round(Number(slot.reqLevel) || 1)), slots: Math.max(0, Math.round(Number(slot.slots) || 0)), bag: slot.bag ? String(slot.bag).slice(0, 24) : '' };
+    return { kind: slot.kind, name: slot.name, qty: slot.qty || 1, amount: slot.amount || 0, armor: slot.armor || 0, weapon: slot.weapon || '', slot: slot.slot || '', style: slot.style || '', magic: !!slot.magic, recipe: slot.recipe || '', icon: slot.icon ? String(slot.icon).slice(0, 32) : '', stats: cleanStats(slot.stats), reqLevel: Math.max(1, Math.round(Number(slot.reqLevel) || 1)), slots: Math.max(0, Math.round(Number(slot.slots) || 0)), bag: slot.bag ? String(slot.bag).slice(0, 24) : '', worn: !!slot.worn, named: !!slot.named };
 }
 
 function absorbWallet(player) {
@@ -3520,6 +3527,7 @@ function spawnChest(npc, owners) {
             items.push(drop);
         }
     }
+    if (mobIsNamed(npc)) stampNamed(items);
     const chest = {
         id: 'c' + (chestSeq++),
         x: npc.x,
@@ -3565,6 +3573,7 @@ function spawnChapelChests(npc, owners) {
     list.forEach((owner, index) => {
         const items = [chapelPiece(owner), { kind: 'health', name: 'Health potion', qty: 1, amount: 30 }];
         if (Math.random() < 0.45) items.push(makeBag(Math.random() < 0.3 ? 'deep-pack' : 'traveler-pack'));
+        stampNamed(items);
         const chest = {
             id: 'c' + (chestSeq++),
             x: npc.x + (index - (list.length - 1) / 2) * 0.8,
@@ -3656,6 +3665,407 @@ function giveLoot(player, items) {
     if (taken.length) savePlayer(player);
     if (quested) savePlayer(player);
     return { taken, leftover, quested };
+}
+
+const TRADE_RANGE = 8;
+let tradeSeq = Date.now() % 100000000;
+
+function nextTradeId(prefix) {
+    tradeSeq += 1;
+    return prefix + tradeSeq.toString(36);
+}
+
+function mobIsNamed(npc) {
+    if (!npc) return false;
+    if (npc.boss) return true;
+    const quest = npc.questId && QUESTS[npc.questId];
+    if (quest && quest.type === 'named') return true;
+    const kind = NPC_KINDS[npc.kind];
+    return !!(kind && npc.name && npc.name !== kind.name);
+}
+
+function stampNamed(items) {
+    for (const item of items || []) {
+        if (item && item.kind !== 'coins') item.named = true;
+    }
+}
+
+function tradeBlock(item) {
+    if (!item) return 'Empty slot';
+    if (item.kind === 'quest') return 'Quest items cannot be traded';
+    if (item.worn) return 'Worn items cannot be traded';
+    if (item.named) return 'Named drops cannot be traded';
+    return '';
+}
+
+function cleanPrice(value) {
+    const price = Math.round(Number(value) || 0);
+    if (!Number.isFinite(price) || price < 0) return 0;
+    return Math.min(price, 100000000);
+}
+
+function tradeSave() {
+    if (!save.mail || typeof save.mail !== 'object') save.mail = {};
+    if (!Array.isArray(save.market)) save.market = [];
+    if (!Array.isArray(save.hands)) save.hands = [];
+}
+
+function mailbox(id) {
+    tradeSave();
+    if (!Array.isArray(save.mail[id])) save.mail[id] = [];
+    return save.mail[id];
+}
+
+function tradeNear(a, b) {
+    if (!a || !b || a === b || a.ghost || b.ghost) return false;
+    if ((a.mapId || '') !== (b.mapId || '')) return false;
+    if ((a.dungeonId || '') !== (b.dungeonId || '')) return false;
+    if ((a.instanceId || '') !== (b.instanceId || '')) return false;
+    return Math.hypot(a.x - b.x, a.z - b.z) <= TRADE_RANGE;
+}
+
+function takeBagItem(player, index, qty) {
+    normalizeSlots(player);
+    const slot = Math.round(Number(index));
+    const item = player.slots[slot];
+    const block = tradeBlock(item);
+    if (block) return { error: block };
+    const have = item.qty || 1;
+    const take = Math.max(1, Math.min(have, Math.round(Number(qty) || have)));
+    const piece = copySlot(item);
+    piece.qty = take;
+    item.qty = have - take;
+    if (item.qty <= 0) player.slots[slot] = null;
+    return { item: piece };
+}
+
+function grantCoins(persistentId, amount) {
+    if (!amount) return null;
+    const online = players.get(persistentId);
+    if (online) {
+        online.coins = (online.coins || 0) + amount;
+        savePlayer(online);
+        return online;
+    }
+    const prof = save.players[persistentId];
+    if (prof) {
+        prof.coins = (prof.coins || 0) + amount;
+        scheduleSave();
+    }
+    return null;
+}
+
+function publicHand(offer) {
+    return {
+        id: offer.id,
+        fromId: offer.fromId,
+        fromName: offer.fromName,
+        toId: offer.toId,
+        toName: offer.toName,
+        item: copySlot(offer.item),
+        price: offer.price || 0
+    };
+}
+
+function tradePayload(player) {
+    tradeSave();
+    const id = player.persistentId;
+    return {
+        trade: {
+            mail: mailbox(id).map(letter => ({
+                id: letter.id,
+                fromName: letter.fromName || 'Trade',
+                item: copySlot(letter.item),
+                price: letter.price || 0,
+                note: letter.note || ''
+            })),
+            market: save.market.map(row => ({
+                id: row.id,
+                sellerId: row.sellerId,
+                sellerName: row.sellerName,
+                item: copySlot(row.item),
+                price: row.price || 0,
+                mine: row.sellerId === id
+            })),
+            incoming: save.hands.filter(row => row.toId === id).map(publicHand),
+            outgoing: save.hands.filter(row => row.fromId === id).map(publicHand)
+        }
+    };
+}
+
+function pushTrade(player, note) {
+    if (!player || !player.ws) return;
+    send(player.ws, { type: 'trade', ok: true, note: note || '', inventory: inventoryOf(player), ...tradePayload(player) });
+}
+
+function parkLetter(persistentId, item, note) {
+    mailbox(persistentId).push({
+        id: nextTradeId('m'),
+        fromId: '',
+        fromName: 'Trade',
+        toId: persistentId,
+        item: copySlot(item),
+        price: 0,
+        note: note || 'Returned',
+        created: Date.now()
+    });
+    scheduleSave();
+    const online = players.get(persistentId);
+    if (online) pushTrade(online, note || 'An item was returned by mail');
+}
+
+function releaseHands(player) {
+    tradeSave();
+    const related = save.hands.filter(row => row.fromId === player.persistentId || row.toId === player.persistentId);
+    if (!related.length) return;
+    save.hands = save.hands.filter(row => row.fromId !== player.persistentId && row.toId !== player.persistentId);
+    for (const offer of related) {
+        parkLetter(offer.fromId, offer.item, 'Offer cancelled');
+        const target = players.get(offer.toId);
+        if (target && target !== player) pushTrade(target, 'A trade offer was cancelled');
+    }
+}
+
+function offerHand(player, data) {
+    const target = players.get(String(data.targetId || ''));
+    if (!target) return 'Select a nearby player';
+    if (!tradeNear(player, target)) return 'Too far away';
+    tradeSave();
+    const old = save.hands.filter(row => row.fromId === player.persistentId);
+    const taken = takeBagItem(player, data.index, data.qty);
+    if (taken.error) return taken.error;
+    save.hands = save.hands.filter(row => row.fromId !== player.persistentId);
+    for (const offer of old) {
+        const rest = addToSlots(player, offer.item);
+        if (rest) parkLetter(player.persistentId, rest, 'Previous offer returned');
+        const previous = players.get(offer.toId);
+        if (previous) pushTrade(previous, player.name + ' cancelled the offer');
+    }
+    save.hands.push({
+        id: nextTradeId('h'),
+        fromId: player.persistentId,
+        fromName: player.name,
+        toId: target.persistentId,
+        toName: target.name,
+        item: taken.item,
+        price: cleanPrice(data.price),
+        created: Date.now()
+    });
+    scheduleSave();
+    savePlayer(player);
+    const price = cleanPrice(data.price);
+    pushTrade(player, 'Offer sent to ' + target.name);
+    pushTrade(target, player.name + ' offers ' + taken.item.name + (price ? ' for ' + price + ' coins' : ' for free'));
+    return '';
+}
+
+function answerHand(player, data) {
+    tradeSave();
+    const offer = save.hands.find(row => row.id === String(data.id || '') && row.toId === player.persistentId);
+    if (!offer) return 'That offer is gone';
+    if (!data.accept) {
+        save.hands = save.hands.filter(row => row.id !== offer.id);
+        scheduleSave();
+        const seller = players.get(offer.fromId);
+        if (seller) {
+            const rest = addToSlots(seller, offer.item);
+            if (rest) parkLetter(offer.fromId, rest, player.name + ' declined');
+            else {
+                savePlayer(seller);
+                pushTrade(seller, player.name + ' declined');
+            }
+        } else parkLetter(offer.fromId, offer.item, player.name + ' declined');
+        pushTrade(player, 'Declined');
+        return '';
+    }
+    const seller = players.get(offer.fromId);
+    if (!seller || !tradeNear(player, seller)) return 'They are too far away';
+    const price = offer.price || 0;
+    if ((player.coins || 0) < price) return 'Not enough coins';
+    const rest = addToSlots(player, offer.item);
+    if (rest) return 'Inventory full';
+    if (price) player.coins -= price;
+    save.hands = save.hands.filter(row => row.id !== offer.id);
+    scheduleSave();
+    savePlayer(player);
+    if (price) grantCoins(seller.persistentId, price);
+    pushTrade(player, 'You took ' + offer.item.name);
+    pushTrade(seller, player.name + ' accepted' + (price ? ' and paid ' + price + ' coins' : ''));
+    return '';
+}
+
+function cancelHand(player, id) {
+    tradeSave();
+    const offer = save.hands.find(row => row.id === String(id || '') && row.fromId === player.persistentId);
+    if (!offer) return 'That offer is gone';
+    save.hands = save.hands.filter(row => row.id !== offer.id);
+    const rest = addToSlots(player, offer.item);
+    if (rest) parkLetter(player.persistentId, rest, 'Offer cancelled');
+    else savePlayer(player);
+    scheduleSave();
+    pushTrade(player, 'Offer cancelled');
+    const target = players.get(offer.toId);
+    if (target) pushTrade(target, player.name + ' cancelled the offer');
+    return '';
+}
+
+function findPlayerId(name) {
+    const want = String(name || '').trim().toLowerCase();
+    if (!want) return '';
+    return Object.keys(save.players).find(id => String(save.players[id].name || '').trim().toLowerCase() === want) || '';
+}
+
+function sendMail(player, data) {
+    const toId = findPlayerId(data.to);
+    if (!toId) return 'No one by that name';
+    if (toId === player.persistentId) return 'You cannot mail yourself';
+    const box = mailbox(toId);
+    if (box.length >= 20) return 'Their mailbox is full';
+    const taken = takeBagItem(player, data.index, data.qty);
+    if (taken.error) return taken.error;
+    const price = cleanPrice(data.price);
+    box.push({
+        id: nextTradeId('m'),
+        fromId: player.persistentId,
+        fromName: player.name,
+        toId,
+        item: taken.item,
+        price,
+        note: '',
+        created: Date.now()
+    });
+    scheduleSave();
+    savePlayer(player);
+    pushTrade(player, 'Mailed ' + taken.item.name + ' to ' + save.players[toId].name);
+    const dest = players.get(toId);
+    if (dest) pushTrade(dest, player.name + ' sent you mail');
+    return '';
+}
+
+function takeMail(player, id) {
+    const box = mailbox(player.persistentId);
+    const letter = box.find(row => row.id === String(id || ''));
+    if (!letter) return 'That letter is gone';
+    const price = letter.price || 0;
+    if ((player.coins || 0) < price) return 'Not enough coins';
+    const rest = addToSlots(player, letter.item);
+    if (rest) return 'Inventory full';
+    if (price) player.coins -= price;
+    save.mail[player.persistentId] = box.filter(row => row.id !== letter.id);
+    scheduleSave();
+    savePlayer(player);
+    if (price && letter.fromId) grantCoins(letter.fromId, price);
+    pushTrade(player, 'Took ' + letter.item.name);
+    const sender = letter.fromId && players.get(letter.fromId);
+    if (sender && price) pushTrade(sender, player.name + ' paid ' + price + ' coins for ' + letter.item.name);
+    return '';
+}
+
+function returnMail(player, id) {
+    const box = mailbox(player.persistentId);
+    const letter = box.find(row => row.id === String(id || ''));
+    if (!letter) return 'That letter is gone';
+    if (letter.fromId) {
+        const back = mailbox(letter.fromId);
+        if (back.length >= 20) return 'Their mailbox is full';
+        save.mail[player.persistentId] = box.filter(row => row.id !== letter.id);
+        back.push({
+            id: nextTradeId('m'),
+            fromId: player.persistentId,
+            fromName: player.name,
+            toId: letter.fromId,
+            item: letter.item,
+            price: 0,
+            note: 'Returned',
+            created: Date.now()
+        });
+        scheduleSave();
+        pushTrade(player, 'Returned');
+        const dest = players.get(letter.fromId);
+        if (dest) pushTrade(dest, player.name + ' returned ' + letter.item.name);
+        return '';
+    }
+    save.mail[player.persistentId] = box.filter(row => row.id !== letter.id);
+    const rest = addToSlots(player, letter.item);
+    if (rest) {
+        save.mail[player.persistentId].push(letter);
+        scheduleSave();
+        return 'Inventory full';
+    }
+    scheduleSave();
+    savePlayer(player);
+    pushTrade(player, 'Took ' + letter.item.name);
+    return '';
+}
+
+function listMarket(player, data) {
+    tradeSave();
+    if (save.market.filter(row => row.sellerId === player.persistentId).length >= 8) return 'You already have 8 listings';
+    const taken = takeBagItem(player, data.index, data.qty);
+    if (taken.error) return taken.error;
+    const price = cleanPrice(data.price);
+    save.market.push({
+        id: nextTradeId('a'),
+        sellerId: player.persistentId,
+        sellerName: player.name,
+        item: taken.item,
+        price,
+        created: Date.now()
+    });
+    scheduleSave();
+    savePlayer(player);
+    pushTrade(player, 'Listed ' + taken.item.name + (price ? ' for ' + price + ' coins' : ' for free'));
+    return '';
+}
+
+function buyMarket(player, id) {
+    tradeSave();
+    const row = save.market.find(entry => entry.id === String(id || ''));
+    if (!row) return 'That listing is gone';
+    if (row.sellerId === player.persistentId) return 'That is your listing';
+    const price = row.price || 0;
+    if ((player.coins || 0) < price) return 'Not enough coins';
+    const rest = addToSlots(player, row.item);
+    if (rest) return 'Inventory full';
+    if (price) player.coins -= price;
+    save.market = save.market.filter(entry => entry.id !== row.id);
+    scheduleSave();
+    savePlayer(player);
+    if (price) grantCoins(row.sellerId, price);
+    pushTrade(player, 'Bought ' + row.item.name);
+    const seller = players.get(row.sellerId);
+    if (seller) pushTrade(seller, player.name + (price ? ' bought ' + row.item.name + ' for ' + price + ' coins' : ' took ' + row.item.name));
+    return '';
+}
+
+function cancelMarket(player, id) {
+    tradeSave();
+    const row = save.market.find(entry => entry.id === String(id || '') && entry.sellerId === player.persistentId);
+    if (!row) return 'That listing is gone';
+    const rest = addToSlots(player, row.item);
+    if (rest) return 'Inventory full';
+    save.market = save.market.filter(entry => entry.id !== row.id);
+    scheduleSave();
+    savePlayer(player);
+    pushTrade(player, 'Listing cancelled');
+    return '';
+}
+
+function handleTrade(player, data) {
+    const kind = String(data.action || '');
+    let error = '';
+    if (kind === 'sync') pushTrade(player, '');
+    else if (kind === 'offer') error = offerHand(player, data);
+    else if (kind === 'answer') error = answerHand(player, data);
+    else if (kind === 'cancel') error = cancelHand(player, data.id);
+    else if (kind === 'mail') error = sendMail(player, data);
+    else if (kind === 'take') error = takeMail(player, data.id);
+    else if (kind === 'return') error = returnMail(player, data.id);
+    else if (kind === 'list') error = listMarket(player, data);
+    else if (kind === 'buy') error = buyMarket(player, data.id);
+    else if (kind === 'unlist') error = cancelMarket(player, data.id);
+    else error = 'Unknown trade';
+    if (error) send(player.ws, { type: 'trade', ok: false, reason: error, inventory: inventoryOf(player), ...tradePayload(player) });
 }
 
 let lastNpcTick = Date.now();
@@ -3914,7 +4324,11 @@ wss.on('connection', (ws) => {
                 legacyArmor: prof.legacyArmor || 0,
                 class: prof.class,
                 look: prof.look || prof.class || '',
-                equipment: Object.fromEntries(EQUIP_SLOTS.map(slot => [slot, prof.equipment[slot] ? copySlot(prof.equipment[slot]) : null])),
+                equipment: Object.fromEntries(EQUIP_SLOTS.map(slot => {
+                    const piece = prof.equipment[slot] ? copySlot(prof.equipment[slot]) : null;
+                    if (piece) piece.worn = true;
+                    return [slot, piece];
+                })),
                 trained: prof.trained.slice(),
                 talents: { ...prof.talents },
                 spellRanks: { ...prof.spellRanks },
@@ -3922,7 +4336,11 @@ wss.on('connection', (ws) => {
                 craftSkill: JSON.parse(JSON.stringify(prof.craftSkill || {})),
                 quests: JSON.parse(JSON.stringify(prof.quests || {})),
                 bagSlots: prof.bagSlots || 0,
-                bags: Array.isArray(prof.bags) ? prof.bags.map(copySlot) : [],
+                bags: Array.isArray(prof.bags) ? prof.bags.map(bag => {
+                    const copy = copySlot(bag);
+                    if (copy) copy.worn = true;
+                    return copy;
+                }) : [],
                 bank: Array.isArray(prof.bank) ? prof.bank.map(copySlot) : [],
                 coins: prof.coins || 0,
                 materials: Object.assign(blankMaterials(), prof.materials || {}),
@@ -3972,6 +4390,7 @@ wss.on('connection', (ws) => {
                 dungeons: scene.world.dungeons,
                 dungeon: player.dungeonId ? { id: player.dungeonId, x: player.x, y: 0.2, z: player.z } : null,
                 place: kicked,
+                trade: tradePayload(player).trade,
                 players: Array.from(players.entries())
                     .filter(([pid, p]) => pid !== persistentId && sameView(player, p))
                     .map(([pid, p]) => publicPlayer(pid, p))
@@ -5189,6 +5608,11 @@ wss.on('connection', (ws) => {
             return;
         }
 
+        if (data.type === 'trade') {
+            handleTrade(player, data);
+            return;
+        }
+
         if (data.type === 'partyInvite') {
             const target = players.get(data.targetId);
             if (!target || target === player) {
@@ -5290,6 +5714,7 @@ wss.on('connection', (ws) => {
         if (ws._replaced || !sessionId) return;
         const current = players.get(sessionId);
         if (current && current.ws === ws) {
+            releaseHands(current);
             leaveParty(current);
             players.delete(sessionId);
             broadcast({ type: 'leave', id: sessionId });
