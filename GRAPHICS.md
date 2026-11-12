@@ -75,38 +75,42 @@ These are drawn on the character while that tool is in use. They are not separat
 
 ## World models
 
-| Graphic | Object | Link |
-| --- | --- | --- |
-| models/player.glb | Player | |
-| models/npc.glb | | |
-| models/wild_pigboar_meshy.glb | Wild boar | https://skfb.ly/p9qVQ |
-| models/low_poly_wolf.glb | Wolf | https://skfb.ly/698Sv  |
-| models/low-poly_spider.glb | Moss spider | https://skfb.ly/6YONM |
-| models/bandit.glb | Bandit, hooded and rigged | |
-| models/ogre_lowpoly.glb | Hill ogre | https://skfb.ly/n5ifd0a |
-| models/wisp.glb | Fen wisp | |
-| models/knight.glb | Plate knight | |
-| models/cultist.glb | Cultist | |
-| models/merchant.glb | Merchant | |
-| models/innkeeper.glb | Innkeeper | |
-| models/banker.glb | Banker | |
-| models/trainer.glb | Trainer | |
-| models/broker.glb | Market broker | |
-| models/questgiver.glb | Quest giver | |
-| models/camp.glb | Camp | Done |
-| models/inn.glb | Inn | Done |
-| models/cabin.glb | Cabin | Done |
-| models/chest.glb | Loot chest | Done |
-| models/terrain-grass.glb | Grass | Done |
-| models/terrain-sand.glb | Sand | Done |
-| models/tree.glb | Scenery tree | Done |
-| models/gather-tree.glb | Gatherable tree | Done |
-| models/rock.glb | Scenery rock | Done |
-| models/mine-rock.glb | Mining rock | Done |
-| Herb plant | Herb node | |
-| Sulfur crystal | Sulfur node | |
-| Water surface | River, lake, sea | |
-| Cliff tint | World-edge hills | |
-| Name plate | Named character | |
-| Ghost tint | Dead player | |
-| Corpse marker | Player body | |
+State is where that graphic stands. **Done** is the model the game should keep. **In game** is wired up, but it is still someone else's mesh or a painted one. **Needs work** is wired up and not finished. **Placeholder** is the old simple shape. **Not used** is a file the game no longer loads.
+
+| Graphic | Object | Link | State |
+| --- | --- | --- | --- |
+| models/player.glb | Player | | In game. Untextured low-poly civilian. |
+| models/npc.glb | | | Not used. |
+| models/wild_pigboar_meshy.glb | Wild boar | https://skfb.ly/p9qVQ | In game. |
+| models/low_poly_wolf.glb | Wolf | https://skfb.ly/698Sv | In game. Vertex colors. Faces the player. |
+| models/low-poly_spider.glb | Moss spider | https://skfb.ly/6YONM | In game. Attacks from the front. |
+| models/bandit.glb | Bandit | | Needs work. Textured and rigged, sword in the right hand, but the body still needs a pass. |
+| models/ogre_lowpoly.glb | Hill ogre | https://skfb.ly/n5ifd0a | In game. Vertex colors. |
+| models/wisp.glb | Fen wisp | | Placeholder. No texture or rig. |
+| models/knight.glb | Plate knight | | Placeholder. No texture or rig. |
+| models/cultist.glb | Cultist | | Placeholder. No texture or rig. |
+| models/merchant.glb | Merchant | | Done. Textured, skinned, idle and walk. |
+| models/innkeeper.glb | Innkeeper | | Done. Textured, skinned, idle and walk. |
+| models/banker.glb | Banker | | Done. Textured, skinned, idle and walk. |
+| models/trainer.glb | Trainer | | Done. Textured, skinned, idle and walk. |
+| models/broker.glb | Market broker | | Done. Textured, skinned, idle and walk. |
+| models/questgiver.glb | Quest giver | | Done. Textured, skinned, idle and walk. Replaces the cat. |
+| models/camp.glb | Camp | Done | Done |
+| models/inn.glb | Inn | Done | Done |
+| models/cabin.glb | Cabin | Done | Done |
+| models/chest.glb | Loot chest | Done | Done |
+| models/terrain-grass.glb | Grass | Done | Done |
+| models/terrain-sand.glb | Sand | Done | Done |
+| models/tree.glb | Scenery tree | Done | Done |
+| models/gather-tree.glb | Gatherable tree | Done | Done |
+| models/rock.glb | Scenery rock | Done | Done |
+| models/mine-rock.glb | Mining rock | Done | Done |
+| Herb plant | Herb node | | Drawn in code. |
+| Sulfur crystal | Sulfur node | | Drawn in code. |
+| Water surface | River, lake, sea | | Drawn in code. |
+| Cliff tint | World-edge hills | | Drawn in code. |
+| Name plate | Named character | | Drawn in code. |
+| Ghost tint | Dead player | | Drawn in code. |
+| Corpse marker | Player body | | Drawn in code. |
+
+Not used, so do not wire these again: `models/boar.glb`, `models/wolf.glb`, `models/spider.glb`, `models/ogre.glb`, `models/shop.glb`, `models/quest.glb`, `models/low-poly-person.glb`, `models/cat-person_untextured.glb`.
