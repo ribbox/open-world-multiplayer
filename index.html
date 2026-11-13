@@ -4539,6 +4539,8 @@
             const CAVE_HEIGHT = 9;
             let dungeonRoot = null;
             let portalRoot = null;
+            const portalSwirls = [];
+            let portalSheet = null;
             const dungeonRayMeshes = [];
             const dungeonColliders = [];
 
@@ -4575,6 +4577,7 @@
                 dungeonColliders.length = 0;
                 dungeonRayMeshes.length = 0;
                 if (dungeonRoot) {
+                    forgetSwirls(dungeonRoot);
                     scene.remove(dungeonRoot);
                     dungeonRoot.traverse(obj => {
                         if (obj.geometry) obj.geometry.dispose();
@@ -4644,24 +4647,102 @@
                 return geo;
             }
 
+            function forgetSwirls(root) {
+                if (!root) return;
+                const drop = new Set();
+                root.traverse(obj => {
+                    if (obj.userData && obj.userData.portalSwirl) drop.add(obj);
+                });
+                for (let i = portalSwirls.length - 1; i >= 0; i--) {
+                    if (drop.has(portalSwirls[i])) portalSwirls.splice(i, 1);
+                }
+            }
+
+            function portalTexture() {
+                if (portalSheet) return portalSheet;
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 256;
+                const g = canvas.getContext('2d');
+                const disc = g.createRadialGradient(128, 128, 8, 128, 128, 122);
+                disc.addColorStop(0, 'rgba(236, 220, 255, 0.95)');
+                disc.addColorStop(0.35, 'rgba(155, 89, 182, 0.8)');
+                disc.addColorStop(0.72, 'rgba(88, 24, 120, 0.45)');
+                disc.addColorStop(1, 'rgba(20, 6, 32, 0)');
+                g.fillStyle = disc;
+                g.beginPath();
+                g.arc(128, 128, 124, 0, Math.PI * 2);
+                g.fill();
+                g.lineCap = 'round';
+                for (let arm = 0; arm < 3; arm++) {
+                    g.strokeStyle = arm === 0 ? 'rgba(245, 230, 255, 0.9)' : 'rgba(186, 130, 230, 0.75)';
+                    g.lineWidth = arm === 0 ? 7 : 4;
+                    g.beginPath();
+                    for (let step = 0; step < 48; step++) {
+                        const ang = arm * 2.1 + step * 0.28;
+                        const rad = 10 + step * 2.35;
+                        const x = 128 + Math.cos(ang) * rad;
+                        const y = 128 + Math.sin(ang) * rad;
+                        if (step === 0) g.moveTo(x, y);
+                        else g.lineTo(x, y);
+                    }
+                    g.stroke();
+                }
+                portalSheet = new THREE.CanvasTexture(canvas);
+                portalSheet.needsUpdate = true;
+                return portalSheet;
+            }
+
             function makePortal(x, y, z, yaw) {
                 const group = new THREE.Group();
                 const stone = new THREE.MeshLambertMaterial({ color: 0x3a3344 });
-                const pier = new THREE.BoxGeometry(0.38, 2.8, 0.38);
+                const pier = new THREE.BoxGeometry(0.42, 3.15, 0.46);
                 const left = new THREE.Mesh(pier, stone);
-                left.position.set(-1.15, 1.4, 0);
+                left.position.set(-1.5, 1.55, 0.18);
                 const right = new THREE.Mesh(pier, stone);
-                right.position.set(1.15, 1.4, 0);
-                const lintel = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.38, 0.42), stone);
-                lintel.position.y = 2.9;
-                const veil = new THREE.Mesh(
-                    new THREE.PlaneGeometry(1.85, 2.45),
-                    new THREE.MeshBasicMaterial({ color: 0x9b59b6, transparent: true, opacity: 0.75, side: THREE.DoubleSide })
-                );
-                veil.position.y = 1.4;
-                group.add(left, right, lintel, veil);
+                right.position.set(1.5, 1.55, 0.18);
+                const lintel = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.36, 0.5), stone);
+                lintel.position.set(0, 3.12, 0.18);
+                const swirl = new THREE.Group();
+                swirl.position.set(0, 1.52, 0.22);
+                swirl.userData.portalSwirl = true;
+                const sheet = portalTexture();
+                const layers = [
+                    { scale: [1.15, 1.35, 1], opacity: 0.82, spin: 0.9, color: 0xffffff },
+                    { scale: [0.82, 0.98, 1], opacity: 0.7, spin: -1.45, color: 0xd7b3ff }
+                ];
+                for (const layer of layers) {
+                    const mesh = new THREE.Mesh(
+                        new THREE.CircleGeometry(1, 40),
+                        new THREE.MeshBasicMaterial({
+                            map: sheet,
+                            color: layer.color,
+                            transparent: true,
+                            opacity: layer.opacity,
+                            side: THREE.DoubleSide,
+                            depthWrite: false
+                        })
+                    );
+                    mesh.scale.set(layer.scale[0], layer.scale[1], 1);
+                    mesh.userData.spin = layer.spin;
+                    swirl.add(mesh);
+                }
+                for (let i = 0; i < 6; i++) {
+                    const mote = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.06, 8, 8),
+                        new THREE.MeshBasicMaterial({ color: i % 2 ? 0xf5e6ff : 0x9b59b6 })
+                    );
+                    mote.userData.orbit = 0.9 + (i % 3) * 0.28;
+                    mote.userData.rate = 1.1 + i * 0.17;
+                    mote.userData.phase = i * 1.05;
+                    swirl.add(mote);
+                }
+                const glow = new THREE.PointLight(0x9b59b6, 0.7, 7, 1.4);
+                glow.position.set(0, 1.52, 0.5);
+                group.add(left, right, lintel, swirl, glow);
                 group.position.set(x, y, z);
                 group.rotation.y = yaw;
+                portalSwirls.push(swirl);
                 return group;
             }
 
@@ -4767,6 +4848,7 @@
             }
 
             function rebuildOverworldPortals() {
+                forgetSwirls(portalRoot);
                 if (portalRoot) {
                     scene.remove(portalRoot);
                     portalRoot.traverse(obj => {
@@ -8491,6 +8573,17 @@
                 updateSwing(delta);
                 updatePoses(delta);
                 updateShots(delta);
+                const swirlTime = performance.now() * 0.001;
+                for (const swirl of portalSwirls) {
+                    for (const child of swirl.children) {
+                        if (child.userData.orbit) {
+                            const ang = swirlTime * child.userData.rate + child.userData.phase;
+                            child.position.set(Math.cos(ang) * child.userData.orbit, Math.sin(ang) * child.userData.orbit * 1.15, 0.04);
+                        } else if (child.userData.spin) {
+                            child.rotation.z = swirlTime * child.userData.spin;
+                        }
+                    }
+                }
                 updateCombatFx(delta);
                 if (mixer) mixer.update(delta);
                 for (const remoteMixer of remoteMixers) remoteMixer.update(delta);
