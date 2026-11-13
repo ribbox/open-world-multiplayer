@@ -79,7 +79,7 @@ State is where that graphic stands. **Done** is the model the game should keep. 
 
 | Graphic | Object | Link | State |
 | --- | --- | --- | --- |
-| models/player.glb | Player | | In game. Untextured low-poly civilian. |
+| models/player.glb | Player | | In game. The civilian mesh now has a skeleton, with idle and walk. |
 | models/npc.glb | | | Not used. |
 | models/wild_pigboar_meshy.glb | Wild boar | https://skfb.ly/p9qVQ | In game. |
 | models/low_poly_wolf.glb | Wolf | https://skfb.ly/698Sv | In game. Vertex colors. Faces the player. |
@@ -88,7 +88,7 @@ State is where that graphic stands. **Done** is the model the game should keep. 
 | models/ogre.glb | Hill ogre | | Done. Textured and rigged. Attacks with its arms. |
 | models/ogre-caster.glb | Ogre shaman | | Done. Textured and rigged. Casts a bolt. Ogre zones spawn a mix of both. |
 | models/ogre_lowpoly.glb | | https://skfb.ly/n5ifd0a | Not used. Replaced by the two ogres above. |
-| models/wisp.glb | Fen wisp | | Placeholder. No texture or rig. |
+| models/wisp.glb | Fen wisp | | Done. A floating cloud fairy with wings and mist tails. Casts a pale bolt. |
 | models/knight.glb | Plate knight | | Placeholder. No texture or rig. |
 | models/cultist.glb | Cultist | | Placeholder. No texture or rig. |
 | models/merchant.glb | Merchant | | Done. Textured, skinned, idle and walk. |

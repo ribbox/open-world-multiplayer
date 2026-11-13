@@ -4426,9 +4426,9 @@ function tickNpcs() {
         const dx = tx - npc.x;
         const dz = tz - npc.z;
         const dist = Math.hypot(dx, dz) || 0;
-        if (target && dist <= (npc.style === 'caster' ? 8.4 : NPC_HIT_RANGE)) {
+        const casting = npc.style === 'caster' || npc.kind === 'wisp';
+        if (target && dist <= (casting ? 8.4 : NPC_HIT_RANGE)) {
             npc.rotY = Math.atan2(dx, dz);
-            const casting = npc.style === 'caster';
             if (casting && dist < 4.2) {
                 const back = Math.min(2.4 * dt, 4.2 - dist);
                 npc.x -= (dx / dist) * back;
@@ -4449,7 +4449,7 @@ function tickNpcs() {
                 if (damage > 0) target.hp = Math.max(0, target.hp - damage);
                 enterCombat(target, now);
                 send(target.ws, { type: 'hurt', damage, absorbed, attackerId: npc.id, attacker: npc.level, ...statsOf(target) });
-                const swing = { type: 'npcAttack', id: npc.id, style: npc.style || '', x: npc.x, z: npc.z, tx: target.x, tz: target.z };
+                const swing = { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: npc.kind === 'wisp' ? '#7ee7ff' : '#b46bff', x: npc.x, z: npc.z, tx: target.x, tz: target.z };
                 for (const watcher of players.values()) {
                     if ((watcher.mapId || '') !== (npc.mapId || '')) continue;
                     if ((watcher.instanceId || '') !== (npc.instanceId || '')) continue;
