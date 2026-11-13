@@ -89,8 +89,8 @@ State is where that graphic stands. **Done** is the model the game should keep. 
 | models/ogre-caster.glb | Ogre shaman | | Done. Textured and rigged. Casts a bolt. Ogre zones spawn a mix of both. |
 | models/ogre_lowpoly.glb | | https://skfb.ly/n5ifd0a | Not used. Replaced by the two ogres above. |
 | models/wisp.glb | Fen wisp | | Done. A floating cloud fairy with wings and mist tails. Casts a pale bolt. |
-| models/knight.glb | Plate knight | | Placeholder. No texture or rig. |
-| models/cultist.glb | Cultist | | Placeholder. No texture or rig. |
+| models/knight.glb | Plate knight | | Done. Textured and rigged. Sword and shield. Melee only. |
+| models/cultist.glb | Cultist | | Done. Textured and rigged. Alternates a dagger and a violet bolt. |
 | models/merchant.glb | Merchant | | Done. Textured, skinned, idle and walk. |
 | models/innkeeper.glb | Innkeeper | | Done. Textured, skinned, idle and walk. |
 | models/banker.glb | Banker | | Done. Textured, skinned, idle and walk. |

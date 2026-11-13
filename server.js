@@ -1205,6 +1205,7 @@ function mobStatBlock(level, kind, style) {
     const lv = Math.max(1, Math.round(level) || 1);
     const stamina = lv;
     const primary = lv + 1;
+    if (kind === 'cultist') return { strength: Math.max(1, Math.round(primary * 0.75)), stamina, intellect: primary };
     if (mobBias(kind, style) === 'intellect') return { strength: 0, stamina, intellect: primary };
     return { strength: primary, stamina, intellect: 0 };
 }
@@ -4426,18 +4427,31 @@ function tickNpcs() {
         const dx = tx - npc.x;
         const dz = tz - npc.z;
         const dist = Math.hypot(dx, dz) || 0;
-        const casting = npc.style === 'caster' || npc.kind === 'wisp';
-        if (target && dist <= (casting ? 8.4 : NPC_HIT_RANGE)) {
+        const pureCaster = npc.style === 'caster' || npc.kind === 'wisp';
+        const cultist = npc.kind === 'cultist';
+        let casting = pureCaster;
+        let reach = pureCaster ? 8.4 : NPC_HIT_RANGE;
+        if (cultist) {
+            if (npc.cultistCast == null) npc.cultistCast = true;
+            casting = !!npc.cultistCast;
+            reach = casting ? 8.4 : NPC_HIT_RANGE;
+        }
+        if (target && dist <= reach) {
             npc.rotY = Math.atan2(dx, dz);
-            if (casting && dist < 4.2) {
+            if (pureCaster && dist < 4.2) {
                 const back = Math.min(2.4 * dt, 4.2 - dist);
+                npc.x -= (dx / dist) * back;
+                npc.z -= (dz / dist) * back;
+            } else if (cultist && !casting && dist < 1.15) {
+                const back = Math.min(1.6 * dt, 1.15 - dist);
                 npc.x -= (dx / dist) * back;
                 npc.z -= (dz / dist) * back;
             }
             if (now >= npc.attackAt && now >= target.invulnUntil) {
                 npc.attackAt = now + (casting ? 1800 : 1400);
+                if (cultist) npc.cultistCast = !casting;
                 const block = npc.stats || mobStatBlock(npc.level, npc.kind, npc.style);
-                const primary = mobBias(npc.kind, npc.style) === 'intellect' ? (block.intellect || npc.level) : (block.strength || npc.level);
+                const primary = casting ? (block.intellect || npc.level) : (block.strength || npc.level);
                 const raw = 1 + primary;
                 let damage = Math.max(1, Math.round(raw * (npc.elite ? 1.8 : 1)) - target.armor);
                 let absorbed = 0;
@@ -4449,7 +4463,8 @@ function tickNpcs() {
                 if (damage > 0) target.hp = Math.max(0, target.hp - damage);
                 enterCombat(target, now);
                 send(target.ws, { type: 'hurt', damage, absorbed, attackerId: npc.id, attacker: npc.level, ...statsOf(target) });
-                const swing = { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: npc.kind === 'wisp' ? '#7ee7ff' : '#b46bff', x: npc.x, z: npc.z, tx: target.x, tz: target.z };
+                const bolt = npc.kind === 'wisp' ? '#7ee7ff' : npc.kind === 'cultist' ? '#d56bff' : '#b46bff';
+                const swing = { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: bolt, x: npc.x, z: npc.z, tx: target.x, tz: target.z };
                 for (const watcher of players.values()) {
                     if ((watcher.mapId || '') !== (npc.mapId || '')) continue;
                     if ((watcher.instanceId || '') !== (npc.instanceId || '')) continue;
