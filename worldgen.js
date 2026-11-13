@@ -928,6 +928,16 @@ export function activateMap(id) {
     return map.id;
 }
 
+export function zoneNameOnMap(mapId, x, z) {
+    const map = mapBook.find(entry => entry.id === mapId) || (mapId ? null : mapBook[0]);
+    if (!map) return '';
+    const zones = map.id === activeMapId ? designedZones : ((map.snap && map.snap.designedZones) || []);
+    for (let i = zones.length - 1; i >= 0; i--) {
+        if (pointInPoly(x, z, zones[i].samples || zones[i].points)) return zones[i].name || '';
+    }
+    return map.name || '';
+}
+
 export function currentMapId() {
     return activeMapId;
 }

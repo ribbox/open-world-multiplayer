@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, installMaps, activateMap, currentMapId, mapBriefs, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked, dungeonTravel } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, installMaps, activateMap, currentMapId, mapBriefs, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked, dungeonTravel, zoneNameOnMap } from './worldgen.js';
 import { defaultIconName, iconKeyFromChoice } from './icons.js';
 import { buildWorkbook, readWorkbook, spreadsheetUrl, clipboardSheets } from './sheets.js';
 
@@ -3413,6 +3413,34 @@ function inventoryOf(player) {
     };
 }
 
+function placeLabel(player) {
+    if (player.dungeonId) {
+        const cave = dungeonById(player.dungeonId);
+        return (cave && cave.name) || 'Dungeon';
+    }
+    return zoneNameOnMap(player.mapId || '', player.x, player.z);
+}
+
+function notePlace(player) {
+    const prof = player && save.players[player.persistentId];
+    if (!prof) return false;
+    const zone = placeLabel(player).slice(0, 32);
+    if (prof.zone === zone) return false;
+    prof.zone = zone;
+    return true;
+}
+
+function knownPlace(prof) {
+    if (!prof) return '';
+    if (prof.zone) return String(prof.zone).slice(0, 32);
+    if (prof.dungeonId) {
+        const cave = dungeonById(prof.dungeonId);
+        if (cave && cave.name) return String(cave.name).slice(0, 32);
+    }
+    const spawn = prof.spawn || {};
+    return zoneNameOnMap(prof.mapId || spawn.mapId || '', Number(spawn.x) || 0, Number(spawn.z) || 0).slice(0, 32);
+}
+
 function savePlayer(player) {
     const prof = save.players[player.persistentId];
     prof.slots = player.slots;
@@ -3439,6 +3467,7 @@ function savePlayer(player) {
     prof.dungeonId = player.dungeonId || '';
     prof.dungeonX = player.dungeonId ? player.x : 0;
     prof.dungeonZ = player.dungeonId ? player.z : 0;
+    notePlace(player);
     prof.junk = 0;
     prof.healthPotions = [];
     prof.manaPotions = [];
@@ -4626,6 +4655,7 @@ wss.on('connection', (ws) => {
             refreshDerived(player);
             revealFog(player);
             sessionId = persistentId;
+            notePlace(player);
             scheduleSave();
             const scene = sceneFor(player);
 
@@ -4693,6 +4723,7 @@ wss.on('connection', (ws) => {
                         send(ws, { type: 'teleport', x: player.x, y: 0.2, z: player.z, add: [], quiet: true });
                     }
                     broadcastSeen(player, { type: 'update', ...publicPlayer(sessionId, player) });
+                    if (notePlace(player)) scheduleSave();
                     return;
                 }
             }
@@ -4712,6 +4743,7 @@ wss.on('connection', (ws) => {
             const revealed = revealFog(player);
             broadcastSeen(player, { type: 'update', ...publicPlayer(sessionId, player) });
             if (revealed.length) send(ws, { type: 'fog', add: revealed });
+            if (notePlace(player)) scheduleSave();
             return;
         }
 
@@ -5979,6 +6011,7 @@ wss.on('connection', (ws) => {
         if (ws._replaced || !sessionId) return;
         const current = players.get(sessionId);
         if (current && current.ws === ws) {
+            if (notePlace(current)) scheduleSave();
             releaseHands(current);
             leaveParty(current);
             players.delete(sessionId);
@@ -6922,7 +6955,8 @@ function cleanAccountRoster(list) {
             name: sanitizeName((prof && prof.name) || row.name),
             class: job,
             look,
-            level: Math.max(1, Math.round((prof && prof.level) || row.level) || 1)
+            level: Math.max(1, Math.round((prof && prof.level) || row.level) || 1),
+            zone: String((prof && prof.zone) || knownPlace(prof) || row.zone || '').slice(0, 32)
         });
         if (out.length >= 8) break;
     }
@@ -6946,6 +6980,18 @@ function claimRoster(account, key, list, replace) {
     for (const row of incoming) take(row);
     account.characters = cleanAccountRoster(next);
 }
+
+app.post('/api/characters/places', (req, res) => {
+    const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.slice(0, 8) : [];
+    const places = {};
+    for (const raw of ids) {
+        const id = String(raw || '');
+        if (!/^[a-zA-Z0-9_-]{6,64}$/.test(id)) continue;
+        const zone = knownPlace(save.players[id]);
+        if (zone) places[id] = zone;
+    }
+    res.json({ places });
+});
 
 app.post('/api/account', (req, res) => {
     const name = String((req.body && req.body.name) || '').trim();

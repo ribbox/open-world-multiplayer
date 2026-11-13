@@ -620,7 +620,7 @@
             width: 100%; font-size: 11px; font-weight: 700; color: #f4efe4; text-align: center;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .pick-slot .sub { color: #c9c2b4; font-size: 10px; text-align: center; line-height: 1.1; }
+        .pick-slot .sub { color: #c9c2b4; font-size: 10px; text-align: center; line-height: 1.1; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .pick-play {
             width: 100%; display: block; padding: 0; background: transparent; border: 0; cursor: pointer;
         }
@@ -2409,9 +2409,10 @@
                     name: playerName || (prev && prev.name) || 'Player',
                     class: (character && character.class) || (prev && prev.class) || '',
                     look: (character && character.look) || (prev && prev.look) || (character && character.class) || (prev && prev.class) || '',
-                    level: stats.level || (prev && prev.level) || 1
+                    level: stats.level || (prev && prev.level) || 1,
+                    zone: (prev && prev.zone) || ''
                 };
-                if (prev && prev.name === next.name && prev.class === next.class && prev.look === next.look && prev.level === next.level) return;
+                if (prev && prev.name === next.name && prev.class === next.class && prev.look === next.look && prev.level === next.level && prev.zone === next.zone) return;
                 const index = roster.findIndex(row => row.id === persistentId);
                 if (index >= 0) roster[index] = next;
                 else roster.push(next);
@@ -9105,6 +9106,33 @@
                 return img;
             }
 
+            let placeStamp = '';
+            function refreshPlaces() {
+                const ids = roster.map(row => row.id);
+                const key = ids.join(',');
+                if (!ids.length || key === placeStamp) return;
+                placeStamp = key;
+                fetch('/api/characters/places', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ ids })
+                }).then(response => response.json()).then(data => {
+                    const places = data && data.places;
+                    if (!places) return;
+                    let changed = false;
+                    for (const row of roster) {
+                        const zone = places[row.id];
+                        if (zone && row.zone !== zone) {
+                            row.zone = zone;
+                            changed = true;
+                        }
+                    }
+                    if (!changed) return;
+                    localStorage.setItem('ow-roster', JSON.stringify(roster.slice(0, 8)));
+                    renderPick();
+                }).catch(() => { placeStamp = ''; });
+            }
+
             function renderPick() {
                 const list = document.getElementById('pickList');
                 list.replaceChildren();
@@ -9120,7 +9148,9 @@
                     if (row.class) play.addEventListener('click', () => playCharacter(row.id));
                     const sub = document.createElement('span');
                     sub.className = 'sub';
-                    sub.textContent = (CLASS_LABEL[row.class] || 'No class') + ' · ' + (row.level || 1);
+                    const bits = [(CLASS_LABEL[row.class] || 'No class'), String(row.level || 1)];
+                    if (row.zone) bits.push(row.zone);
+                    sub.textContent = bits.join(' · ');
                     const del = document.createElement('button');
                     del.type = 'button';
                     del.className = 'pick-del';
@@ -9203,9 +9233,11 @@
                 const note = document.getElementById('pickNote');
                 if (note && open === 0) note.hidden = true;
                 renderClassChoices();
+                refreshPlaces();
             }
 
             function showPick() {
+                placeStamp = '';
                 switching = true;
                 if (gameSocket) {
                     const old = gameSocket;
