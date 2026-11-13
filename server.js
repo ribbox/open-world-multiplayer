@@ -42,10 +42,11 @@ function loadSave() {
             players: parsed.players && typeof parsed.players === 'object' ? parsed.players : {},
             mail: parsed.mail && typeof parsed.mail === 'object' ? parsed.mail : {},
             market: Array.isArray(parsed.market) ? parsed.market : [],
-            hands: Array.isArray(parsed.hands) ? parsed.hands : []
+            hands: Array.isArray(parsed.hands) ? parsed.hands : [],
+            accounts: parsed.accounts && typeof parsed.accounts === 'object' ? parsed.accounts : {}
         };
     } catch {
-        return { resources: {}, players: {}, mail: {}, market: [], hands: [] };
+        return { resources: {}, players: {}, mail: {}, market: [], hands: [], accounts: {} };
     }
 }
 
@@ -6876,6 +6877,128 @@ function saveWorldFile() {
         console.error('World save failed', err);
     }
 }
+
+function accountKey(name) {
+    return String(name || '').trim().toLowerCase();
+}
+
+function hashPassword(password, salt) {
+    return crypto.scryptSync(String(password), salt, 32).toString('hex');
+}
+
+function sameSecret(leftHex, rightHex) {
+    const left = Buffer.from(String(leftHex || ''), 'hex');
+    const right = Buffer.from(String(rightHex || ''), 'hex');
+    if (left.length === 0 || left.length !== right.length) return false;
+    return crypto.timingSafeEqual(left, right);
+}
+
+function accountFromToken(req) {
+    const header = req.get('authorization') || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    if (!/^[a-f0-9]{20,64}$/.test(token)) return null;
+    return Object.values(save.accounts).find(account => Array.isArray(account.tokens) && account.tokens.includes(token)) || null;
+}
+
+function characterOwnedBy(id) {
+    for (const [key, account] of Object.entries(save.accounts)) {
+        if (account.characters && account.characters.some(row => row.id === id)) return key;
+    }
+    return '';
+}
+
+function cleanAccountRoster(list) {
+    if (!Array.isArray(list)) return [];
+    const out = [];
+    const classes = new Set(['warrior', 'mage', 'hunter', 'warlock']);
+    for (const row of list) {
+        if (!row || typeof row.id !== 'string' || !/^[a-zA-Z0-9_-]{6,64}$/.test(row.id)) continue;
+        if (out.some(item => item.id === row.id)) continue;
+        const prof = save.players[row.id];
+        const job = classes.has(row.class) ? row.class : (prof && classes.has(prof.class) ? prof.class : '');
+        const look = classes.has(row.look) ? row.look : job;
+        out.push({
+            id: row.id,
+            name: sanitizeName((prof && prof.name) || row.name),
+            class: job,
+            look,
+            level: Math.max(1, Math.round((prof && prof.level) || row.level) || 1)
+        });
+        if (out.length >= 8) break;
+    }
+    return out;
+}
+
+function claimRoster(account, key, list, replace) {
+    const incoming = cleanAccountRoster(list);
+    const next = [];
+    const seen = new Set();
+    const take = (row) => {
+        if (!row || seen.has(row.id) || next.length >= 8) return;
+        const owner = characterOwnedBy(row.id);
+        if (owner && owner !== key) return;
+        seen.add(row.id);
+        next.push(row);
+    };
+    if (!replace) {
+        for (const row of account.characters || []) take(row);
+    }
+    for (const row of incoming) take(row);
+    account.characters = cleanAccountRoster(next);
+}
+
+app.post('/api/account', (req, res) => {
+    const name = String((req.body && req.body.name) || '').trim();
+    const key = accountKey(name);
+    const password = String((req.body && req.body.password) || '');
+    if (!/^[a-z0-9]{3,16}$/.test(key)) {
+        res.status(400).json({ error: 'Use 3 to 16 letters or numbers' });
+        return;
+    }
+    if (password.length < 4 || password.length > 64) {
+        res.status(400).json({ error: 'Password needs at least 4 characters' });
+        return;
+    }
+    let account = save.accounts[key];
+    if (req.body && req.body.create) {
+        if (account) {
+            res.status(409).json({ error: 'That account already exists. Log in instead.' });
+            return;
+        }
+        const salt = crypto.randomBytes(16).toString('hex');
+        account = { name: key, salt, hash: hashPassword(password, salt), tokens: [], characters: [] };
+        save.accounts[key] = account;
+    } else if (!account || !sameSecret(hashPassword(password, account.salt), account.hash)) {
+        res.status(401).json({ error: 'Wrong account or password' });
+        return;
+    }
+    const token = crypto.randomBytes(18).toString('hex');
+    account.tokens = [token, ...(account.tokens || []).filter(item => item !== token)].slice(0, 6);
+    claimRoster(account, key, req.body && req.body.characters, false);
+    scheduleSave();
+    res.json({ ok: true, token, name: account.name, characters: account.characters });
+});
+
+app.get('/api/account', (req, res) => {
+    const account = accountFromToken(req);
+    if (!account) {
+        res.status(401).json({ error: 'Log in again' });
+        return;
+    }
+    account.characters = cleanAccountRoster(account.characters);
+    res.json({ ok: true, name: account.name, characters: account.characters });
+});
+
+app.post('/api/account/roster', (req, res) => {
+    const account = accountFromToken(req);
+    if (!account) {
+        res.status(401).json({ error: 'Log in again' });
+        return;
+    }
+    claimRoster(account, accountKey(account.name), req.body && req.body.characters, true);
+    scheduleSave();
+    res.json({ ok: true, characters: account.characters });
+});
 
 function requireAdmin(req, res, next) {
     const header = req.get('authorization') || '';

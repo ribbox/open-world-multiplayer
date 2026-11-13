@@ -583,6 +583,15 @@
         #pickCard h2 { margin: 0 0 4px; font-size: 14px; color: #f3e2b3; font-weight: 600; }
         #pickNote { margin: 0 0 6px; color: #e07464; font-size: 12px; }
         #pickNote[hidden] { display: none; }
+        #pickAccount {
+            display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+            margin: 0 0 8px; padding-bottom: 6px;
+            border-bottom: 1px solid rgba(214, 176, 96, 0.28);
+        }
+        #pickAccount h2 { width: 100%; font-size: 12px; }
+        #pickAccount input { width: 128px; padding: 3px 6px; }
+        #pickAccount button { padding: 3px 8px; }
+        #accountNote { width: 100%; margin: 0; font-size: 11px; color: #c9b89a; }
         #pickBody { display: flex; gap: 0; align-items: stretch; min-width: 0; }
         #pickNew { flex: 1 1 54%; min-width: 0; margin-top: 0; padding-right: 12px; }
         #pickDivide { flex: 0 0 18px; position: relative; }
@@ -795,6 +804,15 @@
     <div id="pick">
         <div id="pickCard">
             <h1>Characters</h1>
+            <form id="pickAccount">
+                <h2>Same characters on another computer</h2>
+                <input id="accountName" maxlength="16" placeholder="Account" autocomplete="username">
+                <input id="accountPass" type="password" maxlength="64" placeholder="Password" autocomplete="current-password">
+                <button type="submit" id="accountLogin">Log in</button>
+                <button type="button" id="accountCreate">Create account</button>
+                <button type="button" id="accountOut" hidden>Log out</button>
+                <p id="accountNote">Create an account here, then log in with it on the other computer.</p>
+            </form>
             <div id="pickBody">
                 <form id="pickNew">
                     <h2>Pick a new character</h2>
@@ -1257,8 +1275,69 @@
             if (previousId && /^[a-zA-Z0-9_-]{6,64}$/.test(previousId) && !roster.some(row => row.id === previousId)) {
                 roster.unshift({ id: previousId, name: localStorage.getItem('ow-name') || 'Player', class: '', level: 1 });
             }
+            let accountToken = localStorage.getItem('ow-account') || '';
+            let accountName = localStorage.getItem('ow-account-name') || '';
+            let accountReady = false;
             function storeRoster() {
                 localStorage.setItem('ow-roster', JSON.stringify(roster.slice(0, 8)));
+                if (accountReady) pushAccountRoster();
+            }
+            function pushAccountRoster() {
+                if (!accountToken) return;
+                fetch('/api/account/roster', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + accountToken },
+                    body: JSON.stringify({ characters: roster.slice(0, 8) })
+                }).then(response => response.json().then(data => ({ ok: response.ok, data }))).then(({ ok, data }) => {
+                    if (!ok) return;
+                    if (Array.isArray(data.characters)) adoptRoster(data.characters);
+                }).catch(() => {});
+            }
+            function adoptRoster(characters) {
+                const next = characters.filter(row => row && typeof row.id === 'string' && /^[a-zA-Z0-9_-]{6,64}$/.test(row.id)).slice(0, 8);
+                roster = next;
+                localStorage.setItem('ow-roster', JSON.stringify(roster));
+                if (typeof renderPick === 'function') renderPick();
+            }
+            function showAccount(name, note) {
+                accountName = name || '';
+                const signed = !!accountToken && !!accountName;
+                document.getElementById('accountName').hidden = signed;
+                document.getElementById('accountPass').hidden = signed;
+                document.getElementById('accountLogin').hidden = signed;
+                document.getElementById('accountCreate').hidden = signed;
+                document.getElementById('accountOut').hidden = !signed;
+                document.getElementById('accountNote').textContent = note || (signed
+                    ? 'Signed in as ' + accountName + '. These characters are on this account.'
+                    : 'Create an account here, then log in with it on the other computer.');
+            }
+            function useAccount(data) {
+                accountToken = data.token || accountToken;
+                accountName = data.name || accountName;
+                localStorage.setItem('ow-account', accountToken);
+                localStorage.setItem('ow-account-name', accountName);
+                accountReady = true;
+                if (Array.isArray(data.characters)) adoptRoster(data.characters);
+                showAccount(accountName);
+            }
+            function sendAccount(create) {
+                const note = document.getElementById('accountNote');
+                const name = document.getElementById('accountName').value.trim();
+                const password = document.getElementById('accountPass').value;
+                fetch('/api/account', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ name, password, create, characters: roster.slice(0, 8) })
+                }).then(response => response.json().then(data => ({ ok: response.ok, data }))).then(({ ok, data }) => {
+                    if (!ok) {
+                        note.textContent = (data && data.error) || 'Could not use that account';
+                        return;
+                    }
+                    document.getElementById('accountPass').value = '';
+                    useAccount(data);
+                }).catch(() => {
+                    note.textContent = 'Could not reach the server';
+                });
             }
             storeRoster();
             let playerName = localStorage.getItem('ow-name') || 'Player';
@@ -9180,6 +9259,35 @@
                 chosenClass = '';
                 playCharacter(id);
             });
+            document.getElementById('pickAccount').addEventListener('submit', (event) => {
+                event.preventDefault();
+                sendAccount(false);
+            });
+            document.getElementById('accountCreate').addEventListener('click', () => sendAccount(true));
+            document.getElementById('accountOut').addEventListener('click', () => {
+                accountToken = '';
+                accountName = '';
+                accountReady = false;
+                localStorage.removeItem('ow-account');
+                localStorage.removeItem('ow-account-name');
+                showAccount('');
+            });
+            if (accountToken) {
+                fetch('/api/account', { headers: { authorization: 'Bearer ' + accountToken } })
+                    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                    .then(({ ok, data }) => {
+                        if (!ok) {
+                            accountToken = '';
+                            localStorage.removeItem('ow-account');
+                            showAccount('', 'Log in again to load your characters.');
+                            return;
+                        }
+                        accountReady = true;
+                        if (Array.isArray(data.characters)) adoptRoster(data.characters);
+                        showAccount(data.name);
+                    })
+                    .catch(() => {});
+            }
             renderPick();
 
             function connectMultiplayer() {
