@@ -85,7 +85,9 @@ State is where that graphic stands. **Done** is the model the game should keep. 
 | models/low_poly_wolf.glb | Wolf | https://skfb.ly/698Sv | In game. Vertex colors. Faces the player. |
 | models/low-poly_spider.glb | Moss spider | https://skfb.ly/6YONM | In game. Attacks from the front. |
 | models/bandit.glb | Bandit | | Needs work. Textured and rigged, sword in the right hand, but the body still needs a pass. |
-| models/ogre_lowpoly.glb | Hill ogre | https://skfb.ly/n5ifd0a | In game. Vertex colors. |
+| models/ogre.glb | Hill ogre | | Done. Textured and rigged. Attacks with its arms. |
+| models/ogre-caster.glb | Ogre shaman | | Done. Textured and rigged. Casts a bolt. Ogre zones spawn a mix of both. |
+| models/ogre_lowpoly.glb | | https://skfb.ly/n5ifd0a | Not used. Replaced by the two ogres above. |
 | models/wisp.glb | Fen wisp | | Placeholder. No texture or rig. |
 | models/knight.glb | Plate knight | | Placeholder. No texture or rig. |
 | models/cultist.glb | Cultist | | Placeholder. No texture or rig. |
@@ -113,4 +115,4 @@ State is where that graphic stands. **Done** is the model the game should keep. 
 | Ghost tint | Dead player | | Drawn in code. |
 | Corpse marker | Player body | | Drawn in code. |
 
-Not used, so do not wire these again: `models/boar.glb`, `models/wolf.glb`, `models/spider.glb`, `models/ogre.glb`, `models/shop.glb`, `models/quest.glb`, `models/low-poly-person.glb`, `models/cat-person_untextured.glb`.
+Not used, so do not wire these again: `models/boar.glb`, `models/wolf.glb`, `models/spider.glb`, `models/shop.glb`, `models/quest.glb`, `models/low-poly-person.glb`, `models/cat-person_untextured.glb`, `models/ogre_lowpoly.glb`.

@@ -1754,7 +1754,8 @@
                 boar: '/models/wild_pigboar_meshy.glb',
                 wolf: '/models/low_poly_wolf.glb',
                 spider: '/models/low-poly_spider.glb',
-                ogre: '/models/ogre_lowpoly.glb',
+                ogre: '/models/ogre.glb',
+                'ogre-caster': '/models/ogre-caster.glb',
                 bandit: '/models/bandit.glb',
                 shop: '/models/merchant.glb',
                 inn: '/models/innkeeper.glb',
@@ -1763,7 +1764,7 @@
                 trainer: '/models/trainer.glb',
                 broker: '/models/broker.glb'
             };
-            const NPC_MODEL_KINDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist', 'shop', 'inn', 'bank', 'trainer', 'broker', 'quest'];
+            const NPC_MODEL_KINDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'ogre-caster', 'wisp', 'knight', 'cultist', 'shop', 'inn', 'bank', 'trainer', 'broker', 'quest'];
             const npcClips = new Map();
             let npcLoadsLeft = NPC_MODEL_KINDS.length;
             function finishNpcModels() {
@@ -1923,7 +1924,7 @@
             }
             const CREATURE_HEIGHT = {
                 boar: 0.9, wolf: 1.05, spider: 0.62, wisp: 0.9,
-                bandit: 1.7, ogre: 2.15, knight: 1.85, cultist: 1.75,
+                bandit: 1.7, ogre: 2.2, 'ogre-caster': 2.05, knight: 1.85, cultist: 1.75,
                 shop: 1.7, inn: 1.7, bank: 1.72, trainer: 1.7, broker: 1.68, quest: 1.7
             };
             const gaitRests = new Map();
@@ -2169,7 +2170,7 @@
                             npcClips.set(gltf.scene, gltf.animations);
                             gltf.scene.userData.noGait = true;
                         }
-                        if (kind === 'wolf' || kind === 'ogre') paintParts(gltf.scene, kind);
+                        if (kind === 'wolf') paintParts(gltf.scene, kind);
                         npcModels.set(kind, gltf.scene);
                         finishNpcModels();
                     },
@@ -5675,7 +5676,8 @@
             }
 
             function cloneNpcModel(kind) {
-                const key = (kind === 'inn' || kind === 'bank' || kind === 'broker') && !npcModels.has(kind) ? 'shop' : kind;
+                let key = (kind === 'inn' || kind === 'bank' || kind === 'broker') && !npcModels.has(kind) ? 'shop' : kind;
+                if (key === 'ogre-caster' && !npcModels.has('ogre-caster')) key = 'ogre';
                 const template = npcModels.get(key) || npcModels.get('boar');
                 if (!template) return null;
                 const clips = npcClips.get(template);
@@ -5703,8 +5705,11 @@
                 model.userData.rigMoving = false;
             }
             function setRigMove(model, speed) {
-                const mixer = model && model.userData.mixer;
-                const clips = model && model.userData.rigClips;
+                if (!model) return;
+                model.userData.rigSpeed = speed;
+                if (model.userData.rigBusy) return;
+                const mixer = model.userData.mixer;
+                const clips = model.userData.rigClips;
                 if (!mixer || !clips) return;
                 const moving = speed > 0.35;
                 if (model.userData.rigMoving === moving) return;
@@ -5716,6 +5721,32 @@
                 const prev = mixer.clipAction(moving ? idle : walk);
                 next.reset().setEffectiveWeight(1).play();
                 next.crossFadeFrom(prev, 0.18, true);
+            }
+            function playRigOnce(model, name) {
+                const mixer = model && model.userData.mixer;
+                const clips = model && model.userData.rigClips;
+                if (!mixer || !clips) return;
+                const clip = clips.find(item => item.name === name);
+                if (!clip) return;
+                if (model.userData.rigDone) mixer.removeEventListener('finished', model.userData.rigDone);
+                const action = mixer.clipAction(clip);
+                action.setLoop(THREE.LoopOnce, 1);
+                action.clampWhenFinished = false;
+                action.reset().setEffectiveWeight(1).play();
+                const idle = clips.find(item => item.name === 'idle') || clips[0];
+                const idleAction = mixer.clipAction(idle);
+                if (idleAction.isRunning()) action.crossFadeFrom(idleAction, 0.06, false);
+                model.userData.rigBusy = true;
+                model.userData.rigMoving = null;
+                const done = (event) => {
+                    if (event.action !== action) return;
+                    mixer.removeEventListener('finished', done);
+                    model.userData.rigDone = null;
+                    model.userData.rigBusy = false;
+                    setRigMove(model, model.userData.rigSpeed || 0);
+                };
+                model.userData.rigDone = done;
+                mixer.addEventListener('finished', done);
             }
 
             function ensureCivilian(civ) {
@@ -6089,7 +6120,8 @@
                 let entry = worldNpcs.get(state.id);
                 if (!entry) {
                     if (!npcModelsReady) return;
-                    const body = cloneNpcModel(state.kind || 'boar');
+                    const modelKind = state.kind === 'ogre' && state.style === 'caster' ? 'ogre-caster' : (state.kind || 'boar');
+                    const body = cloneNpcModel(modelKind);
                     if (!body) return;
                     const group = new THREE.Group();
                     const rank = (0.9 + Math.min(12, state.level || 1) * 0.05) * (state.elite ? 1.28 : 1);
@@ -9254,6 +9286,20 @@
                         applyTrade(data.trade, data.reason || data.note || '');
                         if (data.ok === false) sfx('deny');
                         else if (data.note) sfx('bell');
+                    } else if (data.type === 'npcAttack') {
+                        const entry = worldNpcs.get(data.id);
+                        const body = entry && entry.group.userData.body;
+                        if (body) playRigOnce(body, data.style === 'caster' ? 'cast' : 'attack');
+                        if (data.style === 'caster') {
+                            const fromY = entry ? entry.group.position.y + 1.7 : 1.7;
+                            launchShot(
+                                { x: data.x, y: fromY, z: data.z },
+                                { x: data.tx, y: 1.15, z: data.tz },
+                                0xb46bff,
+                                0,
+                                0.42
+                            );
+                        }
                     } else if (data.type === 'hurt') {
                         if (hearth) cancelHearth('Hearth interrupted');
                         applyStats(data);

@@ -952,6 +952,7 @@ function spawnQuestMob(quest, questId, index, x, z, guardId) {
         aggroId: null,
         attackAt: 0
     };
+    mixOgre(npc, quest.type === 'named');
     const zone = designedZoneAt(x, z);
     const elite = quest.type === 'named' ? !!quest.elite : !!(zone && zone.elite);
     const base = quest.type !== 'named' && zone && zone.hp > 0 ? zone.hp : 0;
@@ -1092,6 +1093,7 @@ function spawnHerdMob(quest, x, z) {
             aggroId: null,
             attackAt: 0
         };
+        mixOgre(npc, false);
         applyElite(npc, ground && ground.elite, bonusHp);
         pickWander(npc);
         npcs.set(npc.id, npc);
@@ -1193,15 +1195,16 @@ function cleanStats(raw) {
     return stats;
 }
 
-function mobBias(kind) {
+function mobBias(kind, style) {
+    if (style === 'caster') return 'intellect';
     return kind === 'wisp' || kind === 'cultist' ? 'intellect' : 'strength';
 }
 
-function mobStatBlock(level, kind) {
+function mobStatBlock(level, kind, style) {
     const lv = Math.max(1, Math.round(level) || 1);
     const stamina = lv;
     const primary = lv + 1;
-    if (mobBias(kind) === 'intellect') return { strength: 0, stamina, intellect: primary };
+    if (mobBias(kind, style) === 'intellect') return { strength: 0, stamina, intellect: primary };
     return { strength: primary, stamina, intellect: 0 };
 }
 
@@ -1234,9 +1237,21 @@ function totalStats(player) {
     return total;
 }
 
+function mixOgre(npc, keepName) {
+    if (npc.kind !== 'ogre') {
+        npc.style = '';
+        return;
+    }
+    if (npc.style !== 'caster' && npc.style !== 'brute') npc.style = Math.random() < 0.5 ? 'caster' : 'brute';
+    if (npc.style === 'caster') npc.tint = '#6c4c9a';
+    else npc.tint = '#6e4b2a';
+    if (keepName) return;
+    npc.name = npc.style === 'caster' ? 'Ogre Shaman' : 'Hill Ogre';
+}
+
 function applyElite(npc, elite, baseHp) {
     npc.elite = !!elite;
-    npc.stats = mobStatBlock(npc.level, npc.kind);
+    npc.stats = mobStatBlock(npc.level, npc.kind, npc.style);
     const base = baseHp > 0 ? baseHp : npcMaxHp(npc.level);
     const hp = base + (npc.stats.stamina || 0) * 2;
     npc.maxHp = npc.elite ? Math.round(hp * 2.5) : hp;
@@ -1285,6 +1300,7 @@ function publicNpc(n) {
         maxHp: n.maxHp,
         name: n.name,
         kind: n.kind,
+        style: n.style || '',
         tint: n.tint,
         elite: !!n.elite,
         dungeonId: n.dungeonId || ''
@@ -1342,8 +1358,10 @@ function placeNpc(npc, spot) {
         npc.tint = shaped.tint;
         npc.loot = drawn.loot || shaped.loot;
         npc.level = drawn.level;
-        applyElite(npc, drawn.elite, drawn.hp);
-    } else applyElite(npc, false, 0);
+    }
+    mixOgre(npc, false);
+    if (drawn) applyElite(npc, drawn.elite, drawn.hp);
+    else applyElite(npc, false, 0);
     if (!npc.dungeonId && inSettlement(npc.x, npc.z)) {
         const out = outsideSettlement(npc.x, npc.z);
         const shifted = clampToZone(npc, out.x, out.z);
@@ -4378,12 +4396,18 @@ function tickNpcs() {
         const dx = tx - npc.x;
         const dz = tz - npc.z;
         const dist = Math.hypot(dx, dz) || 0;
-        if (target && dist <= NPC_HIT_RANGE) {
+        if (target && dist <= (npc.style === 'caster' ? 8.4 : NPC_HIT_RANGE)) {
             npc.rotY = Math.atan2(dx, dz);
+            const casting = npc.style === 'caster';
+            if (casting && dist < 4.2) {
+                const back = Math.min(2.4 * dt, 4.2 - dist);
+                npc.x -= (dx / dist) * back;
+                npc.z -= (dz / dist) * back;
+            }
             if (now >= npc.attackAt && now >= target.invulnUntil) {
-                npc.attackAt = now + 1300;
-                const block = npc.stats || mobStatBlock(npc.level, npc.kind);
-                const primary = mobBias(npc.kind) === 'intellect' ? (block.intellect || npc.level) : (block.strength || npc.level);
+                npc.attackAt = now + (casting ? 1800 : 1400);
+                const block = npc.stats || mobStatBlock(npc.level, npc.kind, npc.style);
+                const primary = mobBias(npc.kind, npc.style) === 'intellect' ? (block.intellect || npc.level) : (block.strength || npc.level);
                 const raw = 1 + primary;
                 let damage = Math.max(1, Math.round(raw * (npc.elite ? 1.8 : 1)) - target.armor);
                 let absorbed = 0;
@@ -4395,6 +4419,14 @@ function tickNpcs() {
                 if (damage > 0) target.hp = Math.max(0, target.hp - damage);
                 enterCombat(target, now);
                 send(target.ws, { type: 'hurt', damage, absorbed, attackerId: npc.id, attacker: npc.level, ...statsOf(target) });
+                const swing = { type: 'npcAttack', id: npc.id, style: npc.style || '', x: npc.x, z: npc.z, tx: target.x, tz: target.z };
+                for (const watcher of players.values()) {
+                    if ((watcher.mapId || '') !== (npc.mapId || '')) continue;
+                    if ((watcher.instanceId || '') !== (npc.instanceId || '')) continue;
+                    if (npc.dungeonId && watcher.dungeonId !== npc.dungeonId) continue;
+                    if (Math.hypot(watcher.x - npc.x, watcher.z - npc.z) > 70) continue;
+                    send(watcher.ws, swing);
+                }
                 if (target.hp <= 0) becomeGhost(target, now);
             }
             continue;
