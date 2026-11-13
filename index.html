@@ -865,7 +865,7 @@
         100 coins make 1 silver, and 100 silver make 1 gold. Drag an item in the bag to move it. Bags go in the bag slots and add room. Nessa's bank is only in the main settlement<br>
         Trade, on the bag, sends a bag item to a nearby player, by mail, or on the market. The price can be 0. Gear that was worn, and anything from a named foe, cannot be traded<br>
         The Drowned Chapel is east of the river. Wren's quests lead there. A party of four can enter. Move out of the black water<br>
-        You can learn 2 crafting skills from a shop assistant. The shop also sells patterns once your skill is high enough. Making items raises the skill. A trainer teaches the next tier at 75, 150, and 225. Spiders drop silk. Rocks sometimes hold a gem<br>
+        You can learn 2 crafting skills from a shop assistant. The shop sells patterns once your crafting skill, and for the better ones your character level, is high enough. Making items raises the skill. A trainer teaches the next tier at 75, 150, and 225. Higher recipes need silk and a specific ore. Split a rock from the craft tab. Wolves and boars sometimes leave leather. Spiders sometimes leave silk<br>
         Gather herbs by hand and sulfur with a pickaxe<br>
         M: World map. Scroll or +/− to zoom. Right-click a spot to mark it. The minimap points the way<br>
         Active quests stay on the right, with progress<br>
@@ -2586,7 +2586,7 @@
             }
 
             const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, bags: [null, null, null, null], bank: [], baseSlots: 16, coins: 0, materials: {} };
-            const SUPPLY_KINDS = [['wood', 'Wood'], ['stone', 'Stone'], ['cloth', 'Cloth'], ['leather', 'Leather'], ['ore', 'Ore'], ['gem', 'Gem'], ['herb', 'Herb'], ['powder', 'Powder'], ['silk', 'Silk']];
+            const SUPPLY_KINDS = [['wood', 'Wood'], ['stone', 'Stone'], ['cloth', 'Cloth'], ['leather', 'Leather'], ['ore', 'Ore'], ['copper', 'Copper Ore'], ['tin', 'Tin Ore'], ['iron', 'Iron Ore'], ['silver', 'Silver Ore'], ['mithril', 'Mithril Ore'], ['thorium', 'Thorium Ore'], ['gem', 'Gem'], ['malachite', 'Malachite'], ['quartz', 'Quartz'], ['jade', 'Jade'], ['ruby', 'Ruby'], ['sapphire', 'Sapphire'], ['diamond', 'Diamond'], ['herb', 'Herb'], ['powder', 'Powder'], ['silk', 'Silk']];
             const iconSheet = new Image();
             let iconSheetReady = false;
             const SHEET_COLS = 16;
@@ -5648,6 +5648,11 @@
             function wornWeapon() {
                 return character.equipment && character.equipment.weapon && character.equipment.weapon.weapon;
             }
+            function sameWeapon(worn, need) {
+                if (!need) return true;
+                const family = { axe: 'sword', mace: 'sword', dagger: 'sword', spear: 'sword', hammer: 'sword', greatsword: 'sword', crossbow: 'bow', shortbow: 'bow', longbow: 'bow' };
+                return worn === need || (family[worn] || worn) === need;
+            }
 
             function spellKnown(id) {
                 return !!(character.known && character.known.includes(id));
@@ -5720,14 +5725,14 @@
                 }
                 const worn = wornWeapon();
                 if (action.kind === 'weapon') {
-                    if (worn !== action.weapon) {
+                    if (!sameWeapon(worn, action.weapon)) {
                         showMessage('Equip a ' + action.weapon + ' on your character sheet');
                         return;
                     }
                     tryAttack(id);
                     return;
                 }
-                if (worn !== action.weapon) {
+                if (!sameWeapon(worn, action.weapon)) {
                     showMessage('Requires an equipped ' + action.weapon);
                     return;
                 }
@@ -7758,17 +7763,22 @@
                         const text = document.createElement('div');
                         const mats = Object.entries(recipe.cost || {}).map(([kind, qty]) => qty + ' ' + kind).join(', ');
                         const makes = recipe.yield ? ' → ' + Object.entries(recipe.yield).map(([kind, qty]) => qty + ' ' + kind).join(', ') : '';
-                        text.textContent = recipe.name + ' · skill ' + (recipe.craftLevel || 1) + ((recipe.reqLevel || 1) > 1 ? ' · equips at ' + recipe.reqLevel : '') + ' · ' + mats + makes;
+                        const needLevel = recipe.buyLevel || 1;
+                        text.textContent = recipe.name + ' · skill ' + (recipe.craftLevel || 1) + (needLevel > 1 ? ' · level ' + needLevel : '') + ((recipe.reqLevel || 1) > 1 ? ' · equips at ' + recipe.reqLevel : '') + ' · ' + mats + makes;
                         row.appendChild(text);
                         const buy = document.createElement('button');
                         buy.type = 'button';
                         buy.className = 'text-btn gold-btn';
                         const ready = skill.level >= (recipe.craftLevel || 1);
+                        const charReady = (character.level || 1) >= (recipe.buyLevel || 1);
                         if (!nearestRole('shop')) {
                             buy.textContent = 'Shop';
                             buy.disabled = true;
+                        } else if (!charReady) {
+                            buy.textContent = 'Lv ' + (recipe.buyLevel || 1);
+                            buy.disabled = true;
                         } else if (!ready) {
-                            buy.textContent = 'Lv ' + (recipe.craftLevel || 1);
+                            buy.textContent = 'Skill ' + (recipe.craftLevel || 1);
                             buy.disabled = true;
                         } else {
                             buy.textContent = formatMoney(recipe.price || 0);
@@ -8347,6 +8357,20 @@
                 const note = document.createElement('div');
                 note.textContent = 'Each item takes 3 seconds. x1, x10, or all you have materials for.';
                 body.appendChild(note);
+                const split = document.createElement('div');
+                split.className = 'spell-row';
+                const splitText = document.createElement('div');
+                const stones = haveKind('stone');
+                splitText.textContent = 'Split rock · 1 stone' + (stones ? ' · ' + stones + ' on hand' : '') + ' · sometimes an ore or a gem';
+                split.appendChild(splitText);
+                const splitBtn = document.createElement('button');
+                splitBtn.type = 'button';
+                splitBtn.className = 'text-btn';
+                splitBtn.textContent = 'Split';
+                splitBtn.disabled = stones < 1;
+                splitBtn.addEventListener('click', () => sendCharacter('split'));
+                split.appendChild(splitBtn);
+                body.appendChild(split);
                 const groups = {};
                 for (const [id, recipe] of Object.entries(craft.recipes || {})) {
                     if (!known.has(id)) continue;

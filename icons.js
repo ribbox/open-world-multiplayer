@@ -71,7 +71,7 @@ export function defaultIconName(item) {
     if (item.icon != null && String(item.icon).trim() !== '') return String(item.icon).trim();
     if (item.kind === 'weapon') {
         if (item.weapon === 'staff') return 'staff';
-        if (item.weapon === 'bow') return 'bow';
+        if (item.weapon === 'bow' || item.weapon === 'crossbow' || item.weapon === 'shortbow' || item.weapon === 'longbow') return 'bow';
         if (item.weapon === 'wand') return 'wand';
         return 'sword';
     }

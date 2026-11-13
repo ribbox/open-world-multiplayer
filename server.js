@@ -2179,6 +2179,12 @@ const TALENTS = Object.fromEntries(Object.entries(TREE).filter(([, node]) => !no
     text: node.text
 }]));
 
+function weaponFamily(weapon) {
+    if (weapon === 'axe' || weapon === 'mace' || weapon === 'dagger' || weapon === 'spear' || weapon === 'hammer' || weapon === 'greatsword') return 'sword';
+    if (weapon === 'crossbow' || weapon === 'shortbow' || weapon === 'longbow') return 'bow';
+    return weapon || '';
+}
+
 function abilityRank(player, id) {
     const maxRank = (SPELLS[id] && SPELLS[id].maxRank) || 1;
     const rank = (player.spellRanks && player.spellRanks[id]) || 1;
@@ -2364,7 +2370,26 @@ const RECIPES = {
     'abyss-wand': { name: 'Abyss Wand', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'wand', magic: true, armor: 0, cost: { wood: 8, gem: 4 }, buy: true, price: 300, craftLevel: 265, reqLevel: 52, statsSet: true, stats: { intellect: 15 } },
     'minor-focus': { name: 'Minor Focus', set: 'magic', slot: 'offhand', kind: 'armor', style: 'cloth', magic: true, armor: 2, cost: { wood: 2, gem: 2 }, buy: true, price: 70, craftLevel: 80, reqLevel: 20, statsSet: true, stats: { intellect: 6 } },
     'star-focus': { name: 'Star Focus', set: 'magic', slot: 'offhand', kind: 'armor', style: 'cloth', magic: true, armor: 3, cost: { wood: 3, gem: 3 }, buy: true, price: 170, craftLevel: 190, reqLevel: 40, statsSet: true, stats: { intellect: 11 } },
-    'void-focus': { name: 'Void Focus', set: 'magic', slot: 'offhand', kind: 'armor', style: 'cloth', magic: true, armor: 4, cost: { wood: 4, gem: 5 }, buy: true, price: 340, craftLevel: 280, reqLevel: 56, statsSet: true, stats: { intellect: 16 } }
+    'void-focus': { name: 'Void Focus', set: 'magic', slot: 'offhand', kind: 'armor', style: 'cloth', magic: true, armor: 4, cost: { wood: 4, gem: 5 }, buy: true, price: 340, craftLevel: 280, reqLevel: 56, statsSet: true, stats: { intellect: 16 } },
+    'copper-dagger': { name: 'Copper Dagger', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'dagger', armor: 0, cost: { copper: 3, wood: 1 }, buy: true, price: 14, craftLevel: 15, buyLevel: 4, reqLevel: 4, statsSet: true, stats: { strength: 2 } },
+    'tin-hatchet': { name: 'Tin Hatchet', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'axe', armor: 0, cost: { tin: 3, wood: 2 }, buy: true, price: 22, craftLevel: 35, buyLevel: 8, reqLevel: 8, statsSet: true, stats: { strength: 4 } },
+    'iron-mace': { name: 'Iron Mace', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'mace', armor: 0, cost: { iron: 4, wood: 1 }, buy: true, price: 36, craftLevel: 70, buyLevel: 14, reqLevel: 16, statsSet: true, stats: { strength: 6 } },
+    'iron-spear': { name: 'Iron Spear', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'spear', armor: 0, cost: { iron: 4, wood: 2, silk: 1 }, buy: true, price: 48, craftLevel: 95, buyLevel: 20, reqLevel: 22, statsSet: true, stats: { strength: 8 } },
+    'hunter-crossbow': { name: 'Hunter Crossbow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'crossbow', armor: 0, cost: { iron: 3, wood: 4, silk: 2 }, buy: true, price: 64, craftLevel: 110, buyLevel: 24, reqLevel: 26, statsSet: true, stats: { strength: 9 } },
+    'horn-shortbow': { name: 'Horn Shortbow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'shortbow', armor: 0, cost: { wood: 5, silk: 2, copper: 1 }, buy: true, price: 30, craftLevel: 45, buyLevel: 10, reqLevel: 12, statsSet: true, stats: { strength: 4 } },
+    'composite-bow': { name: 'Composite Bow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'bow', armor: 0, cost: { wood: 6, silk: 3, iron: 2 }, buy: true, price: 96, craftLevel: 140, buyLevel: 30, reqLevel: 32, statsSet: true, stats: { strength: 11 } },
+    'steel-greatsword': { name: 'Steel Greatsword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'greatsword', armor: 0, cost: { iron: 6, silver: 2, wood: 2, silk: 1 }, buy: true, price: 130, craftLevel: 165, buyLevel: 34, reqLevel: 36, statsSet: true, stats: { strength: 12 } },
+    'silver-dagger': { name: 'Silver Dagger', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'dagger', armor: 0, cost: { silver: 4, silk: 2 }, buy: true, price: 150, craftLevel: 180, buyLevel: 36, reqLevel: 38, statsSet: true, stats: { strength: 11 } },
+    'mithril-axe': { name: 'Mithril Axe', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'axe', armor: 0, cost: { mithril: 4, wood: 2, silk: 3 }, buy: true, price: 210, craftLevel: 210, buyLevel: 42, reqLevel: 44, statsSet: true, stats: { strength: 14 } },
+    'siege-crossbow': { name: 'Siege Crossbow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'crossbow', armor: 0, cost: { mithril: 3, wood: 6, silk: 4 }, buy: true, price: 240, craftLevel: 230, buyLevel: 46, reqLevel: 48, statsSet: true, stats: { strength: 15 } },
+    'mithril-spear': { name: 'Mithril Spear', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'spear', armor: 0, cost: { mithril: 5, wood: 2, silk: 3 }, buy: true, price: 260, craftLevel: 245, buyLevel: 48, reqLevel: 50, statsSet: true, stats: { strength: 16 } },
+    'wyrm-longbow': { name: 'Wyrm Longbow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'longbow', magic: true, armor: 0, cost: { wood: 8, silk: 6, thorium: 2, ruby: 1 }, buy: true, price: 340, craftLevel: 275, buyLevel: 52, reqLevel: 54, statsSet: true, stats: { strength: 18 } },
+    'thorium-hammer': { name: 'Thorium Hammer', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'hammer', armor: 0, cost: { thorium: 6, wood: 2, silk: 4 }, buy: true, price: 360, craftLevel: 290, buyLevel: 54, reqLevel: 56, statsSet: true, stats: { strength: 18 } },
+    'silkbound-staff': { name: 'Silkbound Staff', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'staff', armor: 0, cost: { wood: 4, silk: 4, quartz: 1 }, buy: true, price: 80, craftLevel: 100, buyLevel: 18, reqLevel: 20, statsSet: true, stats: { intellect: 7 } },
+    'jade-wand': { name: 'Jade Wand', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'wand', armor: 0, cost: { wood: 2, silk: 2, jade: 1 }, buy: true, price: 110, craftLevel: 145, buyLevel: 28, reqLevel: 30, statsSet: true, stats: { intellect: 9 } },
+    'ruby-scepter': { name: 'Ruby Scepter', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'wand', magic: true, armor: 0, cost: { silver: 2, silk: 3, ruby: 2 }, buy: true, price: 220, craftLevel: 215, buyLevel: 42, reqLevel: 44, statsSet: true, stats: { intellect: 13 } },
+    'sapphire-staff': { name: 'Sapphire Staff', set: 'magic', slot: 'weapon', kind: 'weapon', weapon: 'staff', magic: true, armor: 0, cost: { wood: 6, silk: 5, sapphire: 2 }, buy: true, price: 300, craftLevel: 255, buyLevel: 50, reqLevel: 52, statsSet: true, stats: { intellect: 16 } },
+    'diamond-focus': { name: 'Diamond Focus', set: 'magic', slot: 'offhand', kind: 'armor', style: 'cloth', magic: true, armor: 4, cost: { wood: 2, silk: 4, diamond: 1 }, buy: true, price: 380, craftLevel: 295, buyLevel: 56, reqLevel: 58, statsSet: true, stats: { intellect: 18 } }
 };
 
 const CRAFT_SETS = {
@@ -2405,8 +2430,25 @@ for (const [id, recipe] of Object.entries(RECIPES)) {
         } else recipe.craftLevel = APPRENTICE_LEVEL[id] || 1;
     }
     const tier = recipe.tier || 0;
+    if (recipe.buy && !recipe.buyLevel) {
+        const skill = recipe.craftLevel || 1;
+        recipe.buyLevel = skill >= 250 ? 48 : skill >= 200 ? 36 : skill >= 140 ? 24 : skill >= 80 ? 12 : 1;
+    }
     if (recipe.buy || !tier) continue;
-    if (recipe.set === 'cloth') recipe.cost = { ...recipe.cost, silk: tier === 75 ? 2 : tier === 150 ? 4 : 6 };
+    if (recipe.set === 'cloth') recipe.cost = { ...recipe.cost, silk: Math.max(recipe.cost.silk || 0, tier === 75 ? 2 : tier === 150 ? 4 : 6) };
+    if (tier >= 75 && recipe.set !== 'alchemy' && recipe.set !== 'cloth') {
+        const typed = tier === 75 ? 'iron' : tier === 150 ? 'silver' : 'mithril';
+        const oreQty = tier === 75 ? 2 : tier === 150 ? 4 : 6;
+        if (recipe.set === 'plate' || recipe.set === 'weapon' || recipe.set === 'explosive' || recipe.cost.ore) {
+            recipe.cost = { ...recipe.cost, [typed]: Math.max(recipe.cost[typed] || 0, oreQty) };
+        }
+    }
+    if (tier >= 75 && recipe.set !== 'alchemy' && recipe.set !== 'explosive' && recipe.set !== 'plate') {
+        const silkQty = tier === 75 ? 2 : tier === 150 ? 4 : 6;
+        if (recipe.set === 'leather' || recipe.set === 'weapon' || recipe.set === 'magic') {
+            recipe.cost = { ...recipe.cost, silk: Math.max(recipe.cost.silk || 0, silkQty) };
+        }
+    }
     if (tier >= 150 && recipe.set !== 'alchemy' && recipe.set !== 'explosive' && recipe.set !== 'cloth') {
         recipe.cost = { ...recipe.cost, gem: Math.max(recipe.cost.gem || 0, tier === 150 ? 1 : 2) };
     }
@@ -2428,7 +2470,39 @@ function craftXpGain(craftLevel, skill) {
     return Math.max(1, Math.ceil(base * (40 - over) / 40));
 }
 
-const MATERIAL_NAMES = { cloth: 'Cloth', leather: 'Leather', ore: 'Ore', gem: 'Gem', wood: 'Wood', stone: 'Stone', herb: 'Herb', powder: 'Powder', silk: 'Silk' };
+const MATERIAL_NAMES = {
+    cloth: 'Cloth', leather: 'Leather', ore: 'Ore', gem: 'Gem', wood: 'Wood', stone: 'Stone', herb: 'Herb', powder: 'Powder', silk: 'Silk',
+    copper: 'Copper Ore', tin: 'Tin Ore', iron: 'Iron Ore', silver: 'Silver Ore', mithril: 'Mithril Ore', thorium: 'Thorium Ore',
+    malachite: 'Malachite', quartz: 'Quartz', jade: 'Jade', ruby: 'Ruby', sapphire: 'Sapphire', diamond: 'Diamond'
+};
+
+const ORE_FINDS = [['copper', 30], ['tin', 24], ['iron', 18], ['silver', 10], ['mithril', 5], ['thorium', 2]];
+const GEM_FINDS = [['malachite', 26], ['quartz', 20], ['jade', 14], ['ruby', 8], ['sapphire', 5], ['diamond', 2]];
+
+function weightedFind(table) {
+    const total = table.reduce((sum, row) => sum + row[1], 0);
+    let roll = Math.random() * total;
+    for (const row of table) {
+        roll -= row[1];
+        if (roll <= 0) return row[0];
+    }
+    return table[table.length - 1][0];
+}
+
+function splitRock(player) {
+    if (!player.materials) player.materials = blankMaterials();
+    if ((player.materials.stone || 0) < 1) return { error: 'Need 1 stone' };
+    player.materials.stone -= 1;
+    const roll = Math.random();
+    let note = 'The rock splits clean. Nothing inside.';
+    if (roll >= 0.48) {
+        const kind = weightedFind(roll < 0.8 ? ORE_FINDS : GEM_FINDS);
+        player.materials[kind] = (player.materials[kind] || 0) + 1;
+        note = 'The split reveals ' + (MATERIAL_NAMES[kind] || kind) + '.';
+    }
+    savePlayer(player);
+    return { note };
+}
 
 function lootRecipeIds() {
     return Object.keys(RECIPES).filter(id => RECIPES[id].loot);
@@ -2486,6 +2560,7 @@ function publicCraft() {
             yield: recipe.yield || null,
             tier: recipe.tier || 0,
             craftLevel: recipe.craftLevel || 1,
+            buyLevel: recipe.buyLevel || 0,
             icon: recipe.icon || defaultIconName(recipe),
             stats: made.stats,
             reqLevel: made.reqLevel
@@ -2673,10 +2748,10 @@ function publicCharacter(player) {
     };
 }
 
-const MATERIAL_KINDS = ['wood', 'stone', 'cloth', 'leather', 'ore', 'gem', 'herb', 'powder', 'silk'];
+const MATERIAL_KINDS = ['wood', 'stone', 'cloth', 'leather', 'ore', 'copper', 'tin', 'iron', 'silver', 'mithril', 'thorium', 'gem', 'malachite', 'quartz', 'jade', 'ruby', 'sapphire', 'diamond', 'herb', 'powder', 'silk'];
 
 function blankMaterials() {
-    return { wood: 0, stone: 0, cloth: 0, leather: 0, ore: 0, gem: 0, herb: 0, powder: 0, silk: 0 };
+    return { wood: 0, stone: 0, cloth: 0, leather: 0, ore: 0, copper: 0, tin: 0, iron: 0, silver: 0, mithril: 0, thorium: 0, gem: 0, malachite: 0, quartz: 0, jade: 0, ruby: 0, sapphire: 0, diamond: 0, herb: 0, powder: 0, silk: 0 };
 }
 
 function coinCount(player) {
@@ -2753,6 +2828,7 @@ function buyPattern(player, id) {
     const skill = player.craftSkill && player.craftSkill[recipe.set];
     if (!skill) return 'Learn ' + ((CRAFT_SETS[recipe.set] && CRAFT_SETS[recipe.set].name) || 'that skill') + ' first';
     if (skill.level < (recipe.craftLevel || 1)) return 'Requires crafting level ' + recipe.craftLevel;
+    if ((player.level || 1) < (recipe.buyLevel || 1)) return 'Requires level ' + (recipe.buyLevel || 1);
     if (!spendCoins(player, recipe.price || 0)) return 'Not enough coins';
     player.recipes.push(id);
     savePlayer(player);
@@ -3671,6 +3747,8 @@ function rollLoot(level, tableId) {
     else if (Math.random() < 0.55 || !goods.length) items.push(makeGear(level, tableId));
     else if (goods.length) items.push(lootItem(rollRow(goods), level, tableId));
     if (junk.length && Math.random() < 0.6) items.push(lootItem(rollRow(junk), level, tableId));
+    if ((tableId === 'hide') && Math.random() < 0.55) items.push({ kind: 'leather', name: 'Leather', qty: 1 });
+    if ((tableId === 'silk') && Math.random() < 0.5) items.push({ kind: 'silk', name: 'Silk', qty: 1 });
     const bags = table.filter(row => row.kind === 'bag');
     if (bags.length) {
         const bagWeight = bags.reduce((sum, row) => sum + row.weight, 0);
@@ -4897,14 +4975,11 @@ wss.on('connection', (ws) => {
                         : node.type === 'sulfur'
                             ? { kind: 'powder', name: 'Powder', qty: 1 }
                             : { kind: 'stone', name: 'Stone', qty: 1 };
-                const gem = node.type === 'rock' && Math.random() < 0.3
-                    ? { kind: 'gem', name: 'Gem', qty: 1 }
-                    : null;
-                if (addToSlots(player, drop) || (gem && addToSlots(player, gem))) {
+                if (addToSlots(player, drop)) {
                     send(ws, { type: 'gatherResult', ok: false, reason: 'Inventory full', id: node.id, hits, inventory: inventoryOf(player) });
                     return;
                 }
-                gained = gem ? 'stone-gem' : drop.kind;
+                gained = drop.kind;
                 savePlayer(player);
             }
             save.resources[node.id] = next;
@@ -4941,7 +5016,7 @@ wss.on('connection', (ws) => {
             player.tool = spec.weapon;
             if (player.class) {
                 const worn = player.equipment.weapon && player.equipment.weapon.weapon;
-                if (worn !== spec.weapon) {
+                if (weaponFamily(worn) !== spec.weapon) {
                     send(ws, { type: 'attackResult', ok: false, reason: 'Equip a ' + spec.weapon });
                     return;
                 }
@@ -5778,6 +5853,20 @@ wss.on('connection', (ws) => {
             const error = learnSet(player, data.set);
             const set = CRAFT_SETS[data.set];
             send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : (set ? set.name + ' learned' : ''), character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'split') {
+            const result = splitRock(player);
+            send(ws, {
+                type: 'character',
+                ok: !result.error,
+                reason: result.error || '',
+                note: result.note || '',
+                character: publicCharacter(player),
+                inventory: inventoryOf(player),
+                ...statsOf(player)
+            });
             return;
         }
 
