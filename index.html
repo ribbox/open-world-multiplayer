@@ -1500,7 +1500,64 @@
                 });
             }
             const VISUAL_SLOTS = ['head', 'shoulders', 'chest', 'legs', 'feet', 'cloak', 'offhand'];
+            function gearInfo(name) {
+                const gear = /^gear-([a-z]+)(?:-([a-z]+))?/.exec(name || '');
+                if (gear) return { slot: gear[1], style: gear[2] || '' };
+                const body = /^body-([a-z]+)/.exec(name || '');
+                if (body) return { body: body[1] };
+                return null;
+            }
+            const ownedMats = new WeakSet();
+            function ownMaterial(mesh) {
+                if (ownedMats.has(mesh)) return mesh.material;
+                mesh.material = Array.isArray(mesh.material) ? mesh.material[0].clone() : mesh.material.clone();
+                ownedMats.add(mesh);
+                return mesh.material;
+            }
+            function dressGear(model, source) {
+                if (!model || !model.userData.dress) return false;
+                const gear = {};
+                for (const slot of VISUAL_SLOTS) {
+                    const look = pieceLook(source && source[slot]);
+                    if (look) gear[slot] = look;
+                }
+                const robe = !!(gear.chest && gear.chest.style === 'cloth');
+                model.traverse(obj => {
+                    if (!obj.isMesh) return;
+                    const info = gearInfo(obj.name);
+                    if (!info) return;
+                    if (info.body) {
+                        let show = true;
+                        if (info.body === 'hair' && gear.head) show = false;
+                        if (info.body === 'chest' && gear.chest) show = false;
+                        if (info.body === 'legs' && (gear.legs || robe)) show = false;
+                        if (info.body === 'feet' && gear.feet) show = false;
+                        obj.visible = show;
+                        return;
+                    }
+                    const look = gear[info.slot];
+                    const show = !!(look && (info.slot === 'cloak' || look.style === info.style) && !(robe && info.slot === 'legs'));
+                    obj.visible = show;
+                    if (!show || !look) return;
+                    const mat = ownMaterial(obj);
+                    const color = armorColor(look.style, look.level, look.magic);
+                    if (mat.color) mat.color.setHex(color);
+                    if (mat.emissive) {
+                        mat.emissive.setHex(look.magic ? color : 0x000000);
+                        mat.emissiveIntensity = look.magic ? 0.28 : 0;
+                    }
+                    mat.metalness = look.style === 'plate' ? 0.62 : 0.04;
+                    mat.roughness = look.style === 'plate' ? 0.36 : look.style === 'leather' ? 0.7 : 0.82;
+                });
+                return true;
+            }
             function wearArmor(group, source) {
+                const dressed = group && group.userData.body;
+                if (dressed && dressed.userData.dress) {
+                    dressGear(dressed, source);
+                    clearArmor(group);
+                    return;
+                }
                 const gear = {};
                 for (const slot of VISUAL_SLOTS) {
                     const look = pieceLook(source && source[slot]);
@@ -1627,10 +1684,16 @@
                     model.scale.setScalar(scale);
                     box.setFromObject(model);
                     model.position.y = -box.min.y;
-                    solidifyBody(model);
+                    let dress = false;
+                    model.traverse(obj => {
+                        if (obj.name && (obj.name.startsWith('gear-') || obj.name.startsWith('body-'))) dress = true;
+                    });
+                    model.userData.dress = dress;
+                    if (!dress) solidifyBody(model);
                     actorPivot.add(model);
                     rememberBody(characterGroup, model);
                     actorPivot.userData.restY = 0;
+                    characterGroup.userData.body = model;
                     wearArmor(characterGroup, character.equipment);
                     playerModel = actorPivot;
                     playerTemplate = model;
@@ -3447,6 +3510,7 @@
                 if (swinging) return false;
                 swinging = true;
                 swingTime = 0;
+                if (playerRig) playRigOnce(playerRig, 'attack');
                 if (attackAction) {
                     attackAction.reset().play();
                     attackAction.setLoop(THREE.LoopOnce);
@@ -5901,7 +5965,10 @@
                 action.reset().setEffectiveWeight(1).play();
                 const idle = clips.find(item => item.name === 'idle') || clips[0];
                 const idleAction = mixer.clipAction(idle);
-                if (idleAction.isRunning()) action.crossFadeFrom(idleAction, 0.06, false);
+                const walkClip = clips.find(item => item.name === 'walk');
+                const walkAction = walkClip && mixer.clipAction(walkClip);
+                if (walkAction && walkAction.isRunning()) action.crossFadeFrom(walkAction, 0.06, false);
+                else if (idleAction.isRunning()) action.crossFadeFrom(idleAction, 0.06, false);
                 model.userData.rigBusy = true;
                 model.userData.rigMoving = null;
                 const done = (event) => {
@@ -8871,6 +8938,7 @@
                 const tint = new THREE.Color(color || '#ffffff');
                 root.traverse(obj => {
                     if (!obj.isMesh || !obj.material) return;
+                    if (obj.name && (obj.name.startsWith('gear-') || obj.name.startsWith('body-face'))) return;
                     const source = Array.isArray(obj.material) ? obj.material : [obj.material];
                     const cloned = source.map(mat => {
                         const next = mat.clone();
@@ -8892,6 +8960,7 @@
                 group.userData.actor = pivot;
                 pivot.userData.restY = 0;
                 rememberBody(group, model);
+                group.userData.body = model;
                 if (playerClips.length) {
                     const remoteMixer = new THREE.AnimationMixer(model);
                     model.userData.mixer = remoteMixer;
@@ -8984,6 +9053,7 @@
                     marker = new THREE.Group();
                     if (playerTemplate) {
                         const model = cloneSkinned(playerTemplate);
+                        dressGear(model, null);
                         model.rotation.z = Math.PI / 2;
                         model.position.y = 0.45;
                         setGhostLook(model, true);
