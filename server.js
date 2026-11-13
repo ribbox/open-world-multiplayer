@@ -2449,26 +2449,34 @@ for (const [id, recipe] of Object.entries(RECIPES)) {
         const skill = recipe.craftLevel || 1;
         recipe.buyLevel = skill >= 250 ? 48 : skill >= 200 ? 36 : skill >= 140 ? 24 : skill >= 80 ? 12 : 1;
     }
-    if (recipe.buy || !tier) continue;
-    if (recipe.set === 'cloth') recipe.cost = { ...recipe.cost, silk: Math.max(recipe.cost.silk || 0, tier === 75 ? 2 : tier === 150 ? 4 : 6) };
-    if (tier >= 75 && recipe.set !== 'alchemy' && recipe.set !== 'cloth') {
-        const typed = tier === 75 ? 'iron' : tier === 150 ? 'silver' : 'mithril';
-        const oreQty = tier === 75 ? 2 : tier === 150 ? 4 : 6;
-        if (recipe.set === 'plate' || recipe.set === 'weapon' || recipe.set === 'explosive' || recipe.cost.ore) {
-            recipe.cost = { ...recipe.cost, [typed]: Math.max(recipe.cost[typed] || 0, oreQty) };
+    if (!recipe.buy && tier) {
+        if (recipe.set === 'cloth') recipe.cost = { ...recipe.cost, silk: Math.max(recipe.cost.silk || 0, tier === 75 ? 2 : tier === 150 ? 4 : 6) };
+        if (tier >= 75 && recipe.set !== 'alchemy' && recipe.set !== 'cloth') {
+            const typed = tier === 75 ? 'iron' : tier === 150 ? 'silver' : 'mithril';
+            const oreQty = tier === 75 ? 2 : tier === 150 ? 4 : 6;
+            if (recipe.set === 'plate' || recipe.set === 'weapon' || recipe.set === 'explosive' || recipe.cost.ore) {
+                recipe.cost = { ...recipe.cost, [typed]: Math.max(recipe.cost[typed] || 0, oreQty) };
+            }
+        }
+        if (tier >= 75 && recipe.set !== 'alchemy' && recipe.set !== 'explosive' && recipe.set !== 'plate') {
+            const silkQty = tier === 75 ? 2 : tier === 150 ? 4 : 6;
+            if (recipe.set === 'leather' || recipe.set === 'weapon' || recipe.set === 'magic') {
+                recipe.cost = { ...recipe.cost, silk: Math.max(recipe.cost.silk || 0, silkQty) };
+            }
+        }
+        if (tier >= 150 && recipe.set !== 'alchemy' && recipe.set !== 'explosive' && recipe.set !== 'cloth') {
+            recipe.cost = { ...recipe.cost, gem: Math.max(recipe.cost.gem || 0, tier === 150 ? 1 : 2) };
+        }
+        if (tier === 225 && (recipe.set === 'alchemy' || recipe.set === 'explosive')) {
+            recipe.cost = { ...recipe.cost, gem: Math.max(recipe.cost.gem || 0, 2) };
         }
     }
-    if (tier >= 75 && recipe.set !== 'alchemy' && recipe.set !== 'explosive' && recipe.set !== 'plate') {
-        const silkQty = tier === 75 ? 2 : tier === 150 ? 4 : 6;
-        if (recipe.set === 'leather' || recipe.set === 'weapon' || recipe.set === 'magic') {
-            recipe.cost = { ...recipe.cost, silk: Math.max(recipe.cost.silk || 0, silkQty) };
-        }
-    }
-    if (tier >= 150 && recipe.set !== 'alchemy' && recipe.set !== 'explosive' && recipe.set !== 'cloth') {
-        recipe.cost = { ...recipe.cost, gem: Math.max(recipe.cost.gem || 0, tier === 150 ? 1 : 2) };
-    }
-    if (tier === 225 && (recipe.set === 'alchemy' || recipe.set === 'explosive')) {
-        recipe.cost = { ...recipe.cost, gem: Math.max(recipe.cost.gem || 0, 2) };
+    if (recipe.cost && recipe.cost.ore) {
+        const skill = recipe.craftLevel || 1;
+        const grade = tier >= 225 || skill >= 200 ? 'thorium' : tier >= 150 || skill >= 140 ? 'silver' : tier >= 75 || skill >= 50 ? 'iron' : skill >= 25 ? 'tin' : 'copper';
+        const next = { ...recipe.cost, [grade]: (recipe.cost[grade] || 0) + recipe.cost.ore };
+        delete next.ore;
+        recipe.cost = next;
     }
 }
 
@@ -3388,6 +3396,7 @@ function expandBag(player, extra) {
 
 function addToSlots(player, source) {
     if (!player.materials) player.materials = blankMaterials();
+    if (source.kind === 'ore') source = Object.assign({}, source, { kind: 'copper', name: MATERIAL_NAMES.copper });
     if (source.kind === 'coins') {
         player.coins = (player.coins || 0) + (source.qty || 1);
         return null;
@@ -3444,12 +3453,15 @@ function absorbWallet(player) {
     const materials = blankMaterials();
     const raw = player.materials || {};
     for (const kind of MATERIAL_KINDS) materials[kind] = Math.max(0, Number(raw[kind]) || 0);
+    materials.copper += Math.max(0, Number(raw.ore) || 0);
+    materials.ore = 0;
     player.materials = materials;
     if (!Array.isArray(player.slots)) player.slots = [];
     for (let i = 0; i < player.slots.length; i++) {
         const slot = player.slots[i];
         if (!slot) continue;
         if (slot.kind === 'coins') player.coins += slot.qty || 0;
+        else if (slot.kind === 'ore') materials.copper += slot.qty || 0;
         else if (MATERIAL_KINDS.includes(slot.kind)) materials[slot.kind] += slot.qty || 0;
         else continue;
         player.slots[i] = null;
@@ -3658,8 +3670,13 @@ function lootItem(row, level, tableId) {
     if (kind === 'health') return { kind, name: 'Health potion', qty: 1, amount: 8 + level * 3 };
     if (kind === 'mana') return { kind, name: 'Mana potion', qty: 1, amount: 6 + level * 2 };
     if (kind === 'stone' || kind === 'herb' || kind === 'powder' || kind === 'silk') return { kind, name: MATERIAL_NAMES[kind], qty: 1 + Math.floor(level / 3) };
-    if (kind === 'cloth' || kind === 'leather' || kind === 'ore' || kind === 'gem') {
+    if (kind === 'cloth' || kind === 'leather' || kind === 'gem') {
         return { kind, name: MATERIAL_NAMES[kind], qty: kind === 'gem' ? 1 : 1 + Math.floor(level / 2) };
+    }
+    if (kind === 'ore') {
+        const lv = level || 1;
+        const typed = lv >= 40 ? 'thorium' : lv >= 28 ? 'mithril' : lv >= 18 ? 'silver' : lv >= 10 ? 'iron' : (Math.random() < 0.5 ? 'tin' : 'copper');
+        return { kind: typed, name: MATERIAL_NAMES[typed], qty: 1 + Math.floor(lv / 2) };
     }
     if (kind === 'recipe') {
         let ids = lootRecipeIds();

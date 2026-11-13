@@ -45,12 +45,23 @@
         #bagHead {
             display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
         }
-        #bagBody { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; margin-top: 8px; }
+        #bagBody {
+            display: grid;
+            grid-template-columns: 172px 172px;
+            column-gap: 12px;
+            align-items: start;
+            margin-top: 8px;
+        }
         #bagSlots, #supplySlots, #vaultGrid {
             display: grid;
             grid-template-columns: repeat(4, 40px);
             gap: 3px;
         }
+        .pane-label, #supplyLabel, .supply-break {
+            height: 16px; line-height: 16px; margin: 0 0 4px;
+            font-size: 12px; color: #ddd;
+        }
+        .supply-break { grid-column: 1 / -1; margin: 2px 0 0; }
         #bagPockets, #talk .bag-pockets { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
         #vaultGrid { margin-top: 6px; }
         #nameRow { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
@@ -70,18 +81,19 @@
         .money-gold { color: #f1c40f; }
         .money-silver { color: #d7dbe0; }
         .money-coin { color: #e0a15a; }
-        #supplyLabel { margin: 0 0 4px; font-size: 12px; color: #ddd; }
+        #supplyLabel { margin: 0 0 4px; }
         #supplySlots { margin-top: 0; }
         .slot {
             position: relative;
             width: 40px;
             height: 40px;
+            box-sizing: border-box;
             padding: 0;
             border: 1px solid rgba(255,255,255,0.35);
             background-color: rgba(0,0,0,0.35);
             background-repeat: no-repeat;
             background-position: center;
-            background-size: 28px 28px;
+            background-size: 26px 26px;
             color: white;
             cursor: pointer;
             touch-action: none;
@@ -891,9 +903,12 @@
         </div>
         <div id="bagPockets"></div>
         <div id="bagBody">
-            <div id="bagSlots"></div>
             <div>
-                <div id="supplyLabel">Supplies</div>
+                <div class="pane-label">Items</div>
+                <div id="bagSlots"></div>
+            </div>
+            <div>
+                <div id="supplyLabel" class="pane-label">Supplies</div>
                 <div id="supplySlots"></div>
             </div>
         </div>
@@ -2586,7 +2601,11 @@
             }
 
             const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, bags: [null, null, null, null], bank: [], baseSlots: 16, coins: 0, materials: {} };
-            const SUPPLY_KINDS = [['wood', 'Wood'], ['stone', 'Stone'], ['cloth', 'Cloth'], ['leather', 'Leather'], ['ore', 'Ore'], ['copper', 'Copper Ore'], ['tin', 'Tin Ore'], ['iron', 'Iron Ore'], ['silver', 'Silver Ore'], ['mithril', 'Mithril Ore'], ['thorium', 'Thorium Ore'], ['gem', 'Gem'], ['malachite', 'Malachite'], ['quartz', 'Quartz'], ['jade', 'Jade'], ['ruby', 'Ruby'], ['sapphire', 'Sapphire'], ['diamond', 'Diamond'], ['herb', 'Herb'], ['powder', 'Powder'], ['silk', 'Silk']];
+            const STAPLE_KINDS = [['wood', 'Wood'], ['stone', 'Stone'], ['cloth', 'Cloth'], ['leather', 'Leather'], ['herb', 'Herb'], ['powder', 'Powder'], ['silk', 'Silk'], ['gem', 'Gem']];
+            const ORE_KINDS = [['copper', 'Copper'], ['tin', 'Tin'], ['iron', 'Iron'], ['silver', 'Silver'], ['mithril', 'Mithril'], ['thorium', 'Thorium']];
+            const GEM_KINDS = [['malachite', 'Malachite'], ['quartz', 'Quartz'], ['jade', 'Jade'], ['ruby', 'Ruby'], ['sapphire', 'Sapphire'], ['diamond', 'Diamond']];
+            const SUPPLY_KINDS = STAPLE_KINDS.concat(ORE_KINDS, GEM_KINDS);
+            const NUGGET_COLOR = { copper: '#c4783a', tin: '#d5dde6', iron: '#7d8794', silver: '#f4f7fb', mithril: '#7fd0ea', thorium: '#e0a23a', malachite: '#1f9d55', quartz: '#f7f3ea', jade: '#3dcca0', ruby: '#d64545', sapphire: '#3d7dcc', diamond: '#f4fbff' };
             const iconSheet = new Image();
             let iconSheetReady = false;
             const SHEET_COLS = 16;
@@ -2961,8 +2980,7 @@
                 const supplies = document.getElementById('supplySlots');
                 supplies.textContent = '';
                 const mats = inventory.materials || {};
-                for (const [kind, name] of SUPPLY_KINDS) {
-                    const qty = mats[kind] || 0;
+                const addSupply = (kind, name, qty) => {
                     const cell = document.createElement('button');
                     cell.type = 'button';
                     cell.className = 'slot ' + kind;
@@ -2980,6 +2998,23 @@
                         gameSocket.send(JSON.stringify({ type: 'discardMaterial', kind, all: e.shiftKey }));
                     });
                     supplies.appendChild(cell);
+                };
+                const addBreak = (text) => {
+                    const label = document.createElement('div');
+                    label.className = 'supply-break';
+                    label.textContent = text;
+                    supplies.appendChild(label);
+                };
+                for (const [kind, name] of STAPLE_KINDS) addSupply(kind, name, mats[kind] || 0);
+                const heldOres = ORE_KINDS.filter(([kind]) => mats[kind] > 0);
+                const heldGems = GEM_KINDS.filter(([kind]) => mats[kind] > 0);
+                if (heldOres.length) {
+                    addBreak('Ore');
+                    for (const [kind, name] of heldOres) addSupply(kind, name, mats[kind]);
+                }
+                if (heldGems.length) {
+                    addBreak('Gems');
+                    for (const [kind, name] of heldGems) addSupply(kind, name, mats[kind]);
                 }
             }
             function applyInventory(data) {
@@ -6900,12 +6935,59 @@
                 el.style.backgroundSize = id === 'bag' || id === 'character' ? '34px 34px' : '30px 30px';
             }
 
+            function drawNugget(g, color, gem) {
+                if (gem) {
+                    g.fillStyle = color;
+                    g.beginPath();
+                    g.moveTo(32, 8);
+                    g.lineTo(52, 28);
+                    g.lineTo(32, 58);
+                    g.lineTo(12, 28);
+                    g.closePath();
+                    g.fill();
+                    g.fillStyle = 'rgba(255,255,255,0.7)';
+                    g.beginPath();
+                    g.moveTo(32, 12);
+                    g.lineTo(42, 28);
+                    g.lineTo(32, 34);
+                    g.closePath();
+                    g.fill();
+                    return;
+                }
+                g.fillStyle = '#3a332c';
+                g.beginPath();
+                g.moveTo(12, 40);
+                g.lineTo(20, 16);
+                g.lineTo(42, 12);
+                g.lineTo(54, 32);
+                g.lineTo(44, 54);
+                g.lineTo(18, 50);
+                g.closePath();
+                g.fill();
+                g.fillStyle = color;
+                g.beginPath();
+                g.moveTo(18, 38);
+                g.lineTo(26, 20);
+                g.lineTo(44, 18);
+                g.lineTo(50, 34);
+                g.lineTo(38, 48);
+                g.lineTo(20, 46);
+                g.closePath();
+                g.fill();
+                g.fillStyle = 'rgba(255,255,255,0.45)';
+                g.fillRect(30, 22, 8, 5);
+            }
+
             function itemCanvas(item, faded) {
                 const canvas = document.createElement('canvas');
                 canvas.width = 64;
                 canvas.height = 64;
                 const g = canvas.getContext('2d');
                 const kind = item.kind;
+                if (NUGGET_COLOR[kind]) {
+                    drawNugget(g, NUGGET_COLOR[kind], GEM_KINDS.some(([id]) => id === kind));
+                    return canvas;
+                }
                 const slot = item.slot || 'chest';
                 let index = iconIndex(item.icon);
                 if (index == null && kind === 'weapon') {
@@ -6940,7 +7022,7 @@
                 el.style.backgroundImage = 'url(' + itemCanvas(item, faded).toDataURL() + ')';
                 el.style.backgroundRepeat = 'no-repeat';
                 el.style.backgroundPosition = 'center';
-                el.style.backgroundSize = '32px 32px';
+                el.style.backgroundSize = '26px 26px';
             }
 
             function drawHerb(g) {
