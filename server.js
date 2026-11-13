@@ -1210,6 +1210,21 @@ function mobStatBlock(level, kind, style) {
     return { strength: primary, stamina, intellect: 0 };
 }
 
+function eliteStrike(npc, target) {
+    const hp = Math.max(1, target.maxHp || target.hp || 1);
+    const armor = Math.max(0, target.armor || 0);
+    const level = Math.max(1, target.level || 1);
+    const gap = (npc.level || 1) - level;
+    if (gap >= 5) return hp;
+    const soften = level;
+    const resist = armor / (armor + soften);
+    let portion = 0.75;
+    if (gap >= 3) portion = 0.85;
+    else if (gap > 0) portion += gap * 0.08;
+    else portion *= Math.max(0.4, 1 + gap * 0.045);
+    return Math.max(1, Math.round(hp * portion * (1 - resist)));
+}
+
 function gearAmount(level) {
     return Math.max(1, Math.round((level * level) / 33));
 }
@@ -4531,7 +4546,7 @@ function tickNpcs() {
                 const block = npc.stats || mobStatBlock(npc.level, npc.kind, npc.style);
                 const primary = casting ? (block.intellect || npc.level) : (block.strength || npc.level);
                 const raw = 1 + primary;
-                let damage = Math.max(1, Math.round(raw * (npc.elite ? 1.8 : 1)) - target.armor);
+                let damage = npc.elite ? eliteStrike(npc, target) : Math.max(1, Math.round(raw) - target.armor);
                 let absorbed = 0;
                 if ((target.absorbUntil || 0) > now && target.absorb > 0) {
                     absorbed = Math.min(target.absorb, damage);
