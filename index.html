@@ -20,8 +20,19 @@
             position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; padding: 0; line-height: 18px;
         }
         #showInfo {
-            position: absolute; top: 10px; left: 10px; z-index: 11; padding: 4px 8px; font-size: 13px;
+            position: absolute; top: 18px; right: 182px; left: auto; z-index: 12;
         }
+        #changeChar {
+            position: absolute; top: 158px; right: 182px; z-index: 12;
+            display: grid; place-items: center;
+            width: 28px; height: 28px; padding: 0; margin: 0;
+            color: #f4efe4; background: rgba(8, 10, 14, 0.82);
+            border: 1px solid rgba(214, 176, 96, 0.7); border-radius: 50%;
+            cursor: pointer; pointer-events: auto;
+        }
+        #changeChar[hidden] { display: none; }
+        #showInfo, #changeChar { box-shadow: 0 1px 3px rgba(0,0,0,0.45); }
+        #showInfo { width: 28px; height: 28px; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: 15px; font-weight: bold; }
         #showInfo[hidden] { display: none; }
         #inventory {
             display: none;
@@ -675,13 +686,6 @@
             background: #e2c48a; color: #2b2108; border: 0; border-radius: 4px;
             font-weight: bold; cursor: pointer; padding: 8px 12px;
         }
-        #changeChar {
-            display: block; margin: 6px auto 0; pointer-events: auto;
-            background: rgba(16, 18, 24, 0.82); color: #f4efe4;
-            border: 1px solid rgba(214, 176, 96, 0.45); border-radius: 4px;
-            font-size: 12px; padding: 5px 8px; cursor: pointer;
-        }
-        #changeChar[hidden] { display: none; }
         #mapAimTip {
             position: fixed; z-index: 30; max-width: 220px; padding: 4px 8px;
             background: rgba(8, 10, 16, 0.94); color: #fff;
@@ -847,7 +851,7 @@
         P: Invite the targeted player. A party holds up to 5. A nearby member shares kill experience and quest credit<br>
         Enter: Talk. The open tab is the channel. /p is the party, /w Name whispers, /t whispers your target<br>
         Sounds play for combat, gathering, loot, quests, travel, chat, and the other events<br>
-        C: Character sheet. Characters, under the map, returns to the select screen. Reset character is on the sheet and returns that one to level 1<br>
+        C: Character sheet. The person icon on the minimap returns to the select screen. Reset character is on the sheet and returns that one to level 1<br>
         Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health. Warriors wear plate, hunters wear leather, mages and warlocks wear cloth<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
         Spells and talents share one tree. The sheet is only for looking. Talk to a trainer to spend points or to reset them and spend again. One point in a node opens the next. A branch does not wait on the other branch. Level 60 is not enough to fill every branch<br>
@@ -878,7 +882,7 @@
         Minimap: zone name and 0–100 coordinates. Map chooses what is shown<br>
         <small>Player: human model &nbsp;|&nbsp; Each NPC type has its own shape</small>
     </div>
-    <button type="button" id="showInfo" hidden>Help</button>
+    <button type="button" id="showInfo" hidden title="Help" aria-label="Help">?</button>
     <div id="inventory">
         <div id="bagHead">
             <span id="bagLabel">Bag 0/16</span>
@@ -941,7 +945,8 @@
     <div id="itemTip" hidden></div>
     <div id="talk"></div>
     <div id="actionPicker" hidden></div>
-    <div id="mapReadout"><div id="zoneName">Camp Glade</div><div id="zoneCoords">50.0, 50.0</div><div id="mapHint">Click for the world map</div><button type="button" id="changeChar" hidden>Characters</button></div>
+    <div id="mapReadout"><div id="zoneName">Camp Glade</div><div id="zoneCoords">50.0, 50.0</div><div id="mapHint">Click for the world map</div></div>
+    <button type="button" id="changeChar" hidden title="Characters" aria-label="Characters"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.2 19.2c1.3-3.3 3.6-4.9 6.8-4.9s5.5 1.6 6.8 4.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
     <canvas id="minimap" width="180" height="180"></canvas>
     <div id="worldmap">
         <div id="worldmapPanel">
