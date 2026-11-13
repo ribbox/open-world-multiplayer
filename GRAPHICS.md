@@ -111,8 +111,8 @@ State is where that graphic stands. **Done** is the model the game should keep. 
 | Sulfur crystal | Sulfur node | | Drawn in code. |
 | Water surface | River, lake, sea | | Drawn in code. |
 | Cliff tint | World-edge hills | | Drawn in code. |
-| Name plate | Named character | | Drawn in code. |
-| Ghost tint | Dead player | | Drawn in code. |
-| Corpse marker | Player body | | Drawn in code. |
+| Name plate | Named character | | Done. A hung board, models/nameplate.glb, with the name on the face. |
+| Ghost tint | Dead player | | Done. models/ghost.glb replaces the faded body. |
+| Corpse marker | Player body | | Done. models/corpse.glb, a shrouded body and a marked stake. |
 
 Not used, so do not wire these again: `models/boar.glb`, `models/wolf.glb`, `models/spider.glb`, `models/shop.glb`, `models/quest.glb`, `models/low-poly-person.glb`, `models/cat-person_untextured.glb`, `models/ogre_lowpoly.glb`.

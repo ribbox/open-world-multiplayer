@@ -1263,6 +1263,11 @@
             let modelLoaded = false;
             let playerModel = null;
             let playerTemplate = null;
+            let nameplateTemplate = null;
+            let ghostTemplate = null;
+            let ghostClips = [];
+            let corpseTemplate = null;
+            let corpseClips = [];
             let playerClips = [];
             let playerRig = null;
             const remoteMixers = [];
@@ -1651,7 +1656,7 @@
                 }
                 group.userData.armor = rig;
                 (group.userData.pivot || group).add(rig);
-                if (group === characterGroup && ghost) fadeRig(rig, true);
+                if (group === characterGroup && ghost) setGhostLook(playerModel, true);
             }
 
             const loader = new GLTFLoader(loadManager);
@@ -1720,6 +1725,23 @@
                 undefined,
                 (err) => showError('Failed to load player model: ' + err.message)
             );
+            loader.load('/models/nameplate.glb', (gltf) => {
+                nameplateTemplate = gltf.scene;
+                refreshNamePlates();
+            });
+            loader.load('/models/ghost.glb', (gltf) => {
+                ghostTemplate = gltf.scene;
+                ghostClips = gltf.animations || [];
+                if (ghost && playerModel) setGhostLook(playerModel, true);
+                for (const entry of remotePlayers.values()) {
+                    if (entry.data && entry.data.ghost) setGhostLook(entry.mesh, true);
+                }
+            });
+            loader.load('/models/corpse.glb', (gltf) => {
+                corpseTemplate = gltf.scene;
+                corpseClips = gltf.animations || [];
+                refreshCorpses();
+            });
 
             let rockTemplate = null;
             let mineTemplate = null;
@@ -8910,6 +8932,7 @@
                     pull = Math.max(0.8, hits[0].distance - 0.45);
                 }
                 camera.position.copy(camTarget).addScaledVector(rayDir, pull);
+                faceNamePlates();
                 if (!activeCave) {
                 const bedY = terrainHeight(camera.position.x, camera.position.z);
                 const floorY = (bedY < WATER_LEVEL ? WATER_LEVEL + 1.35 : bedY + 1.05);
@@ -8936,26 +8959,73 @@
             // --- Multiplayer ---
             let myId = null;
 
-            function makeNameSprite(name, color) {
+            const plateAim = new THREE.Vector3();
+            function paintName(name, color) {
                 const canvas = document.createElement('canvas');
                 canvas.width = 512;
                 canvas.height = 128;
                 const ctx = canvas.getContext('2d');
                 ctx.clearRect(0, 0, 512, 128);
-                ctx.fillStyle = 'rgba(0,0,0,0.72)';
-                ctx.fillRect(32, 16, 448, 96);
                 ctx.fillStyle = color || '#ffffff';
-                ctx.font = 'bold 56px Arial';
+                ctx.font = 'bold 64px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText((name || 'Player').slice(0, 16), 256, 64);
-                const tex = sharpTexture(canvas);
-                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-                sprite.scale.set(2.4, 0.6, 1);
-                sprite.position.y = 2.6;
-                sprite.visible = false;
-                sprite.userData.texture = tex;
-                return sprite;
+                return sharpTexture(canvas);
+            }
+            function makeNameSprite(name, color) {
+                if (!nameplateTemplate) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 512;
+                    canvas.height = 128;
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, 512, 128);
+                    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+                    ctx.fillRect(32, 16, 448, 96);
+                    ctx.fillStyle = color || '#ffffff';
+                    ctx.font = 'bold 56px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText((name || 'Player').slice(0, 16), 256, 64);
+                    const tex = sharpTexture(canvas);
+                    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+                    sprite.scale.set(2.4, 0.6, 1);
+                    sprite.position.y = 2.6;
+                    sprite.visible = false;
+                    sprite.userData.texture = tex;
+                    return sprite;
+                }
+                const plate = cloneSkinned(nameplateTemplate);
+                const tex = paintName(name, color);
+                plate.traverse(obj => {
+                    if (!obj.isMesh || obj.name !== 'ink') return;
+                    const mat = obj.material.clone();
+                    mat.map = tex;
+                    mat.transparent = true;
+                    obj.material = mat;
+                });
+                plate.position.y = 2.45;
+                plate.scale.setScalar(0.9);
+                plate.visible = false;
+                plate.userData.texture = tex;
+                plate.userData.plate = true;
+                return plate;
+            }
+            function faceNamePlates() {
+                const aim = camera.position;
+                const turn = (plate) => {
+                    if (!plate || !plate.userData.plate || !plate.visible) return;
+                    plate.getWorldPosition(plateAim);
+                    plate.lookAt(aim.x, plateAim.y, aim.z);
+                };
+                for (const entry of remotePlayers.values()) turn(entry.mesh.userData.label);
+                for (const marker of corpseMarkers.values()) turn(marker.userData.label);
+            }
+            function refreshNamePlates() {
+                for (const entry of remotePlayers.values()) {
+                    const label = entry.mesh.userData.label;
+                    if (label && !label.userData.plate) setRemoteLabel(entry, entry.data.name, entry.data.color);
+                }
             }
 
             function tintModel(root, color) {
@@ -9025,7 +9095,7 @@
                 const old = entry.mesh.userData.label;
                 if (old) {
                     entry.mesh.remove(old);
-                    if (old.material) old.material.dispose();
+                    if (old.material && old.material.dispose) old.material.dispose();
                     if (old.userData.texture) old.userData.texture.dispose();
                 }
                 const label = makeNameSprite(name, color || entry.data.color);
@@ -9047,15 +9117,63 @@
                 }
             }
 
+            function dropMixer(mix) {
+                if (!mix) return;
+                const index = remoteMixers.indexOf(mix);
+                if (index >= 0) remoteMixers.splice(index, 1);
+            }
+            function playPropClip(root, clips) {
+                const clip = clips && THREE.AnimationClip.findByName(clips, 'idle');
+                if (!clip) return null;
+                const mix = new THREE.AnimationMixer(root);
+                mix.clipAction(clip).play();
+                remoteMixers.push(mix);
+                root.userData.mixer = mix;
+                return mix;
+            }
+            function inForm(form, obj) {
+                let node = obj;
+                while (node) {
+                    if (node === form) return true;
+                    if (node.userData && node.userData.plate) return true;
+                    node = node.parent;
+                }
+                return false;
+            }
             function setGhostLook(root, on) {
                 if (!root) return;
+                let form = root.userData.ghostForm;
+                if (on && !form && ghostTemplate) {
+                    form = cloneSkinned(ghostTemplate);
+                    form.name = 'ghost-form';
+                    form.position.y = 0.05;
+                    root.add(form);
+                    root.userData.ghostForm = form;
+                    playPropClip(form, ghostClips);
+                }
+                if (!form) {
+                    root.traverse(obj => {
+                        if (!obj.isMesh || !obj.material || inForm(null, obj)) return;
+                        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+                        for (const mat of mats) {
+                            mat.transparent = true;
+                            mat.opacity = on ? 0.35 : 1;
+                            mat.depthWrite = !on;
+                        }
+                    });
+                    return;
+                }
+                form.visible = !!on;
+                if (form.userData.mixer) form.userData.mixer.timeScale = on ? 1 : 0;
                 root.traverse(obj => {
-                    if (!obj.isMesh || !obj.material) return;
-                    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-                    for (const mat of mats) {
-                        mat.transparent = true;
-                        mat.opacity = on ? 0.35 : 1;
-                        mat.depthWrite = !on;
+                    if (!obj.isMesh || inForm(form, obj)) return;
+                    if (on) {
+                        if (!obj.userData.ghostHid) obj.userData.ghostWas = obj.visible;
+                        obj.userData.ghostHid = true;
+                        obj.visible = false;
+                    } else if (obj.userData.ghostHid) {
+                        obj.visible = obj.userData.ghostWas !== false;
+                        obj.userData.ghostHid = false;
                     }
                 });
             }
@@ -9063,6 +9181,7 @@
             function removeCorpse(id) {
                 const marker = corpseMarkers.get(id);
                 if (!marker) return;
+                dropMixer(marker.userData.mixer);
                 scene.remove(marker);
                 corpseMarkers.delete(id);
             }
@@ -9073,15 +9192,19 @@
                     return;
                 }
                 let marker = corpseMarkers.get(id);
+                if (marker && corpseTemplate && !marker.userData.usedModel) {
+                    removeCorpse(id);
+                    marker = null;
+                }
                 if (!marker) {
                     marker = new THREE.Group();
-                    if (playerTemplate) {
-                        const model = cloneSkinned(playerTemplate);
-                        dressGear(model, null);
-                        model.rotation.z = Math.PI / 2;
-                        model.position.y = 0.45;
-                        setGhostLook(model, true);
+                    marker.userData.corpseName = name;
+                    marker.userData.corpseColor = color;
+                    if (corpseTemplate) {
+                        const model = cloneSkinned(corpseTemplate);
                         marker.add(model);
+                        marker.userData.usedModel = true;
+                        marker.userData.mixer = playPropClip(model, corpseClips);
                     } else {
                         const body = new THREE.Mesh(
                             new THREE.CapsuleGeometry(0.35, 0.8, 4, 8),
@@ -9092,7 +9215,7 @@
                         marker.add(body);
                     }
                     const label = makeNameSprite((name || 'Body') + ' — body', color || '#c5d8f2');
-                    label.position.y = 1.1;
+                    label.position.y = 1.45;
                     label.visible = id === selectedNpcId;
                     marker.add(label);
                     marker.userData.label = label;
@@ -9100,6 +9223,18 @@
                     corpseMarkers.set(id, marker);
                 }
                 marker.position.set(corpse.x, terrainHeight(corpse.x, corpse.z), corpse.z);
+            }
+            function refreshCorpses() {
+                if (!corpseTemplate) return;
+                for (const [id, marker] of [...corpseMarkers]) {
+                    if (marker.userData.usedModel) continue;
+                    const x = marker.position.x;
+                    const z = marker.position.z;
+                    const name = marker.userData.corpseName;
+                    const color = marker.userData.corpseColor;
+                    removeCorpse(id);
+                    placeCorpse(id, { x, z }, name, color);
+                }
             }
 
             function enterGhost(corpse) {
