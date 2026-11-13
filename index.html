@@ -419,7 +419,7 @@
             gap: 8px; align-items: center;
         }
         #market .market-head { font-size: 11px; color: #c9c2b4; padding-bottom: 4px; }
-        #market .market-row { padding: 5px 0; border-top: 1px solid rgba(255,255,255,0.08); font-size: 13px; }
+        #market .market-row { padding: 5px 0; border-top: 1px solid rgba(255,255,255,0.08); font-size: 13px; cursor: help; }
         #market .market-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         #trade h2 { margin: 0 0 8px; font-size: 18px; color: #f1c40f; }
         #trade .tabs { display: flex; gap: 4px; margin-bottom: 8px; }
@@ -3212,6 +3212,7 @@
                     button.textContent = row.mine ? 'Cancel' : 'Buy';
                     button.addEventListener('click', () => sendTrade(row.mine ? 'unlist' : 'buy', { id: row.id }));
                     line.append(name, level, seller, price, button);
+                    bindItemTip(line, row.item, [row.mine ? 'Your listing' : ('Seller: ' + (row.sellerName || 'Seller')), row.price ? formatMoney(row.price) : 'Free']);
                     panel.appendChild(line);
                 }
                 const listNote = document.createElement('div');
@@ -7893,13 +7894,13 @@
                 (inventory.slots || []).forEach((slot, index) => {
                     if (!slot) return;
                     const group = slot.kind === 'junk' ? 0 : itemRarity(slot);
-                    offers.push({ group, amount: slot.amount || 0, name: sellTitle(slot), send: (all) => sendCharacter('sell', { slot: index, all }) });
+                    offers.push({ group, amount: slot.amount || 0, name: sellTitle(slot), item: slot, send: (all) => sendCharacter('sell', { slot: index, all }) });
                 });
                 for (const [kind, name] of SUPPLY_KINDS) {
                     const qty = (inventory.materials && inventory.materials[kind]) || 0;
                     if (!qty) continue;
                     const group = itemRarity({ kind });
-                    offers.push({ group, name: name + ' x' + qty + ' · ' + formatMoney(sellPrice({ kind })) + ' each', send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
+                    offers.push({ group, name: name + ' x' + qty + ' · ' + formatMoney(sellPrice({ kind })) + ' each', item: { kind, name, qty }, send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
                 }
                 offers.sort((a, b) => a.group - b.group || a.name.localeCompare(b.name) || (a.amount || 0) - (b.amount || 0));
                 if (!offers.length) {
@@ -7919,6 +7920,8 @@
                     }
                     const line = document.createElement('div');
                     line.className = 'spell-row';
+                    line.style.cursor = 'help';
+                    bindItemTip(line, offer.item, ['Sells for ' + formatMoney(sellPrice(offer.item)) + ' each']);
                     const label = document.createElement('div');
                     label.textContent = offer.name;
                     line.appendChild(label);
