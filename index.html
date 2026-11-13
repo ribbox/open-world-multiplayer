@@ -5786,7 +5786,46 @@
                 }
             }
 
+            function makeNamePlate(draw) {
+                if (!nameplateTemplate) return null;
+                const canvas = document.createElement('canvas');
+                canvas.width = 512;
+                canvas.height = 128;
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, 512, 128);
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                draw(ctx);
+                const tex = sharpTexture(canvas);
+                const plate = cloneSkinned(nameplateTemplate);
+                plate.traverse(obj => {
+                    if (!obj.isMesh || obj.name !== 'ink') return;
+                    const mat = obj.material.clone();
+                    mat.map = tex;
+                    mat.transparent = true;
+                    obj.material = mat;
+                });
+                plate.scale.setScalar(1.15);
+                plate.visible = false;
+                plate.userData.texture = tex;
+                plate.userData.plate = true;
+                return plate;
+            }
             function makeNpcSprite(name, level, hp, maxHp, elite) {
+                const plate = makeNamePlate(ctx => {
+                    ctx.fillStyle = elite ? '#f6e27a' : '#ffb4b4';
+                    ctx.font = 'bold 46px Arial';
+                    ctx.fillText(elite ? 'Elite ' + (name || 'Hostile') : (name || 'Hostile'), 256, 34);
+                    ctx.font = '30px Arial';
+                    ctx.fillStyle = '#f4efe4';
+                    ctx.fillText('Lv ' + level, 256, 72);
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.fillRect(70, 96, 372, 16);
+                    const width = Math.max(0, Math.min(372, 372 * ((hp || 0) / (maxHp || 1))));
+                    ctx.fillStyle = elite ? '#f1c40f' : '#e74c3c';
+                    ctx.fillRect(70, 96, width, 16);
+                });
+                if (plate) return plate;
                 const canvas = document.createElement('canvas');
                 canvas.width = 512;
                 canvas.height = 224;
@@ -5836,6 +5875,15 @@
             }
 
             function makeCivSprite(name, title, color) {
+                const plate = makeNamePlate(ctx => {
+                    ctx.fillStyle = color || '#9ee6b0';
+                    ctx.font = 'bold 50px Arial';
+                    ctx.fillText(name || 'NPC', 256, 42);
+                    ctx.font = '32px Arial';
+                    ctx.fillStyle = '#f4efe4';
+                    ctx.fillText(title || '', 256, 88);
+                });
+                if (plate) return plate;
                 const canvas = document.createElement('canvas');
                 canvas.width = 512;
                 canvas.height = 192;
@@ -6053,7 +6101,7 @@
                 group.rotation.y = civ.rotY || 0;
                 group.userData.civilId = civ.id;
                 const label = makeCivSprite(civ.name, civ.title, civ.tint);
-                label.position.y = group.userData.labelY;
+                label.position.y = group.userData.labelY + (label.userData.plate ? 0.2 : 0);
                 label.visible = civ.id === selectedNpcId;
                 group.add(label);
                 group.userData.label = label;
@@ -6383,7 +6431,7 @@
                     if (old.userData.texture) old.userData.texture.dispose();
                 }
                 const label = makeNpcSprite(state.name, state.level, state.hp, state.maxHp, state.elite);
-                label.position.y = entry.group.userData.labelY || 2.45;
+                label.position.y = (entry.group.userData.labelY || 2.45) + (label.userData.plate ? 0.2 : 0);
                 label.visible = state.id === selectedNpcId;
                 entry.group.add(label);
                 entry.group.userData.label = label;
@@ -8959,58 +9007,28 @@
             // --- Multiplayer ---
             let myId = null;
 
-            const plateAim = new THREE.Vector3();
-            function paintName(name, color) {
+            function makeNameSprite(name, color) {
                 const canvas = document.createElement('canvas');
                 canvas.width = 512;
                 canvas.height = 128;
                 const ctx = canvas.getContext('2d');
                 ctx.clearRect(0, 0, 512, 128);
+                ctx.fillStyle = 'rgba(0,0,0,0.72)';
+                ctx.fillRect(32, 16, 448, 96);
                 ctx.fillStyle = color || '#ffffff';
-                ctx.font = 'bold 64px Arial';
+                ctx.font = 'bold 56px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText((name || 'Player').slice(0, 16), 256, 64);
-                return sharpTexture(canvas);
+                const tex = sharpTexture(canvas);
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+                sprite.scale.set(2.4, 0.6, 1);
+                sprite.position.y = 2.6;
+                sprite.visible = false;
+                sprite.userData.texture = tex;
+                return sprite;
             }
-            function makeNameSprite(name, color) {
-                if (!nameplateTemplate) {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 512;
-                    canvas.height = 128;
-                    const ctx = canvas.getContext('2d');
-                    ctx.clearRect(0, 0, 512, 128);
-                    ctx.fillStyle = 'rgba(0,0,0,0.72)';
-                    ctx.fillRect(32, 16, 448, 96);
-                    ctx.fillStyle = color || '#ffffff';
-                    ctx.font = 'bold 56px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText((name || 'Player').slice(0, 16), 256, 64);
-                    const tex = sharpTexture(canvas);
-                    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-                    sprite.scale.set(2.4, 0.6, 1);
-                    sprite.position.y = 2.6;
-                    sprite.visible = false;
-                    sprite.userData.texture = tex;
-                    return sprite;
-                }
-                const plate = cloneSkinned(nameplateTemplate);
-                const tex = paintName(name, color);
-                plate.traverse(obj => {
-                    if (!obj.isMesh || obj.name !== 'ink') return;
-                    const mat = obj.material.clone();
-                    mat.map = tex;
-                    mat.transparent = true;
-                    obj.material = mat;
-                });
-                plate.position.y = 2.45;
-                plate.scale.setScalar(0.9);
-                plate.visible = false;
-                plate.userData.texture = tex;
-                plate.userData.plate = true;
-                return plate;
-            }
+            const plateAim = new THREE.Vector3();
             function faceNamePlates() {
                 const aim = camera.position;
                 const turn = (plate) => {
@@ -9018,13 +9036,35 @@
                     plate.getWorldPosition(plateAim);
                     plate.lookAt(aim.x, plateAim.y, aim.z);
                 };
-                for (const entry of remotePlayers.values()) turn(entry.mesh.userData.label);
-                for (const marker of corpseMarkers.values()) turn(marker.userData.label);
+                for (const entry of worldNpcs.values()) turn(entry.group.userData.label);
+                for (const entry of worldCivs.values()) turn(entry.group.userData.label);
             }
             function refreshNamePlates() {
-                for (const entry of remotePlayers.values()) {
-                    const label = entry.mesh.userData.label;
-                    if (label && !label.userData.plate) setRemoteLabel(entry, entry.data.name, entry.data.color);
+                if (!nameplateTemplate) return;
+                for (const entry of worldNpcs.values()) {
+                    const label = entry.group.userData.label;
+                    if (label && !label.userData.plate) {
+                        setNpcLabel(entry, {
+                            id: entry.group.userData.npcId,
+                            name: entry.name,
+                            level: entry.level,
+                            hp: entry.hp,
+                            maxHp: entry.maxHp,
+                            elite: entry.elite
+                        });
+                    }
+                }
+                for (const entry of worldCivs.values()) {
+                    const label = entry.group.userData.label;
+                    if (!label || label.userData.plate) continue;
+                    const next = makeCivSprite(entry.name, entry.title, entry.tint);
+                    next.position.y = (entry.group.userData.labelY || label.position.y) + 0.2;
+                    next.visible = label.visible;
+                    entry.group.remove(label);
+                    if (label.material && label.material.dispose) label.material.dispose();
+                    if (label.userData.texture) label.userData.texture.dispose();
+                    entry.group.add(next);
+                    entry.group.userData.label = next;
                 }
             }
 
