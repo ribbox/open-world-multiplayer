@@ -79,7 +79,7 @@ State is where that graphic stands. **Done** is the model the game should keep. 
 
 | Graphic | Object | Link | State |
 | --- | --- | --- | --- |
-| models/player.glb | Player | | In game. The civilian mesh now has a skeleton, with idle and walk. |
+| models/player.glb | Player | | In game. Untextured low-poly civilian. A generated skeleton tore the mesh, so the original is back. |
 | models/npc.glb | | | Not used. |
 | models/wild_pigboar_meshy.glb | Wild boar | https://skfb.ly/p9qVQ | In game. |
 | models/low_poly_wolf.glb | Wolf | https://skfb.ly/698Sv | In game. Vertex colors. Faces the player. |
