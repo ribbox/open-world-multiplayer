@@ -1531,6 +1531,7 @@
                         if (info.body === 'hair' && gear.head) show = false;
                         if (info.body === 'chest' && gear.chest) show = false;
                         if (info.body === 'legs' && (gear.legs || robe)) show = false;
+                        if (info.body === 'hips' && robe) show = false;
                         if (info.body === 'feet' && gear.feet) show = false;
                         obj.visible = show;
                         return;
@@ -1707,6 +1708,7 @@
                         setRigMove(model, 0);
                     }
                     upgradeRemotePlayers();
+                    seatTools();
                     modelLoaded = true;
                     console.log('Player model loaded');
                 },
@@ -2396,6 +2398,21 @@
                 group.add(limb, string);
                 return group;
             }, { x: 0.22, y: 1.05, z: 0.16, tilt: -0.15 });
+            function seatTools() {
+                if (!playerRig) return;
+                let hand = null;
+                playerRig.traverse(obj => { if (obj.name === 'hand.L') hand = obj; });
+                if (!hand || hand.userData.armed) return;
+                hand.userData.armed = true;
+                for (const tool of [axe, pickaxe, sword, staff, wand, bow]) {
+                    if (tool.parent) tool.parent.remove(tool);
+                    tool.position.set(0, -0.04, 0.1);
+                    tool.rotation.set(0.2, 0, -0.15);
+                    tool.userData.rest = tool.rotation.clone();
+                    tool.scale.setScalar(0.85);
+                    hand.add(tool);
+                }
+            }
 
             const ACTIONS = {
                 sword: { name: 'Sword', short: 'Swd', kind: 'weapon', weapon: 'sword', hint: 'A higher rank hits harder. Swings every 1s once you attack.' },
