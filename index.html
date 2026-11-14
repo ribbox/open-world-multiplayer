@@ -2500,12 +2500,12 @@
                 health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion. Shares a 12s wait with mana potions.' },
                 mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion. Shares a 12s wait with health potions.' },
                 bomb: { name: 'Explosives', short: 'Bomb', kind: 'explosive', item: 'bomb', hint: 'Throw a bomb at the targeted hostile. 4s.' },
-                'battle-shout': { name: 'Battle Shout', short: 'Shout', kind: 'special', hint: 'Your attacks hit harder for 15 seconds. 45s. Not a talent.' },
-                rally: { name: 'Rally', short: 'Rally', kind: 'special', hint: 'Recover a large share of your health. 60s. Not a talent.' },
-                'frost-armor': { name: 'Frost Armor', short: 'Frost', kind: 'special', hint: 'A cold shell soaks damage for 20 seconds. 30s. Not a talent.' },
-                blink: { name: 'Blink', short: 'Blink', kind: 'special', hint: 'Step forward a short way. 20s. Not a talent.' },
-                'raise-dead': { name: 'Raise Dead', short: 'Rise', kind: 'special', hint: 'A corpse fights your target for 20 seconds. 40s. Not a talent.' },
-                'dread-guard': { name: 'Dread Guard', short: 'Dread', kind: 'special', hint: 'A tougher corpse fights your target for 25 seconds. 60s. Not a talent.' }
+                'battle-shout': { name: 'Battle Shout', short: 'Shout', kind: 'special', hint: 'Your attacks hit harder for 15 seconds.', cooldown: '45s' },
+                rally: { name: 'Rally', short: 'Rally', kind: 'special', hint: 'Recover a large share of your health.', cooldown: '60s' },
+                'frost-armor': { name: 'Frost Armor', short: 'Frost', kind: 'special', hint: 'A cold shell soaks damage for 20 seconds.', cooldown: '30s' },
+                blink: { name: 'Blink', short: 'Blink', kind: 'special', hint: 'Step forward a short way.', cooldown: '20s' },
+                'raise-dead': { name: 'Raise Dead', short: 'Rise', kind: 'special', hint: 'A corpse fights your target for 20 seconds.', cooldown: '40s' },
+                'dread-guard': { name: 'Dread Guard', short: 'Dread', kind: 'special', hint: 'A tougher corpse fights your target for 25 seconds.', cooldown: '60s' }
             };
             const BAR_PAGES = 3;
             const BAR_SLOTS = 8;
@@ -7006,6 +7006,7 @@
             }
 
             function actionTitle(id, action) {
+                if (action.kind === 'special') return action.hint + '\n' + action.cooldown;
                 const spell = (character.spells || {})[id];
                 let extra = '';
                 if (spell && spell.maxRank) {
@@ -8571,19 +8572,17 @@
                 const head = document.createElement('h3');
                 head.textContent = 'Specials';
                 body.appendChild(head);
-                const intro = document.createElement('p');
-                intro.textContent = 'Level 20 and 40. These are not talents, and they do not spend talent points.';
-                body.appendChild(intro);
                 defs.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
                 for (const spec of defs) {
                     const line = document.createElement('div');
                     line.className = 'spell-row';
                     const label = document.createElement('div');
+                    const action = ACTIONS[spec.id];
                     const title = document.createElement('div');
-                    title.textContent = spec.name + ' · level ' + spec.level;
+                    title.textContent = spec.name + '. ' + ((action && action.hint) || spec.text);
                     const about = document.createElement('div');
                     about.style.color = '#bbb';
-                    about.textContent = spec.text;
+                    about.textContent = (action && action.cooldown) || '';
                     label.append(title, about);
                     line.appendChild(label);
                     const button = document.createElement('button');
