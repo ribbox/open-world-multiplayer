@@ -368,6 +368,18 @@
             100% { opacity: 0; }
         }
         #barRow { display: flex; align-items: flex-end; gap: 6px; }
+        #petBar {
+            display: flex; align-items: center; gap: 4px;
+            margin: 0 auto 6px; width: max-content;
+        }
+        #petBar[hidden] { display: none; }
+        #petName { min-width: 42px; font-size: 12px; font-weight: bold; text-shadow: 0 1px 2px #000; }
+        #petHp { width: 78px; height: 8px; background: #222; border: 1px solid rgba(255,255,255,0.45); border-radius: 4px; overflow: hidden; }
+        #petHp i { display: block; height: 100%; width: 0; background: #2ecc71; }
+        #petBar .bar-slot { width: 42px; height: 42px; background-color: rgba(20, 28, 18, 0.72); }
+        #petBar .bar-slot.on { outline: 2px solid #f1c40f; }
+        #petBar .bar-slot:disabled { opacity: 0.4; }
+        #petBar .bar-slot .key { position: absolute; left: 0; right: 0; bottom: 1px; font-size: 8px; opacity: 1; text-shadow: 0 1px 2px #000; }
         #barSlots { display: flex; gap: 4px; }
         .bar-slot, .bar-nav, #bagButton, #sheetButton {
             width: 46px; height: 46px; padding: 0; color: white; cursor: pointer;
@@ -868,6 +880,7 @@
         Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health. Warriors wear plate, hunters wear leather, mages and warlocks wear cloth<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
         Spells and talents share one tree. The sheet is only for looking. Talk to a trainer to spend points or to reset them and spend again. One point in a node opens the next. A branch does not wait on the other branch. Level 60 is not enough to fill every branch<br>
+        At level 20 and 40 a trainer teaches a special skill. Specials are not talents. A hunter calls a wolf: Attack, Follow, and Stay, and Bite at 40. The wolf fights your target. A warlock raises a corpse that fights your target for a short time<br>
         Hamstring, Wing Clip, Frost Bolt, and Curse slow. Execute, Kill Shot, and Soul Burn double damage under 35% health. Cleave, Multi-Shot, Whirlwind, Frost Nova, and Hellfire hit nearby foes. Drain Life returns the damage as health. Barrier soaks hits<br>
         The bar is your level and experience. Armor and stats are on the character sheet<br>
         Camps are safe. Creatures walk out, and you cannot attack while you are inside. The camp name appears when you enter<br>
@@ -934,6 +947,15 @@
                 <div id="xpFill"></div>
                 <span id="xpLabel"><span id="xpCount">0</span> / <span id="xpNext">50</span></span>
             </div>
+        </div>
+        <div id="petBar" hidden>
+            <span id="petName">Wolf</span>
+            <div id="petHp" title="Pet health"><i id="petHpFill"></i></div>
+            <button type="button" class="bar-slot" data-pet="attack" title="Attack — send your pet at your target"><span class="key">Atk</span></button>
+            <button type="button" class="bar-slot" data-pet="follow" title="Follow"><span class="key">Fol</span></button>
+            <button type="button" class="bar-slot" data-pet="stay" title="Stay"><span class="key">Stay</span></button>
+            <button type="button" class="bar-slot" data-pet="bite" data-action="pet-bite" title="Bite — a heavy hit, then it keeps attacking" hidden><span class="key">Bite</span></button>
+            <button type="button" class="bar-slot" data-pet="call" data-action="pet-call" title="Call your pet back" hidden><span class="key">Call</span></button>
         </div>
         <div id="barRow">
             <button type="button" class="bar-nav" id="pagePrev">‹</button>
@@ -1900,9 +1922,13 @@
             let npcModelsReady = false;
             const worldNpcs = new Map();
             const worldCivs = new Map();
+            const worldCompanions = new Map();
             const worldChests = new Map();
             let pendingNpcs = null;
             let pendingCivilians = null;
+            let pendingCompanions = null;
+            let petHeard = false;
+            let petState = { alive: true, hp: 1, maxHp: 1, mode: 'follow' };
             let quests = {};
             let questDefs = {};
             let trackedQuests = [];
@@ -1950,6 +1976,7 @@
                 try {
                     if (pendingNpcs) syncNpcs(pendingNpcs);
                     if (pendingCivilians) spawnCivilians(pendingCivilians);
+                    if (pendingCompanions) syncCompanions(pendingCompanions);
                 } catch (err) {
                     console.warn('NPC spawn failed', err);
                 }
@@ -2470,7 +2497,13 @@
                 gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.' },
                 health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion. Shares a 12s wait with mana potions.' },
                 mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion. Shares a 12s wait with health potions.' },
-                bomb: { name: 'Explosives', short: 'Bomb', kind: 'explosive', item: 'bomb', hint: 'Throw a bomb at the targeted hostile. 4s.' }
+                bomb: { name: 'Explosives', short: 'Bomb', kind: 'explosive', item: 'bomb', hint: 'Throw a bomb at the targeted hostile. 4s.' },
+                'battle-shout': { name: 'Battle Shout', short: 'Shout', kind: 'special', hint: 'Your attacks hit harder for 15 seconds. 45s. Not a talent.' },
+                rally: { name: 'Rally', short: 'Rally', kind: 'special', hint: 'Recover a large share of your health. 60s. Not a talent.' },
+                'frost-armor': { name: 'Frost Armor', short: 'Frost', kind: 'special', hint: 'A cold shell soaks damage for 20 seconds. 30s. Not a talent.' },
+                blink: { name: 'Blink', short: 'Blink', kind: 'special', hint: 'Step forward a short way. 20s. Not a talent.' },
+                'raise-dead': { name: 'Raise Dead', short: 'Rise', kind: 'special', hint: 'A corpse fights your target for 20 seconds. 40s. Not a talent.' },
+                'dread-guard': { name: 'Dread Guard', short: 'Dread', kind: 'special', hint: 'A tougher corpse fights your target for 25 seconds. 60s. Not a talent.' }
             };
             const BAR_PAGES = 3;
             const BAR_SLOTS = 8;
@@ -2627,6 +2660,12 @@
                 'wing-clip': ['plate', 100],
                 'multi-shot': ['wood', 52],
                 'kill-shot': ['stone', 58],
+                'battle-shout': ['wood', 20],
+                rally: ['wood', 16],
+                'frost-armor': ['stone', 56],
+                blink: ['plate', 61],
+                'raise-dead': ['stone', 0],
+                'dread-guard': ['stone', 58],
                 staff: 104,
                 'arcane-bolt': 8,
                 'frost-bolt': 206,
@@ -5505,6 +5544,9 @@
                 selectedNpcId = id || null;
                 refreshTargetFrame();
                 refreshNameplates();
+                if (gameSocket && gameSocket.readyState === WebSocket.OPEN) {
+                    gameSocket.send(JSON.stringify({ type: 'focus', id: selectedNpcId || '' }));
+                }
             }
 
             function renderParty(party) {
@@ -5714,6 +5756,7 @@
                 const action = ACTIONS[id];
                 if (!action) return false;
                 if (action.kind === 'potion' || action.kind === 'explosive' || action.kind === 'gather') return true;
+                if (action.kind === 'special') return !!(character.specials && character.specials.includes(id));
                 return spellKnown(id);
             }
 
@@ -5736,9 +5779,40 @@
                 return bar;
             }
 
+            function castSpecial(id) {
+                if (ghost) {
+                    showMessage('You are a ghost');
+                    return;
+                }
+                if (cooling(id)) {
+                    showMessage('Not ready');
+                    return;
+                }
+                if (!(character.specials && character.specials.includes(id))) {
+                    showMessage('Not trained');
+                    return;
+                }
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
+                    showMessage('Not connected');
+                    return;
+                }
+                holdAction(id);
+                gameSocket.send(JSON.stringify({
+                    type: 'special',
+                    id,
+                    x: characterGroup.position.x,
+                    z: characterGroup.position.z,
+                    rotY: characterGroup.rotation.y
+                }));
+            }
+
             function useAction(id) {
                 const action = ACTIONS[id];
                 if (!action) return;
+                if (action.kind === 'special') {
+                    castSpecial(id);
+                    return;
+                }
                 if (action.kind !== 'gather' && cooling(id)) {
                     showMessage('Not ready');
                     return;
@@ -6490,6 +6564,194 @@
                 }
             }
 
+            function makeCompanionSprite(name, hp, maxHp, kind) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 96;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(8, 6, 240, 84);
+                ctx.fillStyle = kind === 'pet' ? '#d5ffe4' : '#e6d0ff';
+                ctx.font = 'bold 28px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(name || 'Companion', 128, 32);
+                ctx.fillStyle = '#222';
+                ctx.fillRect(28, 58, 200, 16);
+                const width = Math.max(0, Math.min(200, 200 * ((hp || 0) / (maxHp || 1))));
+                ctx.fillStyle = kind === 'pet' ? '#2ecc71' : '#9b59b6';
+                ctx.fillRect(28, 58, width, 16);
+                const tex = sharpTexture(canvas);
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+                sprite.scale.set(1.35, 0.5, 1);
+                sprite.userData.texture = tex;
+                return sprite;
+            }
+
+            function setCompanionLabel(entry, row) {
+                const old = entry.group.userData.label;
+                if (old) {
+                    entry.group.remove(old);
+                    if (old.material) old.material.dispose();
+                    if (old.userData.texture) old.userData.texture.dispose();
+                }
+                const label = makeCompanionSprite(row.name, row.hp, row.maxHp, row.kind);
+                label.position.y = entry.group.userData.labelY || 1.4;
+                entry.group.add(label);
+                entry.group.userData.label = label;
+            }
+
+            function upsertCompanion(row) {
+                let entry = worldCompanions.get(row.id);
+                if (!entry) {
+                    if (!npcModelsReady) return;
+                    const body = cloneNpcModel(row.model || (row.kind === 'pet' ? 'wolf' : 'cultist'));
+                    if (!body) return;
+                    const group = new THREE.Group();
+                    body.scale.multiplyScalar(row.kind === 'pet' ? 0.92 : 0.78);
+                    plantFeet(body);
+                    if (row.kind !== 'pet') tintHostile(body, row.name === 'Dread Guard' ? '#6c3483' : '#5d6d7e', 0.35);
+                    body.updateWorldMatrix(true, true);
+                    const bounds = new THREE.Box3().setFromObject(body);
+                    group.add(body);
+                    group.userData.body = body;
+                    group.userData.labelY = bounds.max.y + 0.18;
+                    group.userData.companionId = row.id;
+                    group.position.set(row.x, row.dungeonId ? 0.2 : terrainHeight(row.x, row.z), row.z);
+                    scene.add(group);
+                    entry = { group, tx: row.x, tz: row.z, rotY: row.rotY || 0, hp: -1, maxHp: 1, name: '', kind: row.kind, dungeonId: row.dungeonId || '', bob: Math.random() * Math.PI * 2 };
+                    worldCompanions.set(row.id, entry);
+                }
+                entry.tx = row.x;
+                entry.tz = row.z;
+                entry.rotY = row.rotY || 0;
+                entry.dungeonId = row.dungeonId || '';
+                entry.group.visible = !!row.dungeonId || hillDrawn(row.x, row.z);
+                if (entry.name !== row.name || entry.hp !== row.hp || entry.maxHp !== row.maxHp) {
+                    entry.name = row.name;
+                    entry.hp = row.hp;
+                    entry.maxHp = row.maxHp;
+                    setCompanionLabel(entry, row);
+                }
+            }
+
+            function removeCompanion(id) {
+                const entry = worldCompanions.get(id);
+                if (!entry) return;
+                scene.remove(entry.group);
+                const label = entry.group.userData.label;
+                if (label) {
+                    if (label.material) label.material.dispose();
+                    if (label.userData.texture) label.userData.texture.dispose();
+                }
+                worldCompanions.delete(id);
+            }
+
+            function syncCompanions(list) {
+                pendingCompanions = list || [];
+                const mine = pendingCompanions.find(row => row && row.kind === 'pet' && row.ownerId === persistentId);
+                if (mine) {
+                    petHeard = true;
+                    petState.alive = !!mine.alive;
+                    petState.hp = mine.hp || 0;
+                    petState.maxHp = mine.maxHp || 1;
+                    petState.mode = mine.mode || 'follow';
+                }
+                renderPetBar();
+                if (!npcModelsReady) return;
+                const seen = new Set();
+                for (const row of pendingCompanions) {
+                    if (!row || !row.id || !row.alive) continue;
+                    seen.add(row.id);
+                    upsertCompanion(row);
+                }
+                for (const id of worldCompanions.keys()) {
+                    if (!seen.has(id)) removeCompanion(id);
+                }
+            }
+
+            let petIconStamp = '';
+            function paintPetIcons() {
+                const stamp = ['plain', 'wood', 'stone', 'plate'].filter(name => iconSheets[name]).join(',');
+                if (!stamp || stamp === petIconStamp) return;
+                const icons = {
+                    attack: ['wood', 51],
+                    follow: ['wood', 34],
+                    stay: ['plate', 33],
+                    bite: ['stone', 194],
+                    call: ['wood', 32]
+                };
+                for (const command of Object.keys(icons)) {
+                    const button = document.querySelector('#petBar [data-pet="' + command + '"]');
+                    if (!button || !iconSheets.plain) continue;
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 64;
+                    canvas.height = 64;
+                    paintSheetIcon(canvas.getContext('2d'), icons[command], 0, 0, 64);
+                    button.style.backgroundImage = 'url(' + canvas.toDataURL() + ')';
+                    button.style.backgroundRepeat = 'no-repeat';
+                    button.style.backgroundPosition = 'center 1px';
+                    button.style.backgroundSize = '30px 30px';
+                }
+                petIconStamp = stamp;
+            }
+
+            function renderPetBar() {
+                const bar = document.getElementById('petBar');
+                if (!bar) return;
+                const known = character.specials && character.specials.includes('call-pet');
+                if (!known || ghost) {
+                    bar.hidden = true;
+                    return;
+                }
+                bar.hidden = false;
+                const alive = petHeard ? !!(petState.alive && petState.hp > 0) : true;
+                const fill = document.getElementById('petHpFill');
+                const pct = petState.maxHp ? Math.max(0, Math.min(1, (alive ? petState.hp : 0) / petState.maxHp)) : 0;
+                if (fill) fill.style.width = (pct * 100) + '%';
+                const name = document.getElementById('petName');
+                if (name) name.textContent = alive ? 'Wolf' : 'Fallen';
+                for (const command of ['attack', 'follow', 'stay']) {
+                    const button = bar.querySelector('[data-pet="' + command + '"]');
+                    if (!button) continue;
+                    button.disabled = !alive;
+                    button.classList.toggle('on', alive && petState.mode === command);
+                }
+                const bite = bar.querySelector('[data-pet="bite"]');
+                if (bite) bite.hidden = !(character.specials || []).includes('pet-bite') || !alive;
+                const call = bar.querySelector('[data-pet="call"]');
+                if (call) call.hidden = alive;
+                if (iconSheets.plain) paintPetIcons();
+            }
+
+            function commandPet(command) {
+                if (ghost) {
+                    showMessage('You are a ghost');
+                    return;
+                }
+                if ((command === 'bite' && cooling('pet-bite')) || (command === 'call' && cooling('pet-call'))) {
+                    showMessage('Not ready');
+                    return;
+                }
+                if (command === 'attack' || command === 'bite') {
+                    const aimed = currentTarget();
+                    if (!aimed || aimed.kind !== 'npc') {
+                        showMessage('Select a target');
+                        return;
+                    }
+                }
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
+                    showMessage('Not connected');
+                    return;
+                }
+                gameSocket.send(JSON.stringify({
+                    type: 'pet',
+                    command,
+                    x: characterGroup.position.x,
+                    z: characterGroup.position.z
+                }));
+            }
+
             function addChest(chest) {
                 if (!chest || worldChests.has(chest.id)) {
                     if (chest && worldChests.has(chest.id)) worldChests.get(chest.id).items = chest.items;
@@ -6688,6 +6950,7 @@
                 ['Mage', ['staff', 'arcane-bolt', 'frost-bolt', 'mend', 'barrier', 'frost-nova', 'arcane-surge']],
                 ['Hunter', ['bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot']],
                 ['Warlock', ['wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn']],
+                ['Specials', ['battle-shout', 'rally', 'frost-armor', 'blink', 'raise-dead', 'dread-guard']],
                 ['Field', ['gather']],
                 ['Potions', ['health', 'mana']],
                 ['Explosives', ['bomb']]
@@ -7283,7 +7546,9 @@
             const CD_MS = {
                 sword: 1000, staff: 1000, bow: 1000, wand: 1000, 'power-strike': 6000, cleave: 8000,
                 'arcane-bolt': 1800, 'arcane-surge': 8000, mend: 5000,
-                health: 12000, mana: 12000, potion: 12000, bomb: 4000
+                health: 12000, mana: 12000, potion: 12000, bomb: 4000,
+                'battle-shout': 45000, rally: 60000, 'frost-armor': 30000, blink: 20000,
+                'raise-dead': 40000, 'dread-guard': 60000, 'pet-bite': 8000, 'pet-call': 8000
             };
             const cdReady = {};
             const cdTotal = {};
@@ -7315,7 +7580,7 @@
             function tickCooldowns() {
                 const now = Date.now();
                 let pending = false;
-                for (const button of document.querySelectorAll('#barSlots .bar-slot')) {
+                for (const button of document.querySelectorAll('#barSlots .bar-slot, #petBar .bar-slot')) {
                     const id = button.dataset.action;
                     const key = id ? cdGroup(id) : '';
                     const left = key ? Math.max(0, (cdReady[key] || 0) - now) : 0;
@@ -7400,7 +7665,7 @@
                 picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
                 const classGroup = { warrior: 'Warrior', mage: 'Mage', hunter: 'Hunter', warlock: 'Warlock' }[character.class];
                 for (const [title, ids] of PICKER_GROUPS) {
-                    if (title !== 'Field' && title !== 'Potions' && title !== 'Explosives' && title !== classGroup) continue;
+                    if (title !== 'Field' && title !== 'Potions' && title !== 'Explosives' && title !== 'Specials' && title !== classGroup) continue;
                     const choices = [];
                     for (const id of ids) {
                         if (!barAllowed(id)) continue;
@@ -7483,6 +7748,20 @@
             function applyCharacter(data) {
                 if (!data) return;
                 character = data;
+                const barIds = ['battle-shout', 'rally', 'frost-armor', 'blink', 'raise-dead', 'dread-guard'];
+                for (const id of barIds) {
+                    if (!(character.specials && character.specials.includes(id))) continue;
+                    if (actionBar.some(row => row && row.includes(id))) continue;
+                    let placed = false;
+                    for (let page = 0; page < BAR_PAGES && !placed; page++) {
+                        for (let index = 0; index < BAR_SLOTS && !placed; index++) {
+                            if (!actionBar[page][index]) {
+                                actionBar[page][index] = id;
+                                placed = true;
+                            }
+                        }
+                    }
+                }
                 const nextBar = fitActionBar(actionBar);
                 const changed = JSON.stringify(nextBar) !== JSON.stringify(actionBar);
                 actionBar = nextBar;
@@ -7499,6 +7778,7 @@
                 refreshOpenTalk();
                 rememberCharacter();
                 wearArmor(characterGroup, character.equipment);
+                renderPetBar();
             }
 
             function nearestCivilian(range) {
@@ -8275,6 +8555,51 @@
                 if (node.spell) return ((character.spells || {})[node.spell] && character.spells[node.spell].name) || node.spell;
                 return node.name || 'Talent';
             }
+            function renderSpecials(body, editable) {
+                const defs = (character.specialsDef || []).filter(spec => spec.class === character.class);
+                if (!defs.length) return;
+                const head = document.createElement('h3');
+                head.textContent = 'Specials';
+                body.appendChild(head);
+                const intro = document.createElement('p');
+                intro.textContent = 'Level 20 and 40. These are not talents, and they do not spend talent points.';
+                body.appendChild(intro);
+                defs.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+                for (const spec of defs) {
+                    const line = document.createElement('div');
+                    line.className = 'spell-row';
+                    const label = document.createElement('div');
+                    const title = document.createElement('div');
+                    title.textContent = spec.name + ' · level ' + spec.level;
+                    const about = document.createElement('div');
+                    about.style.color = '#bbb';
+                    about.textContent = spec.text;
+                    label.append(title, about);
+                    line.appendChild(label);
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn gold-btn';
+                    const known = character.specials && character.specials.includes(spec.id);
+                    if (known) {
+                        button.textContent = 'Known';
+                        button.disabled = true;
+                    } else if ((stats.level || 1) < spec.level) {
+                        button.textContent = 'Lv ' + spec.level;
+                        button.disabled = true;
+                    } else if (!editable || !nearestRole('trainer')) {
+                        button.textContent = 'Trainer';
+                        button.disabled = true;
+                    } else if ((inventory.coins || 0) < spec.cost) {
+                        button.textContent = formatMoney(spec.cost);
+                        button.disabled = true;
+                    } else {
+                        button.textContent = formatMoney(spec.cost);
+                        button.addEventListener('click', () => sendCharacter('learnSpecial', { id: spec.id }));
+                    }
+                    line.appendChild(button);
+                    body.appendChild(line);
+                }
+            }
             function renderTalentList(body, editable) {
                 if (!character.class) {
                     const note = document.createElement('p');
@@ -8282,6 +8607,7 @@
                     body.appendChild(note);
                     return;
                 }
+                renderSpecials(body, editable);
                 const tree = character.tree || {};
                 const points = character.points || 0;
                 const note = document.createElement('p');
@@ -8559,6 +8885,9 @@
                 picker.hidden = true;
             });
             renderBar();
+            document.querySelectorAll('#petBar [data-pet]').forEach(button => {
+                button.addEventListener('click', () => commandPet(button.dataset.pet));
+            });
             paintIcon(document.getElementById('bagButton'), 'bag');
             paintIcon(document.getElementById('sheetButton'), 'character');
             function loadIconSheet(name, url) {
@@ -8571,6 +8900,7 @@
                     paintIcon(document.getElementById('sheetButton'), 'character');
                     updateInventoryUI();
                     if (document.getElementById('sheet').classList.contains('open')) renderSheet();
+                    renderPetBar();
                     loadManager.itemEnd(url);
                 };
                 img.onerror = () => loadManager.itemEnd(url);
@@ -8679,7 +9009,8 @@
                     return;
                 }
                 let obj = hits[0].object;
-                while (obj && !obj.userData.npcId && !obj.userData.playerId && !obj.userData.civilId) obj = obj.parent;
+                while (obj && !obj.userData.npcId && !obj.userData.playerId && !obj.userData.civilId && !obj.userData.companionId) obj = obj.parent;
+                if (obj && obj.userData.companionId) return;
                 selectNpc(obj ? (obj.userData.civilId || obj.userData.playerId || obj.userData.npcId) : null);
             });
             renderer.domElement.addEventListener('mousedown', (e) => {
@@ -8911,6 +9242,7 @@
                 for (const remoteMixer of remoteMixers) remoteMixer.update(delta);
                 for (const entry of worldNpcs.values()) {
                     if (entry.dying) continue;
+                    entry.group.visible = !!entry.dungeonId || hillDrawn(entry.tx, entry.tz);
                     entry.group.position.x += (entry.tx - entry.group.position.x) * Math.min(1, delta * 10);
                     entry.group.position.z += (entry.tz - entry.group.position.z) * Math.min(1, delta * 10);
                     entry.group.rotation.y = entry.rotY;
@@ -8926,6 +9258,22 @@
                         updateGait(body, delta, speed);
                         body.position.y = (body.userData.foot || 0) + Math.sin(performance.now() * 0.004 + (entry.bob || 0)) * (entry.group.userData.bobAmp || 0);
                     }
+                }
+                for (const entry of worldCompanions.values()) {
+                    entry.group.visible = !!entry.dungeonId || hillDrawn(entry.tx, entry.tz);
+                    if (!entry.group.visible) continue;
+                    entry.group.position.x += (entry.tx - entry.group.position.x) * Math.min(1, delta * 8);
+                    entry.group.position.z += (entry.tz - entry.group.position.z) * Math.min(1, delta * 8);
+                    entry.group.rotation.y = entry.rotY || 0;
+                    entry.group.position.y = entry.dungeonId ? 0.2 : terrainHeight(entry.group.position.x, entry.group.position.z);
+                    const body = entry.group.userData.body;
+                    if (!body) continue;
+                    const moved = Math.hypot(entry.group.position.x - (entry.gx ?? entry.group.position.x), entry.group.position.z - (entry.gz ?? entry.group.position.z));
+                    entry.gx = entry.group.position.x;
+                    entry.gz = entry.group.position.z;
+                    setRigMove(body, moved / Math.max(delta, 0.016));
+                    if (body.userData.mixer) body.userData.mixer.update(delta);
+                    body.position.y = (body.userData.foot || 0) + Math.sin(performance.now() * 0.004 + (entry.bob || 0)) * 0.02;
                 }
                 for (const entry of worldCivs.values()) {
                     entry.group.visible = !!entry.dungeonId || hillDrawn(entry.group.position.x, entry.group.position.z);
@@ -9257,6 +9605,7 @@
                 setGhostLook(playerModel, true);
                 fadeRig(characterGroup.userData.armor, true);
                 if (myId && myCorpse) placeCorpse(myId, myCorpse, playerName, '#9ecbff');
+                renderPetBar();
             }
 
             function leaveGhost() {
@@ -9267,6 +9616,7 @@
                 setGhostLook(playerModel, false);
                 fadeRig(characterGroup.userData.armor, false);
                 if (myId) removeCorpse(myId);
+                renderPetBar();
             }
 
             function tryReclaim() {
@@ -9900,6 +10250,26 @@
                         else if (/complete/i.test(data.note || '')) sfx('questDone');
                         else if (/accept/i.test(data.note || '')) sfx('quest');
                         showMessage(data.ok === false ? (data.reason || 'Cannot do that') : (data.note || 'Quest updated'));
+                    } else if (data.type === 'companions') {
+                        syncCompanions(data.list || []);
+                    } else if (data.type === 'petResult') {
+                        petHeard = true;
+                        if (data.alive != null) petState.alive = !!data.alive;
+                        if (data.hp != null) petState.hp = data.hp;
+                        if (data.maxHp != null) petState.maxHp = data.maxHp;
+                        if (data.mode) petState.mode = data.mode;
+                        if (data.command === 'down' || /fallen/i.test(data.reason || '')) {
+                            petState.alive = false;
+                            petState.hp = 0;
+                        }
+                        if (data.cd && data.cdKey) armCooldown(data.cdKey, data.cd, data.cdMax);
+                        renderPetBar();
+                        if (!data.ok) showMessage(data.reason || 'The pet does not answer');
+                        else if (data.command === 'bite') showMessage('Bite');
+                        else if (data.command === 'call') showMessage('Your pet returns');
+                        else if (data.command === 'attack') showMessage('Pet attacking');
+                        else if (data.command === 'stay') showMessage('Pet holding');
+                        else if (data.command === 'follow') showMessage('Pet following');
                     } else if (data.type === 'attackResult') {
                         releaseAction(data.ability);
                         if (!data.ok) {
@@ -9921,6 +10291,11 @@
                             }
                         }
                         else {
+                            if (data.moved && Number.isFinite(data.x) && Number.isFinite(data.z)) {
+                                characterGroup.position.set(data.x, activeCave ? 0.2 : terrainHeight(data.x, data.z), data.z);
+                                verticalVelocity = 0;
+                                onGround = true;
+                            }
                             if (data.cd) armCooldown(data.ability, data.cd, data.cdMax);
                             applyStats(data);
                             if (data.inventory) applyInventory(data.inventory);
@@ -9940,6 +10315,7 @@
                                 if (data.chest) addChest(data.chest);
                             } else if (ready) showMessage(ready + cost);
                             else if (data.damage) showMessage((data.note || 'Hit') + ' ' + data.damage + (data.drained ? ' · +' + data.drained + ' HP' : '') + cost);
+                            else if (data.note) showMessage(data.note);
                             else if (cost) showMessage(cost.slice(3));
                         }
                     } else if (data.type === 'partyAward') {

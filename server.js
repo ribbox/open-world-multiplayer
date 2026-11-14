@@ -1651,6 +1651,7 @@ function becomeGhost(player, now) {
     if (player.ghost) return;
     restoreFoughtMobs(player);
     player.ghost = true;
+    player.minion = null;
     let corpse = { x: player.x, z: player.z };
     if (player.dungeonId) {
         const cave = dungeonById(player.dungeonId);
@@ -2028,7 +2029,13 @@ const ABILITY_COOLDOWN = {
     'drain-life': 5000,
     curse: 8000,
     hellfire: 12000,
-    'soul-burn': 8000
+    'soul-burn': 8000,
+    'battle-shout': 45000,
+    rally: 60000,
+    'frost-armor': 30000,
+    blink: 20000,
+    'raise-dead': 40000,
+    'dread-guard': 60000
 };
 const POTION_COOLDOWN = 12000;
 const BOMB_COOLDOWN = 4000;
@@ -2045,7 +2052,7 @@ function startCooldown(player, key, ms, now) {
 
 const BAR_PAGES = 3;
 const BAR_SLOTS = 8;
-const ACTION_IDS = new Set(['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind', 'staff', 'arcane-bolt', 'frost-bolt', 'arcane-surge', 'mend', 'barrier', 'frost-nova', 'bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot', 'wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn', 'gather', 'health', 'mana', 'bomb']);
+const ACTION_IDS = new Set(['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind', 'staff', 'arcane-bolt', 'frost-bolt', 'arcane-surge', 'mend', 'barrier', 'frost-nova', 'bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot', 'wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn', 'gather', 'health', 'mana', 'bomb', 'battle-shout', 'rally', 'frost-armor', 'blink', 'raise-dead', 'dread-guard']);
 const BAR_UTILITY = new Set(['gather', 'health', 'mana', 'bomb']);
 
 function blankActionBar() {
@@ -2063,6 +2070,7 @@ function defaultActionBar(className) {
 function actionAllowed(player, id) {
     if (!id || !ACTION_IDS.has(id)) return false;
     if (BAR_UTILITY.has(id)) return true;
+    if (SPECIALS[id]) return !!(player && player.specials && player.specials.includes(id));
     if (!player || !player.class) return false;
     return knownSpells(player).includes(id);
 }
@@ -2131,6 +2139,17 @@ const SPELLS = {
     curse: { class: 'warlock', name: 'Curse', level: 3, cost: 15, maxRank: 5, rankCost: 12, mana: 6, manaRank: 3, power: 3, scale: 1 },
     hellfire: { class: 'warlock', name: 'Hellfire', level: 8, cost: 36, maxRank: 5, rankCost: 18, mana: 12, manaRank: 5, power: 5, scale: 1 },
     'soul-burn': { class: 'warlock', name: 'Soul Burn', level: 6, cost: 30, maxRank: 5, rankCost: 18, mana: 14, manaRank: 6, power: 8, scale: 2, execute: true }
+};
+
+const SPECIALS = {
+    'call-pet': { class: 'hunter', level: 20, cost: 60, name: 'Call Pet', text: 'A wolf stays with you. Attack sends it at your target. Follow and Stay hold it.' },
+    'pet-bite': { class: 'hunter', level: 40, cost: 120, name: 'Bite', text: 'Order the wolf to bite your target. A heavy hit, then it keeps attacking.' },
+    'battle-shout': { class: 'warrior', level: 20, cost: 60, name: 'Battle Shout', text: 'Your attacks hit harder for 15 seconds.' },
+    rally: { class: 'warrior', level: 40, cost: 120, name: 'Rally', text: 'Recover a large share of your health.' },
+    'frost-armor': { class: 'mage', level: 20, cost: 60, name: 'Frost Armor', text: 'A cold shell soaks damage for 20 seconds.' },
+    blink: { class: 'mage', level: 40, cost: 120, name: 'Blink', text: 'Step forward a short way.' },
+    'raise-dead': { class: 'warlock', level: 20, cost: 60, name: 'Raise Dead', text: 'A corpse fights your target for 20 seconds.' },
+    'dread-guard': { class: 'warlock', level: 40, cost: 120, name: 'Dread Guard', text: 'A tougher corpse fights your target for 25 seconds.' }
 };
 const TREE = {
     sword: { class: 'warrior', spell: 'sword', requires: null },
@@ -2644,6 +2663,7 @@ function loadCharacter(prof) {
         ranks[id] = Math.max(1, Math.min(maxRank, Number(rawRanks[id]) || 1));
     }
     prof.spellRanks = ranks;
+    prof.specials = (Array.isArray(prof.specials) ? prof.specials : []).filter(id => SPECIALS[id] && SPECIALS[id].class === prof.class);
     const seen = new Set();
     prof.recipes = (Array.isArray(prof.recipes) ? prof.recipes : []).filter(id => {
         if (!RECIPES[id] || seen.has(id)) return false;
@@ -2764,6 +2784,8 @@ function publicCharacter(player) {
         craftSkill: player.craftSkill || {},
         points: talentPoints(player),
         known: knownSpells(player),
+        specials: player.specials || [],
+        specialsDef: Object.entries(SPECIALS).map(([id, spec]) => ({ id, class: spec.class, level: spec.level, cost: spec.cost, name: spec.name, text: spec.text })),
         spells: SPELLS,
         tree: TREE,
         talentsDef: TALENTS,
@@ -3559,6 +3581,8 @@ function savePlayer(player) {
     prof.trained = player.trained;
     prof.talents = player.talents;
     prof.spellRanks = player.spellRanks || {};
+    prof.specials = player.specials || [];
+    prof.pet = player.pet ? { hp: player.pet.hp, maxHp: player.pet.maxHp, alive: !!player.pet.alive } : null;
     prof.recipes = player.recipes || [];
     prof.craftSkill = JSON.parse(JSON.stringify(player.craftSkill || {}));
     prof.quests = player.quests || {};
@@ -4454,6 +4478,329 @@ function handleTrade(player, data) {
 let lastNpcTick = Date.now();
 let lastNpcBroadcast = 0;
 
+
+function hasSpecial(player, id) {
+    return !!(player && player.specials && player.specials.includes(id));
+}
+
+function ensurePet(player, saved) {
+    if (!hasSpecial(player, 'call-pet')) {
+        player.pet = null;
+        return;
+    }
+    const maxHp = Math.max(8, Math.round((player.maxHp || 20) * 0.7));
+    if (!player.pet) {
+        player.pet = { name: 'Wolf', hp: maxHp, maxHp, x: player.x + 1.2, z: player.z + 0.4, rotY: player.rotY || 0, mode: 'follow', alive: true, attackAt: 0 };
+    }
+    player.pet.maxHp = maxHp;
+    if (saved && saved.alive === false) {
+        player.pet.alive = false;
+        player.pet.hp = 0;
+    } else if (saved && saved.hp != null) player.pet.hp = Math.max(0, Math.min(maxHp, Number(saved.hp) || 0));
+    else if (player.pet.hp == null || player.pet.hp > maxHp) player.pet.hp = player.pet.alive ? maxHp : 0;
+}
+
+function learnSpecial(player, id) {
+    const spec = SPECIALS[id];
+    if (!player.class) return 'Choose a class first';
+    if (!spec || spec.class !== player.class) return 'Not for your class';
+    if (hasSpecial(player, id)) return 'Already learned';
+    if ((player.level || 1) < spec.level) return 'Requires level ' + spec.level;
+    if ((player.coins || 0) < spec.cost) return 'Need ' + spec.cost + ' coins';
+    player.coins -= spec.cost;
+    if (!player.specials) player.specials = [];
+    player.specials.push(id);
+    if (id === 'call-pet') ensurePet(player);
+    refreshDerived(player);
+    savePlayer(player);
+    return null;
+}
+
+function playerFocus(player) {
+    const npc = player.focusId ? npcs.get(player.focusId) : null;
+    if (!npc || !npc.alive) return null;
+    if ((npc.instanceId || '') !== (player.instanceId || '')) return null;
+    if ((npc.dungeonId || '') !== (player.dungeonId || '')) return null;
+    if ((npc.mapId || '') && (player.mapId || '') && npc.mapId !== player.mapId) return null;
+    return npc;
+}
+
+function companionStrike(owner, victim, amount) {
+    if (!victim || !victim.alive) return;
+    const dealt = Math.max(1, Math.round(amount * damageScale(owner.level, victim.level)));
+    victim.hp -= dealt;
+    victim.aggroId = owner.persistentId;
+    enterCombat(owner, Date.now());
+    if (victim.hp <= 0) {
+        downNpc(victim);
+        const award = awardKill(owner, victim);
+        const chest = spawnChest(victim, award.members);
+        send(owner.ws, {
+            type: 'attackResult',
+            ok: true,
+            damage: dealt,
+            note: 'Companion',
+            npcId: victim.id,
+            killed: true,
+            gained: award.gained,
+            leveled: award.leveled,
+            ability: 'pet',
+            chest: chest ? publicChest(chest) : null,
+            quests: owner.quests,
+            inventory: owner.questDirty ? inventoryOf(owner) : undefined,
+            questNote: owner.questNote || '',
+            ...statsOf(owner)
+        });
+        owner.questDirty = false;
+        owner.questNote = '';
+    }
+    broadcast({
+        type: 'npcHit',
+        id: victim.id,
+        hp: Math.max(0, victim.hp),
+        maxHp: victim.maxHp,
+        alive: victim.alive,
+        x: victim.x,
+        z: victim.z,
+        level: victim.level,
+        name: victim.name,
+        tint: victim.tint
+    });
+    if (victim.ambientGone) npcs.delete(victim.id);
+}
+
+function companionPower(owner, heavy) {
+    const level = owner.level || 1;
+    const stat = ((owner.stats && owner.stats.strength) || 0) + ((owner.stats && owner.stats.intellect) || 0) * 0.5;
+    let amount = 2 + level * 0.45 + stat * 0.25;
+    if (heavy) amount *= 2.2;
+    if ((owner.shoutUntil || 0) > Date.now()) amount *= 1.25;
+    return amount;
+}
+
+function stepCompanion(body, tx, tz, speed, dt) {
+    const dx = tx - body.x;
+    const dz = tz - body.z;
+    const dist = Math.hypot(dx, dz) || 0;
+    if (dist > 0.05) body.rotY = Math.atan2(dx, dz);
+    if (dist < 0.2 || speed <= 0) return dist;
+    const step = Math.min(speed * dt, dist);
+    const nx = body.x + (dx / dist) * step;
+    const nz = body.z + (dz / dist) * step;
+    if (!blocksClimb(body.x, body.z, nx, nz)) {
+        body.x = nx;
+        body.z = nz;
+    }
+    return Math.hypot(tx - body.x, tz - body.z);
+}
+
+function tickCompanionBody(owner, body, now, dt) {
+    if (!body || !body.alive || owner.ghost) return;
+    const focus = playerFocus(owner);
+    const safe = inSettlement(owner.x, owner.z) || (focus && inSettlement(focus.x, focus.z));
+    const chase = body.mode !== 'stay' && focus && !safe;
+    const fromOwner = Math.hypot(body.x - owner.x, body.z - owner.z);
+    let tx = owner.x + Math.sin((owner.rotY || 0) + 2.4) * 1.6;
+    let tz = owner.z + Math.cos((owner.rotY || 0) + 2.4) * 1.6;
+    let speed = 5;
+    if (body.mode === 'stay') {
+        speed = 0;
+    } else if (chase && fromOwner < 22) {
+        tx = focus.x;
+        tz = focus.z;
+        speed = 4.4;
+    }
+    stepCompanion(body, tx, tz, speed, dt);
+    const prey = (body.mode === 'stay' || chase) && focus && !safe ? focus : null;
+    if (!prey) return;
+    if (Math.hypot(prey.x - body.x, prey.z - body.z) > 2.1) return;
+    if (now < (body.attackAt || 0)) return;
+    const biting = body.bite && now < body.bite;
+    body.attackAt = now + (biting ? 2400 : 1600);
+    if (biting) body.bite = 0;
+    companionStrike(owner, prey, companionPower(owner, biting) * (body.power || 1));
+}
+
+let lastCompanionSend = 0;
+
+function publicCompanion(owner, kind) {
+    const body = kind === 'pet' ? owner.pet : owner.minion;
+    if (!body) return null;
+    return {
+        id: owner.persistentId + ':' + kind,
+        ownerId: owner.persistentId,
+        kind,
+        model: kind === 'pet' ? 'wolf' : 'cultist',
+        name: body.name,
+        hp: Math.max(0, body.hp || 0),
+        maxHp: body.maxHp || 1,
+        x: body.x,
+        z: body.z,
+        rotY: body.rotY || 0,
+        alive: !!body.alive && body.hp > 0,
+        mode: body.mode || 'follow',
+        mapId: owner.mapId || '',
+        dungeonId: owner.dungeonId || '',
+        instanceId: owner.instanceId || ''
+    };
+}
+
+function tickCompanions(now, dt) {
+    for (const player of players.values()) {
+        if (player.pet && hasSpecial(player, 'call-pet')) {
+            const want = Math.max(8, Math.round((player.maxHp || 20) * 0.7));
+            if (player.pet.maxHp !== want && player.pet.alive) {
+                const full = player.pet.hp >= player.pet.maxHp;
+                player.pet.maxHp = want;
+                if (full) player.pet.hp = want;
+            }
+            tickCompanionBody(player, player.pet, now, dt);
+        }
+        if (player.minion) {
+            if (now >= player.minion.until || !player.minion.alive || player.ghost) player.minion = null;
+            else tickCompanionBody(player, player.minion, now, dt);
+        }
+    }
+    if (now - lastCompanionSend < 150) return;
+    lastCompanionSend = now;
+    const rows = [];
+    for (const player of players.values()) {
+        if (player.pet && hasSpecial(player, 'call-pet') && player.pet.alive && !player.ghost) rows.push(publicCompanion(player, 'pet'));
+        if (player.minion && player.minion.alive) rows.push(publicCompanion(player, 'minion'));
+    }
+    for (const player of players.values()) {
+        const list = rows.filter(row => row && sameView(player, row));
+        if (player.pet && hasSpecial(player, 'call-pet') && !player.ghost) {
+            const mine = publicCompanion(player, 'pet');
+            if (mine && !list.some(row => row.id === mine.id)) list.push(mine);
+        }
+        send(player.ws, { type: 'companions', list });
+    }
+}
+
+function companionGuard(npc, player) {
+    const near = (body) => body && body.alive && body.hp > 0 && Math.hypot((body.x || 0) - npc.x, (body.z || 0) - npc.z) < 2.6;
+    if (near(player.minion)) return player.minion;
+    if (player.pet && player.pet.mode === 'attack' && near(player.pet)) return player.pet;
+    return null;
+}
+
+function raiseMinion(player, greater) {
+    const maxHp = Math.max(10, Math.round((player.maxHp || 20) * (greater ? 0.85 : 0.5)));
+    player.minion = {
+        name: greater ? 'Dread Guard' : 'Risen',
+        hp: maxHp,
+        maxHp,
+        x: player.x + Math.sin(player.rotY || 0) * 1.4,
+        z: player.z + Math.cos(player.rotY || 0) * 1.4,
+        rotY: player.rotY || 0,
+        mode: 'attack',
+        alive: true,
+        attackAt: 0,
+        until: Date.now() + (greater ? 25000 : 20000),
+        power: greater ? 1.55 : 1
+    };
+}
+
+function castSpecial(player, id) {
+    if (!hasSpecial(player, id)) return 'Not trained';
+    if (player.ghost) return 'You are a ghost';
+    const now = Date.now();
+    const cdMax = ABILITY_COOLDOWN[id] || 20000;
+    const left = cooldownLeft(player, id, now);
+    if (left > 0) return { error: 'Not ready', cd: left, cdMax };
+    if (id === 'battle-shout') {
+        player.shoutUntil = now + 15000;
+        startCooldown(player, id, cdMax, now);
+        return { note: 'Your attacks hit harder', cd: cdMax, cdMax };
+    }
+    if (id === 'rally') {
+        const healed = Math.max(1, Math.round(player.maxHp * 0.4));
+        player.hp = Math.min(player.maxHp, player.hp + healed);
+        startCooldown(player, id, cdMax, now);
+        return { heal: healed, cd: cdMax, cdMax };
+    }
+    if (id === 'frost-armor') {
+        const amount = Math.max(6, Math.round(8 + (player.level || 1) * 1.5 + ((player.stats && player.stats.intellect) || 0)));
+        player.absorb = Math.max(now < (player.absorbUntil || 0) ? (player.absorb || 0) : 0, amount);
+        player.absorbUntil = now + 20000;
+        startCooldown(player, id, cdMax, now);
+        return { shield: player.absorb, cd: cdMax, cdMax };
+    }
+    if (id === 'blink') {
+        let landed = false;
+        const yaw = player.rotY || 0;
+        for (const dist of [8, 6, 4]) {
+            let x = player.x + Math.sin(yaw) * dist;
+            let z = player.z + Math.cos(yaw) * dist;
+            if (player.dungeonId) {
+                const cave = dungeonById(player.dungeonId);
+                if (!cave) break;
+                const held = dungeonClamp(cave, x, z);
+                if (dungeonBlocked(cave, player.x, player.z, held.x, held.z)) continue;
+                x = held.x;
+                z = held.z;
+            } else {
+                const spot = clampWorld(x, z, 1.2);
+                if (blocksClimb(player.x, player.z, spot.x, spot.z)) continue;
+                if (waterAt(spot.x, spot.z) && !waterAt(player.x, player.z)) continue;
+                x = spot.x;
+                z = spot.z;
+            }
+            player.x = x;
+            player.z = z;
+            landed = true;
+            break;
+        }
+        if (!landed) return 'The way is blocked';
+        startCooldown(player, id, cdMax, now);
+        return { moved: true, x: player.x, z: player.z, cd: cdMax, cdMax, note: 'Blink' };
+    }
+    if (id === 'raise-dead' || id === 'dread-guard') {
+        if (inSettlement(player.x, player.z)) return 'This camp is safe';
+        raiseMinion(player, id === 'dread-guard');
+        startCooldown(player, id, cdMax, now);
+        return { note: id === 'dread-guard' ? 'A dread guard rises' : 'A corpse rises', cd: cdMax, cdMax };
+    }
+    return 'Nothing happened';
+}
+
+function commandPet(player, command) {
+    if (!hasSpecial(player, 'call-pet') || !player.pet) return 'You have no pet';
+    const now = Date.now();
+    if (command === 'call') {
+        if (player.pet.alive && player.pet.hp > 0) {
+            player.pet.mode = 'follow';
+            return null;
+        }
+        const left = cooldownLeft(player, 'pet-call', now);
+        if (left > 0) return 'Not ready';
+        player.pet.alive = true;
+        player.pet.hp = player.pet.maxHp;
+        player.pet.x = player.x + 1;
+        player.pet.z = player.z;
+        player.pet.mode = 'follow';
+        startCooldown(player, 'pet-call', 8000, now);
+        return null;
+    }
+    if (!player.pet.alive || player.pet.hp <= 0) return 'Call your pet first';
+    if (command === 'follow') player.pet.mode = 'follow';
+    else if (command === 'stay') player.pet.mode = 'stay';
+    else if (command === 'attack') {
+        if (!playerFocus(player)) return 'Select a target';
+        player.pet.mode = 'attack';
+    } else if (command === 'bite') {
+        if (!hasSpecial(player, 'pet-bite')) return 'A trainer teaches Bite at level 40';
+        if (!playerFocus(player)) return 'Select a target';
+        const left = cooldownLeft(player, 'pet-bite', now);
+        if (left > 0) return 'Not ready';
+        player.pet.mode = 'attack';
+        player.pet.bite = now + 2500;
+        startCooldown(player, 'pet-bite', 8000, now);
+    } else return 'Unknown order';
+    return null;
+}
+
 function tickNpcs() {
     const now = Date.now();
     const dt = Math.min(0.1, (now - lastNpcTick) / 1000);
@@ -4564,6 +4911,18 @@ function tickNpcs() {
                 const primary = casting ? (block.intellect || npc.level) : (block.strength || npc.level);
                 const raw = 1 + primary;
                 let damage = npc.elite ? eliteStrike(npc, target) : Math.max(1, Math.round(raw) - target.armor);
+                const guard = companionGuard(npc, target);
+                if (guard) {
+                    const soaked = Math.min(damage, Math.max(4, Math.round((guard.maxHp || 20) * 0.22)));
+                    guard.hp = Math.max(0, guard.hp - soaked);
+                    if (guard.hp <= 0) {
+                        guard.alive = false;
+                        if (guard === target.pet) send(target.ws, { type: 'petResult', ok: false, reason: 'Your pet has fallen', command: 'down', alive: false, hp: 0, maxHp: guard.maxHp, mode: guard.mode });
+                        if (guard === target.minion) target.minion = null;
+                    }
+                    send(target.ws, { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: '#c0392b', x: npc.x, z: npc.z, tx: guard.x, tz: guard.z });
+                    continue;
+                }
                 let absorbed = 0;
                 if ((target.absorbUntil || 0) > now && target.absorb > 0) {
                     absorbed = Math.min(target.absorb, damage);
@@ -4645,6 +5004,7 @@ function tickNpcs() {
     }
     syncPartyVitals();
     syncQuestActors(now);
+    tickCompanions(now, dt);
 }
 
 setInterval(tickNpcs, 50);
@@ -4744,6 +5104,11 @@ wss.on('connection', (ws) => {
                 trained: prof.trained.slice(),
                 talents: { ...prof.talents },
                 spellRanks: { ...prof.spellRanks },
+                specials: Array.isArray(prof.specials) ? prof.specials.slice() : [],
+                pet: null,
+                minion: null,
+                focusId: '',
+                shoutUntil: 0,
                 recipes: Array.isArray(prof.recipes) ? prof.recipes.slice() : [],
                 craftSkill: JSON.parse(JSON.stringify(prof.craftSkill || {})),
                 quests: JSON.parse(JSON.stringify(prof.quests || {})),
@@ -4778,6 +5143,7 @@ wss.on('connection', (ws) => {
             }
             if (!player.class && CLASS_KITS[data.class]) chooseClass(player, data.class);
             refreshDerived(player);
+            ensurePet(player, prof.pet);
             revealFog(player);
             sessionId = persistentId;
             notePlace(player);
@@ -5033,6 +5399,7 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'attackResult', ok: false, reason: 'You are a ghost' });
                 return;
             }
+            if (data.targetId) player.focusId = String(data.targetId);
             const now = Date.now();
             const abilityId = ABILITIES[data.ability] ? data.ability : 'sword';
             const spec = ABILITIES[abilityId];
@@ -5230,6 +5597,7 @@ wss.on('connection', (ws) => {
                     scale = spec.execute;
                     executed = true;
                 }
+                if ((player.shoutUntil || 0) > Date.now()) scale *= 1.25;
                 const dealtNow = Math.max(1, Math.round(per * scale * damageScale(player.level, victim.level)));
                 victim.hp -= dealtNow;
                 victim.aggroId = player.persistentId;
@@ -5779,6 +6147,9 @@ wss.on('connection', (ws) => {
             player.trained = [];
             player.talents = {};
             player.spellRanks = {};
+            player.specials = [];
+            player.pet = null;
+            player.minion = null;
             player.recipes = [];
             player.quests = {};
             player.bagSlots = 0;
@@ -5851,6 +6222,62 @@ wss.on('connection', (ws) => {
             }
             const error = trainSpell(player, data.spell);
             send(ws, { type: 'character', ok: !error, reason: error, character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'learnSpecial') {
+            placePlayer(player, data);
+            if (!nearRole(player, 'trainer')) {
+                send(ws, { type: 'character', ok: false, reason: 'See a trainer', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+                return;
+            }
+            const error = learnSpecial(player, data.id);
+            send(ws, { type: 'character', ok: !error, reason: error, note: error ? '' : 'Learned', character: publicCharacter(player), inventory: inventoryOf(player), ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'focus') {
+            player.focusId = data.id ? String(data.id) : '';
+            return;
+        }
+
+        if (data.type === 'pet') {
+            placePlayer(player, data);
+            const error = commandPet(player, data.command);
+            const pet = player.pet;
+            const now = Date.now();
+            const cdKey = data.command === 'bite' ? 'pet-bite' : data.command === 'call' ? 'pet-call' : '';
+            const cd = cdKey ? cooldownLeft(player, cdKey, now) : 0;
+            send(ws, {
+                type: 'petResult',
+                ok: !error,
+                reason: error || '',
+                command: data.command || '',
+                mode: pet ? pet.mode : '',
+                alive: !!(pet && pet.alive && pet.hp > 0),
+                hp: pet ? Math.max(0, pet.hp) : 0,
+                maxHp: pet ? pet.maxHp : 1,
+                cd: cd || undefined,
+                cdMax: cd ? 8000 : undefined,
+                cdKey: cdKey || undefined
+            });
+            if (!error) tickCompanions(Date.now(), 0);
+            return;
+        }
+
+        if (data.type === 'special') {
+            placePlayer(player, data);
+            if (typeof data.rotY === 'number') player.rotY = data.rotY;
+            const result = castSpecial(player, data.id);
+            if (typeof result === 'string') {
+                send(ws, { type: 'attackResult', ok: false, reason: result, ability: data.id, ...statsOf(player) });
+                return;
+            }
+            if (result.error) {
+                send(ws, { type: 'attackResult', ok: false, reason: result.error, ability: data.id, cd: result.cd, cdMax: result.cdMax, ...statsOf(player) });
+                return;
+            }
+            send(ws, { type: 'attackResult', ok: true, ability: data.id, ...result, ...statsOf(player) });
             return;
         }
 
