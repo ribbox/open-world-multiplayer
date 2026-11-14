@@ -4602,13 +4602,15 @@ function tickCompanionBody(owner, body, now, dt) {
     const fromOwner = Math.hypot(body.x - owner.x, body.z - owner.z);
     let tx = owner.x + Math.sin((owner.rotY || 0) + 2.4) * 1.6;
     let tz = owner.z + Math.cos((owner.rotY || 0) + 2.4) * 1.6;
-    let speed = 5;
+    let speed = 6;
     if (body.mode === 'stay') {
         speed = 0;
-    } else if (chase && fromOwner < 22) {
+    } else if (chase && fromOwner < 24) {
         tx = focus.x;
         tz = focus.z;
-        speed = 4.4;
+        speed = fromOwner > 12 ? 12 : 6.2;
+    } else if (fromOwner > 8) {
+        speed = 14;
     }
     stepCompanion(body, tx, tz, speed, dt);
     const prey = (body.mode === 'stay' || chase) && focus && !safe ? focus : null;
@@ -4654,7 +4656,17 @@ function tickCompanions(now, dt) {
                 player.pet.maxHp = want;
                 if (full) player.pet.hp = want;
             }
-            tickCompanionBody(player, player.pet, now, dt);
+            if (player.pet.alive && !player.ghost) {
+                tickCompanionBody(player, player.pet, now, dt);
+                const away = Math.hypot((player.pet.x || 0) - player.x, (player.pet.z || 0) - player.z);
+                if (away > 42) {
+                    player.pet.alive = false;
+                    player.pet.hp = 0;
+                    player.pet.mode = 'follow';
+                    player.pet.cause = 'far';
+                    send(player.ws, { type: 'petResult', ok: false, reason: 'Your pet fell too far behind', command: 'down', alive: false, hp: 0, maxHp: player.pet.maxHp, mode: 'follow' });
+                }
+            }
         }
         if (player.minion) {
             if (now >= player.minion.until || !player.minion.alive || player.ghost) player.minion = null;
@@ -4773,22 +4785,37 @@ function commandPet(player, command) {
             player.pet.mode = 'follow';
             return null;
         }
-        const left = cooldownLeft(player, 'pet-call', now);
-        if (left > 0) return 'Not ready';
+        const fromDeath = player.pet.cause !== 'far';
+        if (fromDeath) {
+            const left = cooldownLeft(player, 'pet-call', now);
+            if (left > 0) return 'Not ready';
+        }
+        const yaw = player.rotY || 0;
         player.pet.alive = true;
         player.pet.hp = player.pet.maxHp;
-        player.pet.x = player.x + 1;
-        player.pet.z = player.z;
+        player.pet.x = player.x + Math.sin(yaw) * 1.4;
+        player.pet.z = player.z + Math.cos(yaw) * 1.4;
+        player.pet.rotY = yaw;
         player.pet.mode = 'follow';
-        startCooldown(player, 'pet-call', 8000, now);
+        player.pet.cause = '';
+        if (fromDeath) startCooldown(player, 'pet-call', 8000, now);
         return null;
     }
-    if (!player.pet.alive || player.pet.hp <= 0) return 'Call your pet first';
+    if (!player.pet.alive || player.pet.hp <= 0) return 'Summon your pet first';
     if (command === 'follow') player.pet.mode = 'follow';
     else if (command === 'stay') player.pet.mode = 'stay';
     else if (command === 'attack') {
         if (!playerFocus(player)) return 'Select a target';
         player.pet.mode = 'attack';
+    } else if (command === 'heal') {
+        if (player.pet.hp >= player.pet.maxHp - 0.5) return 'Your pet is fine';
+        const left = cooldownLeft(player, 'pet-heal', now);
+        if (left > 0) return 'Not ready';
+        const amount = Math.max(6, Math.round(player.pet.maxHp * 0.45));
+        const before = player.pet.hp;
+        player.pet.hp = Math.min(player.pet.maxHp, before + amount);
+        player.pet.healed = Math.round(player.pet.hp - before);
+        startCooldown(player, 'pet-heal', 8000, now);
     } else if (command === 'bite') {
         if (!hasSpecial(player, 'pet-bite')) return 'A trainer teaches Bite at level 40';
         if (!playerFocus(player)) return 'Select a target';
@@ -4917,7 +4944,10 @@ function tickNpcs() {
                     guard.hp = Math.max(0, guard.hp - soaked);
                     if (guard.hp <= 0) {
                         guard.alive = false;
-                        if (guard === target.pet) send(target.ws, { type: 'petResult', ok: false, reason: 'Your pet has fallen', command: 'down', alive: false, hp: 0, maxHp: guard.maxHp, mode: guard.mode });
+                        if (guard === target.pet) {
+                            guard.cause = 'dead';
+                            send(target.ws, { type: 'petResult', ok: false, reason: 'Your pet has fallen', command: 'down', alive: false, hp: 0, maxHp: guard.maxHp, mode: guard.mode });
+                        }
                         if (guard === target.minion) target.minion = null;
                     }
                     send(target.ws, { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: '#c0392b', x: npc.x, z: npc.z, tx: guard.x, tz: guard.z });
@@ -6246,7 +6276,7 @@ wss.on('connection', (ws) => {
             const error = commandPet(player, data.command);
             const pet = player.pet;
             const now = Date.now();
-            const cdKey = data.command === 'bite' ? 'pet-bite' : data.command === 'call' ? 'pet-call' : '';
+            const cdKey = data.command === 'bite' ? 'pet-bite' : data.command === 'call' ? 'pet-call' : data.command === 'heal' ? 'pet-heal' : '';
             const cd = cdKey ? cooldownLeft(player, cdKey, now) : 0;
             send(ws, {
                 type: 'petResult',
@@ -6257,6 +6287,7 @@ wss.on('connection', (ws) => {
                 alive: !!(pet && pet.alive && pet.hp > 0),
                 hp: pet ? Math.max(0, pet.hp) : 0,
                 maxHp: pet ? pet.maxHp : 1,
+                healed: !error && data.command === 'heal' && pet ? pet.healed : undefined,
                 cd: cd || undefined,
                 cdMax: cd ? 8000 : undefined,
                 cdKey: cdKey || undefined

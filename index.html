@@ -881,7 +881,7 @@
         Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health. Warriors wear plate, hunters wear leather, mages and warlocks wear cloth<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
         Spells and talents share one tree. The sheet is only for looking. Talk to a trainer to spend points or to reset them and spend again. One point in a node opens the next. A branch does not wait on the other branch. Level 60 is not enough to fill every branch<br>
-        At level 20 and 40 a trainer teaches a special skill. Specials are not talents. A hunter calls a wolf: Attack, Follow, and Stay, and Bite at 40. The wolf fights your target. A warlock raises a corpse that fights your target for a short time<br>
+        At level 20 and 40 a trainer teaches a special skill. Specials are not talents. A hunter calls a wolf: Attack, Follow, Stay, and Heal. Bite comes at 40. Summon brings it back if it dies, or if it falls too far behind. The wolf fights your target. A warlock raises a corpse that fights your target for a short time<br>
         Hamstring, Wing Clip, Frost Bolt, and Curse slow. Execute, Kill Shot, and Soul Burn double damage under 35% health. Cleave, Multi-Shot, Whirlwind, Frost Nova, and Hellfire hit nearby foes. Drain Life returns the damage as health. Barrier soaks hits<br>
         The bar is your level and experience. Armor and stats are on the character sheet<br>
         Camps are safe. Creatures walk out, and you cannot attack while you are inside. The camp name appears when you enter<br>
@@ -956,8 +956,9 @@
             <button type="button" class="bar-slot" data-pet="attack" title="Attack — send your pet at your target"><span class="key">Atk</span></button>
             <button type="button" class="bar-slot" data-pet="follow" title="Follow"><span class="key">Fol</span></button>
             <button type="button" class="bar-slot" data-pet="stay" title="Stay"><span class="key">Stay</span></button>
+            <button type="button" class="bar-slot" data-pet="heal" data-action="pet-heal" title="Heal your pet" hidden><span class="key">Heal</span></button>
             <button type="button" class="bar-slot" data-pet="bite" data-action="pet-bite" title="Bite — a heavy hit, then it keeps attacking" hidden><span class="key">Bite</span></button>
-            <button type="button" class="bar-slot" data-pet="call" data-action="pet-call" title="Call your pet back" hidden><span class="key">Call</span></button>
+            <button type="button" class="bar-slot" data-pet="call" data-action="pet-call" title="Summon your pet beside you" hidden><span class="key">Sum</span></button>
         </div>
         <div id="barRow">
             <button type="button" class="bar-nav" id="pagePrev">‹</button>
@@ -1929,7 +1930,7 @@
             let pendingCivilians = null;
             let pendingCompanions = null;
             let petHeard = false;
-            let petState = { alive: true, hp: 1, maxHp: 1, mode: 'follow' };
+            let petState = { alive: true, hp: 1, maxHp: 1, mode: 'follow', cause: '' };
             let quests = {};
             let questDefs = {};
             let trackedQuests = [];
@@ -6657,6 +6658,7 @@
                     petState.hp = mine.hp || 0;
                     petState.maxHp = mine.maxHp || 1;
                     petState.mode = mine.mode || 'follow';
+                    if (mine.alive) petState.cause = '';
                 }
                 renderPetBar();
                 if (!npcModelsReady) return;
@@ -6679,6 +6681,7 @@
                     attack: ['wood', 51],
                     follow: ['wood', 34],
                     stay: ['plate', 33],
+                    heal: ['wood', 16],
                     bite: ['stone', 194],
                     call: ['wood', 32]
                 };
@@ -6711,13 +6714,15 @@
                 const pct = petState.maxHp ? Math.max(0, Math.min(1, (alive ? petState.hp : 0) / petState.maxHp)) : 0;
                 if (fill) fill.style.width = (pct * 100) + '%';
                 const name = document.getElementById('petName');
-                if (name) name.textContent = alive ? 'Wolf' : 'Fallen';
+                if (name) name.textContent = alive ? 'Wolf' : (petState.cause === 'far' ? 'Away' : 'Fallen');
                 for (const command of ['attack', 'follow', 'stay']) {
                     const button = bar.querySelector('[data-pet="' + command + '"]');
                     if (!button) continue;
                     button.disabled = !alive;
                     button.classList.toggle('on', alive && petState.mode === command);
                 }
+                const heal = bar.querySelector('[data-pet="heal"]');
+                if (heal) heal.hidden = !alive;
                 const bite = bar.querySelector('[data-pet="bite"]');
                 if (bite) bite.hidden = !(character.specials || []).includes('pet-bite') || !alive;
                 const call = bar.querySelector('[data-pet="call"]');
@@ -6730,8 +6735,12 @@
                     showMessage('You are a ghost');
                     return;
                 }
-                if ((command === 'bite' && cooling('pet-bite')) || (command === 'call' && cooling('pet-call'))) {
+                if ((command === 'bite' && cooling('pet-bite')) || (command === 'call' && cooling('pet-call')) || (command === 'heal' && cooling('pet-heal'))) {
                     showMessage('Not ready');
+                    return;
+                }
+                if (command === 'heal' && petHeard && !(petState.alive && petState.hp > 0)) {
+                    showMessage('Summon your pet first');
                     return;
                 }
                 if (command === 'attack' || command === 'bite') {
@@ -7549,7 +7558,7 @@
                 'arcane-bolt': 1800, 'arcane-surge': 8000, mend: 5000,
                 health: 12000, mana: 12000, potion: 12000, bomb: 4000,
                 'battle-shout': 45000, rally: 60000, 'frost-armor': 30000, blink: 20000,
-                'raise-dead': 40000, 'dread-guard': 60000, 'pet-bite': 8000, 'pet-call': 8000
+                'raise-dead': 40000, 'dread-guard': 60000, 'pet-bite': 8000, 'pet-call': 8000, 'pet-heal': 8000
             };
             const cdReady = {};
             const cdTotal = {};
@@ -10259,15 +10268,23 @@
                         if (data.hp != null) petState.hp = data.hp;
                         if (data.maxHp != null) petState.maxHp = data.maxHp;
                         if (data.mode) petState.mode = data.mode;
-                        if (data.command === 'down' || /fallen/i.test(data.reason || '')) {
+                        if (data.command === 'down' || /fallen|behind/i.test(data.reason || '')) {
                             petState.alive = false;
                             petState.hp = 0;
-                        }
+                            petState.cause = /behind/i.test(data.reason || '') ? 'far' : 'dead';
+                        } else if (data.alive) petState.cause = '';
                         if (data.cd && data.cdKey) armCooldown(data.cdKey, data.cd, data.cdMax);
                         renderPetBar();
                         if (!data.ok) showMessage(data.reason || 'The pet does not answer');
+                        else if (data.command === 'heal') {
+                            showMessage('Pet +' + (data.healed || 0) + ' HP');
+                            sfx('heal');
+                            const wolf = worldCompanions.get(persistentId + ':pet');
+                            const spot = wolf ? wolf.group.position : characterGroup.position;
+                            floatText(spot.x, 1.5, spot.z, '+' + (data.healed || 0), '#7dffb3');
+                        }
                         else if (data.command === 'bite') showMessage('Bite');
-                        else if (data.command === 'call') showMessage('Your pet returns');
+                        else if (data.command === 'call') showMessage('Pet summoned');
                         else if (data.command === 'attack') showMessage('Pet attacking');
                         else if (data.command === 'stay') showMessage('Pet holding');
                         else if (data.command === 'follow') showMessage('Pet following');
