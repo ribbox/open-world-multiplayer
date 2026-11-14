@@ -257,9 +257,10 @@
         #partyPrompt[hidden] { display: none; }
         #partyPrompt button { margin: 8px 4px 0; cursor: pointer; }
         #message {
-            position: absolute; bottom: 118px; left: 50%; transform: translateX(-50%);
+            position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%);
             color: #90EE90; background: rgba(0,0,0,0.7); padding: 8px 16px;
-            border-radius: 4px; font-size: 16px; pointer-events: none; z-index: 10; display: none;
+            border-radius: 4px; font-size: 16px; pointer-events: none; z-index: 5; display: none;
+            text-align: center; max-width: min(92vw, 560px);
         }
         #log {
             position: absolute; bottom: 86px; left: 15px; width: min(300px, 70vw);
@@ -934,6 +935,7 @@
     <div id="hurtVeil"></div>
     <div id="hurtFlash"></div>
     <div id="actionbar">
+        <div id="message"></div>
         <div id="hudVitals">
             <div class="globe hp" id="hpGlobe" title="Health">
                 <div class="globe-fill" id="hpGlobeFill"></div>
@@ -1025,7 +1027,6 @@
         <div id="targetHp"><div id="targetHpFill"></div></div>
         <div id="targetStats" hidden></div>
     </div>
-    <div id="message"></div>
     <div id="levelBanner"></div>
     <div id="placeBanner"></div>
     <div id="log">
