@@ -1854,6 +1854,8 @@
                 sandMapUniform.value.needsUpdate = true;
                 sandReady = true;
                 sandOnUniform.value = 1;
+                roadRibbonMat.map = sandMapUniform.value;
+                roadRibbonMat.needsUpdate = true;
                 refreshGround();
             }, undefined, (err) => console.warn('Sand terrain failed', err));
             let treeTemplate = null;
@@ -4675,8 +4677,10 @@
                 placeChunkProps(cx, cz, data.group, data.colliders, data.placed);
             }
 
-            const roadRibbonMat = new THREE.MeshLambertMaterial({
-                color: 0xa88862,
+            const roadRibbonMat = new THREE.MeshStandardMaterial({
+                color: new THREE.Color(0.55, 0.40, 0.24),
+                roughness: 1,
+                metalness: 0,
                 side: THREE.DoubleSide,
                 polygonOffset: true,
                 polygonOffsetFactor: -2,
@@ -4714,6 +4718,7 @@
                     pts.push([curve[curve.length - 1][0], curve[curve.length - 1][1]]);
                     const positions = [];
                     const normals = [];
+                    const uvs = [];
                     const indices = [];
                     for (let i = 0; i < pts.length; i++) {
                         const prev = pts[Math.max(0, i - 1)];
@@ -4727,6 +4732,7 @@
                         positions.push(pts[i][0] - dz * half, y, pts[i][1] + dx * half);
                         positions.push(pts[i][0] + dz * half, y, pts[i][1] - dx * half);
                         normals.push(0, 1, 0, 0, 1, 0);
+                        uvs.push(pts[i][0] / 20, pts[i][1] / 20, pts[i][0] / 20, pts[i][1] / 20);
                         if (i > 0) {
                             const a = (i - 1) * 2;
                             indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
@@ -4735,6 +4741,7 @@
                     const geo = new THREE.BufferGeometry();
                     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
                     geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+                    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
                     geo.setIndex(indices);
                     const mesh = new THREE.Mesh(geo, roadRibbonMat);
                     mesh.receiveShadow = true;
@@ -6654,6 +6661,13 @@
                     }
                 }
                 if (Math.random() < 0.05) unloadDistantChunks(px, pz);
+            }
+
+            function hillDrawn(x, z) {
+                if (activeCave) return true;
+                const cx = Math.round(x / chunkSize);
+                const cz = Math.round(z / chunkSize);
+                return loadedChunks.has(cx + ',' + cz);
             }
 
             updateChunks();
@@ -8892,6 +8906,8 @@
                     }
                 }
                 for (const entry of worldCivs.values()) {
+                    entry.group.visible = !!entry.dungeonId || hillDrawn(entry.group.position.x, entry.group.position.z);
+                    if (!entry.group.visible) continue;
                     if (!entry.dungeonId && entry.tx != null) {
                         const dx = entry.tx - entry.group.position.x;
                         const dz = entry.tz - entry.group.position.z;
