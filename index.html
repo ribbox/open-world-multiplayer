@@ -893,7 +893,7 @@
         Hold Right Mouse: Rotate Camera<br>
         Mouse Wheel: Zoom<br>
         Minimap: zone name and 0–100 coordinates. Map chooses what is shown<br>
-        <small>Player: human model &nbsp;|&nbsp; Each NPC type has its own shape</small>
+        <small>Player: human model &nbsp;|&nbsp; Each NPC type has its own shape &nbsp;|&nbsp; Icons by Matt Firth (shikashipx) and game-icons.net</small>
     </div>
     <button type="button" id="showInfo" hidden title="Help" aria-label="Help">?</button>
     <div id="inventory">
@@ -1402,6 +1402,9 @@
             }
             const loadManager = new THREE.LoadingManager();
             loadManager.itemStart('/icons/fantasy-icons.png');
+            loadManager.itemStart('/icons/sheet-wood.png');
+            loadManager.itemStart('/icons/sheet-stone.png');
+            loadManager.itemStart('/icons/sheet-plate.png');
             loadManager.onStart = (_url, loaded, total) => {
                 loadDone = loaded;
                 loadTotal = total;
@@ -2609,7 +2612,7 @@
             const GEM_KINDS = [['malachite', 'Malachite'], ['quartz', 'Quartz'], ['jade', 'Jade'], ['ruby', 'Ruby'], ['sapphire', 'Sapphire'], ['diamond', 'Diamond']];
             const SUPPLY_KINDS = STAPLE_KINDS.concat(ORE_KINDS, GEM_KINDS);
             const NUGGET_COLOR = { copper: '#c4783a', tin: '#d5dde6', iron: '#7d8794', silver: '#f4f7fb', mithril: '#7fd0ea', thorium: '#e0a23a', malachite: '#1f9d55', quartz: '#f7f3ea', jade: '#3dcca0', ruby: '#d64545', sapphire: '#3d7dcc', diamond: '#f4fbff' };
-            const iconSheet = new Image();
+            const iconSheets = {};
             let iconSheetReady = false;
             const SHEET_COLS = 16;
             const SHEET_ICONS = {
@@ -2619,6 +2622,11 @@
                 execute: 58,
                 cleave: 49,
                 whirlwind: 94,
+                bow: ['wood', 99],
+                'aimed-shot': ['stone', 51],
+                'wing-clip': ['plate', 100],
+                'multi-shot': ['wood', 52],
+                'kill-shot': ['stone', 58],
                 staff: 104,
                 'arcane-bolt': 8,
                 'frost-bolt': 206,
@@ -6795,11 +6803,18 @@
             }
 
             function paintSheetIcon(g, index, x, y, size) {
-                if (!iconSheetReady || index == null) return;
-                const col = index % SHEET_COLS;
-                const row = Math.floor(index / SHEET_COLS);
+                let sheetName = 'plain';
+                let n = index;
+                if (Array.isArray(index)) {
+                    sheetName = index[0];
+                    n = index[1];
+                }
+                const sheet = iconSheets[sheetName] || iconSheets.plain;
+                if (!sheet || !sheet.naturalWidth || n == null) return;
+                const col = n % SHEET_COLS;
+                const row = Math.floor(n / SHEET_COLS);
                 g.imageSmoothingEnabled = false;
-                g.drawImage(iconSheet, col * 32, row * 32, 32, 32, x, y, size, size);
+                g.drawImage(sheet, col * 32, row * 32, 32, 32, x, y, size, size);
             }
 
             function makeIcon(id, bolts) {
@@ -7008,7 +7023,8 @@
                 let index = iconIndex(item.icon);
                 if (index == null && kind === 'weapon') {
                     if (item.weapon === 'bow' || item.weapon === 'wand') {
-                        drawAbilityIcon(g, item.weapon);
+                        if (item.weapon === 'bow' && SHEET_ICONS.bow != null) paintSheetIcon(g, SHEET_ICONS.bow, 0, 0, 64);
+                        else drawAbilityIcon(g, item.weapon);
                         if (item.magic) paintSheetIcon(g, SHEET_ICONS.gem, 40, 2, 22);
                         if (faded) {
                             g.globalCompositeOperation = 'source-atop';
@@ -8545,19 +8561,25 @@
             renderBar();
             paintIcon(document.getElementById('bagButton'), 'bag');
             paintIcon(document.getElementById('sheetButton'), 'character');
-            iconSheet.onload = () => {
-                iconSheetReady = true;
-                renderBar();
-                paintIcon(document.getElementById('bagButton'), 'bag');
-                paintIcon(document.getElementById('sheetButton'), 'character');
-                updateInventoryUI();
-                if (document.getElementById('sheet').classList.contains('open')) renderSheet();
-                loadManager.itemEnd('/icons/fantasy-icons.png');
-            };
-            iconSheet.onerror = () => {
-                loadManager.itemEnd('/icons/fantasy-icons.png');
-            };
-            iconSheet.src = '/icons/fantasy-icons.png';
+            function loadIconSheet(name, url) {
+                const img = new Image();
+                img.onload = () => {
+                    iconSheets[name] = img;
+                    if (name === 'plain') iconSheetReady = true;
+                    renderBar();
+                    paintIcon(document.getElementById('bagButton'), 'bag');
+                    paintIcon(document.getElementById('sheetButton'), 'character');
+                    updateInventoryUI();
+                    if (document.getElementById('sheet').classList.contains('open')) renderSheet();
+                    loadManager.itemEnd(url);
+                };
+                img.onerror = () => loadManager.itemEnd(url);
+                img.src = url;
+            }
+            loadIconSheet('plain', '/icons/fantasy-icons.png');
+            loadIconSheet('wood', '/icons/sheet-wood.png');
+            loadIconSheet('stone', '/icons/sheet-stone.png');
+            loadIconSheet('plate', '/icons/sheet-plate.png');
 
             // Input
             document.addEventListener('keydown', (e) => {
