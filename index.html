@@ -953,12 +953,12 @@
         <div id="petBar" hidden>
             <span id="petName">Wolf</span>
             <div id="petHp" title="Pet health"><i id="petHpFill"></i></div>
-            <button type="button" class="bar-slot" data-pet="attack" title="Attack — send your pet at your target"><span class="key">Atk</span></button>
-            <button type="button" class="bar-slot" data-pet="follow" title="Follow"><span class="key">Fol</span></button>
-            <button type="button" class="bar-slot" data-pet="stay" title="Stay"><span class="key">Stay</span></button>
-            <button type="button" class="bar-slot" data-pet="heal" data-action="pet-heal" title="Heal your pet" hidden><span class="key">Heal</span></button>
-            <button type="button" class="bar-slot" data-pet="bite" data-action="pet-bite" title="Bite — a heavy hit, then it keeps attacking" hidden><span class="key">Bite</span></button>
-            <button type="button" class="bar-slot" data-pet="call" data-action="pet-call" title="Summon your pet beside you" hidden><span class="key">Sum</span></button>
+            <button type="button" class="bar-slot" data-pet="attack" title="Send your pet at your target.&#10;No cooldown"><span class="key">Atk</span></button>
+            <button type="button" class="bar-slot" data-pet="follow" title="Your pet follows you.&#10;No cooldown"><span class="key">Fol</span></button>
+            <button type="button" class="bar-slot" data-pet="stay" title="Your pet holds still.&#10;No cooldown"><span class="key">Stay</span></button>
+            <button type="button" class="bar-slot" data-pet="heal" data-action="pet-heal" title="Heal your pet.&#10;Cooldown 8 seconds" hidden><span class="key">Heal</span></button>
+            <button type="button" class="bar-slot" data-pet="bite" data-action="pet-bite" title="A heavy hit, then it keeps attacking.&#10;Cooldown 8 seconds" hidden><span class="key">Bite</span></button>
+            <button type="button" class="bar-slot" data-pet="call" data-action="pet-call" title="Summon your pet beside you.&#10;Cooldown 8 seconds after it dies" hidden><span class="key">Sum</span></button>
         </div>
         <div id="barRow">
             <button type="button" class="bar-nav" id="pagePrev">‹</button>
@@ -2472,40 +2472,40 @@
             }
 
             const ACTIONS = {
-                sword: { name: 'Sword', short: 'Swd', kind: 'weapon', weapon: 'sword', hint: 'A higher rank hits harder. Swings every 1s once you attack.' },
-                'power-strike': { name: 'Power Strike', short: 'Pwr', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Heavy hit. 6s.' },
-                hamstring: { name: 'Hamstring', short: 'Ham', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. A cut that slows. 8s.' },
-                execute: { name: 'Execute', short: 'Exe', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Double damage under 35% health. 8s.' },
-                cleave: { name: 'Cleave', short: 'Clv', kind: 'spell', weapon: 'sword', hint: 'Warrior talent spell. Hits the target and anyone beside them. 8s.' },
-                whirlwind: { name: 'Whirlwind', short: 'Spin', kind: 'spell', weapon: 'sword', hint: 'Warrior spell. Hits every hostile around you. 12s.' },
-                staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'A magic bolt from an equipped staff. 1s, and it keeps going once you attack.' },
-                'arcane-bolt': { name: 'Arcane Missile', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Ranks 3 and 5 fire extra bolts. 1.8s.' },
-                'frost-bolt': { name: 'Frost Bolt', short: 'Frost', kind: 'spell', weapon: 'staff', hint: 'Mage spell. A bolt that slows. 2.2s.' },
-                'arcane-surge': { name: 'Arcane Surge', short: 'Srg', kind: 'spell', weapon: 'staff', hint: 'Mage talent spell. 8s.' },
-                mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Restore health. 5s.' },
-                barrier: { name: 'Barrier', short: 'Bar', kind: 'spell', weapon: 'staff', hint: 'Mage spell. A shield that soaks the next hits. 18s.' },
-                'frost-nova': { name: 'Frost Nova', short: 'Nova', kind: 'spell', weapon: 'staff', hint: 'Mage spell. Frost and a slow around you. 14s.' },
-                bow: { name: 'Bow', short: 'Bow', kind: 'weapon', weapon: 'bow', hint: 'A ranged shot. A higher rank hits harder. 1s, and it keeps going once you attack.' },
-                'aimed-shot': { name: 'Aimed Shot', short: 'Aim', kind: 'spell', weapon: 'bow', hint: 'Hunter spell. A heavy shot. 6s.' },
-                'wing-clip': { name: 'Wing Clip', short: 'Clip', kind: 'spell', weapon: 'bow', hint: 'Hunter spell. A shot that slows. 8s.' },
-                'multi-shot': { name: 'Multi-Shot', short: 'Multi', kind: 'spell', weapon: 'bow', hint: 'Hunter spell. Hits the target and anyone beside them. 8s.' },
-                'kill-shot': { name: 'Kill Shot', short: 'Kill', kind: 'spell', weapon: 'bow', hint: 'Hunter spell. Double damage under 35% health. 8s.' },
-                wand: { name: 'Wand', short: 'Wnd', kind: 'weapon', weapon: 'wand', hint: 'A shadow bolt. 1s, and it keeps going once you attack.' },
-                'shadow-bolt': { name: 'Shadow Bolt', short: 'Shd', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. A hard bolt. 2s.' },
-                'drain-life': { name: 'Drain Life', short: 'Drain', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. The damage returns as health. 5s.' },
-                curse: { name: 'Curse', short: 'Curse', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. A bolt that slows. 8s.' },
-                hellfire: { name: 'Hellfire', short: 'Hell', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. Hits every hostile around you. 12s.' },
-                'soul-burn': { name: 'Soul Burn', short: 'Soul', kind: 'spell', weapon: 'wand', hint: 'Warlock spell. Double damage under 35% health. 8s.' },
-                gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.' },
-                health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion. Shares a 12s wait with mana potions.' },
-                mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion. Shares a 12s wait with health potions.' },
-                bomb: { name: 'Explosives', short: 'Bomb', kind: 'explosive', item: 'bomb', hint: 'Throw a bomb at the targeted hostile. 4s.' },
-                'battle-shout': { name: 'Battle Shout', short: 'Shout', kind: 'special', hint: 'Your attacks hit harder for 15 seconds.', cooldown: '45s' },
-                rally: { name: 'Rally', short: 'Rally', kind: 'special', hint: 'Recover a large share of your health.', cooldown: '60s' },
-                'frost-armor': { name: 'Frost Armor', short: 'Frost', kind: 'special', hint: 'A cold shell soaks damage for 20 seconds.', cooldown: '30s' },
-                blink: { name: 'Blink', short: 'Blink', kind: 'special', hint: 'Step forward a short way.', cooldown: '20s' },
-                'raise-dead': { name: 'Raise Dead', short: 'Rise', kind: 'special', hint: 'A corpse fights your target for 20 seconds.', cooldown: '40s' },
-                'dread-guard': { name: 'Dread Guard', short: 'Dread', kind: 'special', hint: 'A tougher corpse fights your target for 25 seconds.', cooldown: '60s' }
+                sword: { name: 'Sword', short: 'Swd', kind: 'weapon', weapon: 'sword', hint: 'A melee swing. A higher rank hits harder. Keeps swinging once you attack.', cooldown: '1 second' },
+                'power-strike': { name: 'Power Strike', short: 'Pwr', kind: 'spell', weapon: 'sword', hint: 'A heavy hit.', cooldown: '6 seconds' },
+                hamstring: { name: 'Hamstring', short: 'Ham', kind: 'spell', weapon: 'sword', hint: 'A cut that slows.', cooldown: '8 seconds' },
+                execute: { name: 'Execute', short: 'Exe', kind: 'spell', weapon: 'sword', hint: 'Double damage under 35% health.', cooldown: '8 seconds' },
+                cleave: { name: 'Cleave', short: 'Clv', kind: 'spell', weapon: 'sword', hint: 'Hits the target and anyone beside them.', cooldown: '8 seconds' },
+                whirlwind: { name: 'Whirlwind', short: 'Spin', kind: 'spell', weapon: 'sword', hint: 'Hits every hostile around you.', cooldown: '12 seconds' },
+                staff: { name: 'Staff', short: 'Stf', kind: 'weapon', weapon: 'staff', hint: 'A magic bolt. Keeps casting once you attack.', cooldown: '1 second' },
+                'arcane-bolt': { name: 'Arcane Missile', short: 'Bolt', kind: 'spell', weapon: 'staff', hint: 'Ranks 3 and 5 fire extra bolts.', cooldown: '1.8 seconds' },
+                'frost-bolt': { name: 'Frost Bolt', short: 'Frost', kind: 'spell', weapon: 'staff', hint: 'A bolt that slows.', cooldown: '2.2 seconds' },
+                'arcane-surge': { name: 'Arcane Surge', short: 'Srg', kind: 'spell', weapon: 'staff', hint: 'A heavy burst of arcane.', cooldown: '8 seconds' },
+                mend: { name: 'Mend', short: 'Mend', kind: 'spell', weapon: 'staff', hint: 'Restore health.', cooldown: '5 seconds' },
+                barrier: { name: 'Barrier', short: 'Bar', kind: 'spell', weapon: 'staff', hint: 'A shield that soaks the next hits.', cooldown: '18 seconds' },
+                'frost-nova': { name: 'Frost Nova', short: 'Nova', kind: 'spell', weapon: 'staff', hint: 'Frost and a slow around you.', cooldown: '14 seconds' },
+                bow: { name: 'Bow', short: 'Bow', kind: 'weapon', weapon: 'bow', hint: 'A ranged shot. A higher rank hits harder. Keeps firing once you attack.', cooldown: '1 second' },
+                'aimed-shot': { name: 'Aimed Shot', short: 'Aim', kind: 'spell', weapon: 'bow', hint: 'A heavy shot.', cooldown: '6 seconds' },
+                'wing-clip': { name: 'Wing Clip', short: 'Clip', kind: 'spell', weapon: 'bow', hint: 'A shot that slows.', cooldown: '8 seconds' },
+                'multi-shot': { name: 'Multi-Shot', short: 'Multi', kind: 'spell', weapon: 'bow', hint: 'Hits the target and anyone beside them.', cooldown: '8 seconds' },
+                'kill-shot': { name: 'Kill Shot', short: 'Kill', kind: 'spell', weapon: 'bow', hint: 'Double damage under 35% health.', cooldown: '8 seconds' },
+                wand: { name: 'Wand', short: 'Wnd', kind: 'weapon', weapon: 'wand', hint: 'A shadow bolt. Keeps casting once you attack.', cooldown: '1 second' },
+                'shadow-bolt': { name: 'Shadow Bolt', short: 'Shd', kind: 'spell', weapon: 'wand', hint: 'A hard bolt.', cooldown: '2 seconds' },
+                'drain-life': { name: 'Drain Life', short: 'Drain', kind: 'spell', weapon: 'wand', hint: 'The damage returns as health.', cooldown: '5 seconds' },
+                curse: { name: 'Curse', short: 'Curse', kind: 'spell', weapon: 'wand', hint: 'A bolt that slows.', cooldown: '8 seconds' },
+                hellfire: { name: 'Hellfire', short: 'Hell', kind: 'spell', weapon: 'wand', hint: 'Hits every hostile around you.', cooldown: '12 seconds' },
+                'soul-burn': { name: 'Soul Burn', short: 'Soul', kind: 'spell', weapon: 'wand', hint: 'Double damage under 35% health.', cooldown: '8 seconds' },
+                gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.', cooldown: '' },
+                health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion.', cooldown: '12 seconds' },
+                mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion.', cooldown: '12 seconds' },
+                bomb: { name: 'Explosives', short: 'Bomb', kind: 'explosive', item: 'bomb', hint: 'Throw a bomb at the targeted hostile.', cooldown: '4 seconds' },
+                'battle-shout': { name: 'Battle Shout', short: 'Shout', kind: 'special', hint: 'Your attacks hit harder for 15 seconds.', cooldown: '45 seconds' },
+                rally: { name: 'Rally', short: 'Rally', kind: 'special', hint: 'Recover a large share of your health.', cooldown: '60 seconds' },
+                'frost-armor': { name: 'Frost Armor', short: 'Frost', kind: 'special', hint: 'A cold shell soaks damage for 20 seconds.', cooldown: '30 seconds' },
+                blink: { name: 'Blink', short: 'Blink', kind: 'special', hint: 'Step forward a short way.', cooldown: '20 seconds' },
+                'raise-dead': { name: 'Raise Dead', short: 'Rise', kind: 'special', hint: 'A corpse fights your target for 20 seconds.', cooldown: '40 seconds' },
+                'dread-guard': { name: 'Dread Guard', short: 'Dread', kind: 'special', hint: 'A tougher corpse fights your target for 25 seconds.', cooldown: '60 seconds' }
             };
             const BAR_PAGES = 3;
             const BAR_SLOTS = 8;
@@ -7006,15 +7006,11 @@
             }
 
             function actionTitle(id, action) {
-                if (action.kind === 'special') return action.hint + '\n' + action.cooldown;
-                const spell = (character.spells || {})[id];
-                let extra = '';
-                if (spell && spell.maxRank) {
-                    const rank = Math.max(1, (character.spellRanks && character.spellRanks[id]) || 1);
-                    const hit = spellHitText(id, rank);
-                    extra = ' Rank ' + rank + (hit ? '. ' + hit + '.' : '.');
-                }
-                return action.name + '.' + extra + ' ' + action.hint + ' Right-click to assign.';
+                let effect = action.hint || action.name;
+                const hit = spellHitText(id, Math.max(1, (character.spellRanks && character.spellRanks[id]) || 1));
+                if (hit) effect = effect.replace(/\.$/, '') + '. ' + hit + '.';
+                if (!action.cooldown) return effect;
+                return effect + '\nCooldown ' + action.cooldown;
             }
 
             function drawAbilityIcon(g, id) {
@@ -8582,7 +8578,7 @@
                     title.textContent = spec.name + '. ' + ((action && action.hint) || spec.text);
                     const about = document.createElement('div');
                     about.style.color = '#bbb';
-                    about.textContent = (action && action.cooldown) || '';
+                    about.textContent = action && action.cooldown ? 'Cooldown ' + action.cooldown : '';
                     label.append(title, about);
                     line.appendChild(label);
                     const button = document.createElement('button');
