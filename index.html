@@ -7008,7 +7008,10 @@
             function actionTitle(id, action) {
                 let effect = action.hint || action.name;
                 const hit = spellHitText(id, Math.max(1, (character.spellRanks && character.spellRanks[id]) || 1));
-                if (hit) effect = effect.replace(/\.$/, '') + '. ' + hit + '.';
+                if (action.kind === 'weapon') {
+                    const amount = hit && hit.match(/^(\d+)/);
+                    effect = 'Hit for ' + (amount ? amount[1] : '0') + ' damage';
+                } else if (hit) effect = effect.replace(/\.$/, '') + '. ' + hit + '.';
                 if (!action.cooldown) return effect;
                 return effect + '\nCooldown ' + action.cooldown;
             }
