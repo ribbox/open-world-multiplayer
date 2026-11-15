@@ -4634,7 +4634,7 @@ function publicCompanion(owner, kind) {
         kind,
         model: kind === 'pet' ? 'wolf' : 'cultist',
         name: body.name,
-        hp: Math.max(0, body.hp || 0),
+        hp: body.hp > 0 ? Math.max(1, Math.floor(body.hp)) : 0,
         maxHp: body.maxHp || 1,
         x: body.x,
         z: body.z,
@@ -4658,6 +4658,9 @@ function tickCompanions(now, dt) {
             }
             if (player.pet.alive && !player.ghost) {
                 tickCompanionBody(player, player.pet, now, dt);
+                if (player.pet.hp > 0 && player.pet.hp < player.pet.maxHp && now >= (player.combatUntil || 0)) {
+                    player.pet.hp = Math.min(player.pet.maxHp, player.pet.hp + dt * player.pet.maxHp * 0.04);
+                }
                 const away = Math.hypot((player.pet.x || 0) - player.x, (player.pet.z || 0) - player.z);
                 if (away > 42) {
                     player.pet.alive = false;
@@ -4942,6 +4945,8 @@ function tickNpcs() {
                 if (guard) {
                     const soaked = Math.min(damage, Math.max(4, Math.round((guard.maxHp || 20) * 0.22)));
                     guard.hp = Math.max(0, guard.hp - soaked);
+                    enterCombat(target, now);
+                    guard.combatUntil = now + COMBAT_HOLD;
                     if (guard.hp <= 0) {
                         guard.alive = false;
                         if (guard === target.pet) {
