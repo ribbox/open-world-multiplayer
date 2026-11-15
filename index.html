@@ -313,6 +313,8 @@
         #log .party { color: #9ddeaf; }
         #log .whisper { color: #d7b3ff; }
         #log .system { color: #e0a15a; }
+        #log .combat { color: #e6b3a0; }
+        #log .heal { color: #8fd9a8; }
         #chatForm { display: flex; margin-top: 4px; }
         #chatInput {
             flex: 1; min-width: 0; font-size: 16px; color: #f4efe4;
@@ -10519,6 +10521,8 @@
                         else if (data.command === 'attack') showMessage('Pet attacking');
                         else if (data.command === 'stay') showMessage('Pet holding');
                         else if (data.command === 'follow') showMessage('Pet following');
+                    } else if (data.type === 'combatLog') {
+                        addLogLine('activity', data.text, data.kind === 'heal' ? 'heal' : 'combat');
                     } else if (data.type === 'attackResult') {
                         releaseAction(data.ability);
                         if (!data.ok) {

@@ -2002,6 +2002,26 @@ function partyMembersNear(player) {
     return near;
 }
 
+function tellCombat(player, text, kind) {
+    if (!player || !player.ws || !text) return;
+    send(player.ws, { type: 'combatLog', text: String(text).slice(0, 160), kind: kind || 'combat' });
+}
+
+function tellParty(actor, text, kind) {
+    const party = partyOf(actor);
+    if (!party) return;
+    for (const id of party.members) {
+        if (id === actor.persistentId) continue;
+        const member = players.get(id);
+        if (!member || member.ghost) continue;
+        if ((member.mapId || '') !== (actor.mapId || '')) continue;
+        if ((member.instanceId || '') !== (actor.instanceId || '')) continue;
+        if ((member.dungeonId || '') !== (actor.dungeonId || '')) continue;
+        if (Math.hypot(member.x - actor.x, member.z - actor.z) > PARTY_RANGE) continue;
+        tellCombat(member, text, kind);
+    }
+}
+
 function awardKill(killer, npc) {
     const members = partyMembersNear(killer);
     const earning = members.filter(member => xpForKill(member, npc) > 0);
@@ -4787,6 +4807,11 @@ function companionStrike(owner, victim, amount, kind) {
         factor: 1
     }, dealt);
     enterCombat(owner, Date.now());
+    const petLabel = (body && body.name) || (kind === 'minion' ? 'Minion' : 'Pet');
+    const mobLabel = victim.name || 'Mob';
+    const verb = victim.hp <= 0 ? ' kills ' : ' hits ';
+    tellCombat(owner, petLabel + verb + mobLabel + ' for ' + dealt);
+    tellParty(owner, (owner.name || 'Ally') + "'s " + petLabel + verb + mobLabel + ' for ' + dealt);
     if (victim.hp <= 0) {
         downNpc(victim);
         const award = awardKill(owner, victim);
@@ -4989,6 +5014,7 @@ function castSpecial(player, id) {
         const healed = Math.max(1, Math.round(player.maxHp * 0.4));
         player.hp = Math.min(player.maxHp, player.hp + healed);
         startCooldown(player, id, cdMax, now);
+        tellParty(player, (player.name || 'Ally') + ' heals themself for ' + healed, 'heal');
         return { heal: healed, cd: cdMax, cdMax };
     }
     if (id === 'frost-armor') {
@@ -5078,6 +5104,7 @@ function commandPet(player, command) {
         const before = player.pet.hp;
         player.pet.hp = Math.min(player.pet.maxHp, before + amount);
         player.pet.healed = Math.round(player.pet.hp - before);
+        tellParty(player, (player.name || 'Ally') + ' heals ' + (player.pet.name || 'Wolf') + ' for ' + player.pet.healed, 'heal');
     } else if (command === 'bite') {
         if (!hasSpecial(player, 'pet-bite')) return 'A trainer teaches Bite at level 40';
         if (!playerFocus(player)) return 'Select a target';
@@ -5216,6 +5243,11 @@ function tickNpcs() {
                         }
                         if (victim === owner.minion) owner.minion = null;
                     }
+                    const petLabel = victim.name || (focus.kind === 'minion' ? 'Minion' : 'Pet');
+                    const mobLabel = npc.name || 'Mob';
+                    const taken = mobLabel + (victim.hp <= 0 ? ' kills ' : ' hits ') + petLabel + ' for ' + damage;
+                    tellCombat(owner, taken);
+                    tellParty(owner, mobLabel + (victim.hp <= 0 ? ' kills ' : ' hits ') + (owner.name || 'Ally') + "'s " + petLabel + ' for ' + damage);
                     const swing = { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: bolt, x: npc.x, z: npc.z, tx: victim.x, tz: victim.z };
                     for (const watcher of players.values()) {
                         if ((watcher.mapId || '') !== (npc.mapId || '')) continue;
@@ -5784,6 +5816,8 @@ wss.on('connection', (ws) => {
                     tz: subject.z
                 });
                 if (subject !== player) send(subject.ws, { type: 'healed', amount: healed, from: player.name, ...statsOf(subject) });
+                const healedName = subject === player ? 'themself' : (subject.name || 'an ally');
+                tellParty(player, (player.name || 'Ally') + ' heals ' + healedName + ' for ' + healed, 'heal');
                 send(ws, { type: 'attackResult', ok: true, ability: abilityId, cd: cdMax, cdMax, spent: cost, heal: healed, targetId: subject.persistentId, ...statsOf(player) });
                 return;
             }
@@ -5910,6 +5944,7 @@ wss.on('connection', (ws) => {
                 const dealtNow = Math.max(1, Math.round(per * scale * damageScale(player.level, victim.level)));
                 victim.hp -= dealtNow;
                 noteThreat(victim, playerThreat(player), dealtNow);
+                tellParty(player, (player.name || 'Ally') + (victim.hp <= 0 ? ' kills ' : ' hits ') + (victim.name || 'Mob') + ' for ' + dealtNow);
                 if (spec.slow) victim.slowUntil = Math.max(victim.slowUntil || 0, Date.now() + spec.slow);
                 let gained = 0;
                 let leveled = false;
@@ -6374,6 +6409,7 @@ wss.on('connection', (ws) => {
                 enterCombat(player, now);
                 npc.hp -= damage;
                 noteThreat(npc, playerThreat(player), damage);
+                tellParty(player, (player.name || 'Ally') + (npc.hp <= 0 ? ' kills ' : ' hits ') + (npc.name || 'Mob') + ' for ' + damage + ' with a bomb');
                 let gained = 0;
                 let leveled = false;
                 let chest = null;
