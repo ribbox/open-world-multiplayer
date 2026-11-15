@@ -168,8 +168,8 @@
         import { readWorkbook, applyQuestPlaces } from './sheets.js';
 
         const MOBS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
-        const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes'];
-        const CAMP_COLOR = { hamlet: '#f1c40f', outpost: '#c0392b', market: '#e67e22', shrine: '#5dade2', ruin: '#95a5a6', ashes: '#6e2c00' };
+        const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes', 'city'];
+        const CAMP_COLOR = { hamlet: '#f1c40f', outpost: '#c0392b', market: '#e67e22', shrine: '#5dade2', ruin: '#95a5a6', ashes: '#6e2c00', city: '#f7e7a1' };
         const CAMP_PRESETS = [
             { layout: 'hamlet', shop: 'Merchant', trainer: '', quest: '', inn: 'Innkeeper', broker: 'Broker' },
             { layout: 'outpost', shop: '', trainer: 'Warden', quest: '', inn: 'Innkeeper', broker: '' },
@@ -412,7 +412,7 @@
             box.appendChild(campsTitle);
             if (!current.camps.length) {
                 const empty = document.createElement('p');
-                empty.textContent = 'Use the Camp tool to place one inside this zone.';
+                empty.textContent = 'Use the Camp tool to place one inside this zone. Set Buildings to city for a large safe town.';
                 box.appendChild(empty);
             }
             current.camps.forEach((camp, index) => {
@@ -431,7 +431,19 @@
                     if (id === camp.layout) option.selected = true;
                     layout.appendChild(option);
                 }
-                layout.addEventListener('change', () => { remember(); camp.layout = layout.value; draw(); });
+                layout.addEventListener('change', () => {
+                    remember();
+                    camp.layout = layout.value;
+                    if (layout.value === 'city') {
+                        if (!camp.shop) camp.shop = 'Merchant';
+                        if (!camp.trainer) camp.trainer = 'Tutor';
+                        if (!camp.quest) camp.quest = 'Herald';
+                        if (!camp.broker) camp.broker = 'Broker';
+                        if (!camp.inn) camp.inn = 'Steward';
+                    }
+                    draw();
+                    renderFields();
+                });
                 block.appendChild(labelWrap('Buildings', layout));
                 const innName = document.createElement('input');
                 innName.type = 'text';
@@ -647,7 +659,7 @@
             }
             config.zones.forEach((entry, index) => {
                 strokeZone(entry.points, entry.edges, index === selected ? 'rgba(241,196,15,0.35)' : entry.elite ? 'rgba(230,126,34,0.34)' : 'rgba(90,170,255,0.28)', index === selected ? '#f1c40f' : entry.elite ? '#e67e22' : '#9cf', true);
-                for (const camp of entry.camps) mark(camp.x, camp.z, CAMP_COLOR[camp.layout] || '#f1c40f', 5);
+                for (const camp of entry.camps) mark(camp.x, camp.z, CAMP_COLOR[camp.layout] || '#f1c40f', camp.layout === 'city' ? 11 : 5);
                 for (const node of entry.nodes) {
                     const color = node.type === 'tree' ? '#27ae60' : node.type === 'plain-tree' ? '#145a32' : node.type === 'rock' ? '#e67e22' : node.type === 'plain-rock' ? '#888' : node.type === 'herb' ? '#7dff4a' : '#f4d03f';
                     mark(node.x, node.z, color, 3);

@@ -651,7 +651,9 @@ export function zoneCamp(zx, zz) {
 
 const CAMP_NAMES = ['Ada', 'Bex', 'Cal', 'Dax', 'Eve', 'Faye', 'Gil', 'Hana', 'Ivo', 'Jem', 'Kit', 'Len', 'Mae', 'Nim', 'Ora', 'Pim', 'Quill', 'Ren', 'Siv', 'Tor', 'Una', 'Vik', 'Wyn', 'Yara', 'Zed'];
 
-export const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes'];
+const SMALL_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes'];
+export const CAMP_LAYOUTS = SMALL_LAYOUTS.concat(['city']);
+export const CITY_RADIUS = 70;
 
 const ROLE_OFFSET = {
     hamlet: { shop: [3.5, -2.4], trainer: [-3.6, -2.2], quest: [0.2, 3.5], inn: [0.4, 1.3], broker: [-1.8, -3.1] },
@@ -659,27 +661,32 @@ const ROLE_OFFSET = {
     market: { shop: [0.2, -3.1], trainer: [-3.4, 2.4], quest: [3.6, 2.2], inn: [0.1, 1.7], broker: [2.8, -0.6] },
     shrine: { shop: [4.4, 0.2], trainer: [-4.4, 0.6], quest: [0, 4.6], inn: [0.2, -4.2], broker: [-2.2, -3.2] },
     ruin: { shop: [3.4, -2.6], trainer: [-3.4, -2.2], quest: [0.6, 3.4], inn: [-0.2, 2.6], broker: [1.6, -3.8] },
-    ashes: { shop: [2.8, -1.8], trainer: [-2.8, -1.4], quest: [0.2, 2.8], inn: [1.5, 1.5], broker: [-1.8, 2.4] }
+    ashes: { shop: [2.8, -1.8], trainer: [-2.8, -1.4], quest: [0.2, 2.8], inn: [1.5, 1.5], broker: [-1.8, 2.4] },
+    city: { shop: [-10, -6], trainer: [10, 4], quest: [0, -10], inn: [0, 14], broker: [12, -6] }
 };
 
 export function campYaw(x, z) {
     return (chunkSeed(Math.round(x), Math.round(z)) % 4) * (Math.PI / 2);
 }
 
-export function campSpot(layout, role, x, z) {
-    const table = ROLE_OFFSET[layout] || ROLE_OFFSET.hamlet;
-    const local = table[role] || [0, 2.5];
+export function campOffset(x, z, lx, lz) {
     const yaw = campYaw(x, z);
     const c = Math.cos(yaw);
     const s = Math.sin(yaw);
-    return { x: x + local[0] * c - local[1] * s, z: z + local[0] * s + local[1] * c };
+    return { x: x + lx * c - lz * s, z: z + lx * s + lz * c };
+}
+
+export function campSpot(layout, role, x, z) {
+    const table = ROLE_OFFSET[layout] || ROLE_OFFSET.hamlet;
+    const local = table[role] || [0, 2.5];
+    return campOffset(x, z, local[0], local[1]);
 }
 
 export function zoneCampPlan(zx, zz) {
     const camp = zoneCamp(zx, zz);
     const place = zoneName(zx, zz);
     const h = chunkSeed(zx + 3, zz + 9);
-    const layout = CAMP_LAYOUTS[h % CAMP_LAYOUTS.length];
+    const layout = SMALL_LAYOUTS[h % SMALL_LAYOUTS.length];
     const roll = (h >>> 4) % 6;
     const shopName = CAMP_NAMES[h % CAMP_NAMES.length];
     let trainName = CAMP_NAMES[(h >>> 8) % CAMP_NAMES.length];

@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, installMaps, activateMap, currentMapId, mapBriefs, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked, dungeonTravel, zoneNameOnMap } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, campOffset, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, installMaps, activateMap, currentMapId, mapBriefs, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, CITY_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked, dungeonTravel, zoneNameOnMap } from './worldgen.js';
 import { defaultIconName, iconKeyFromChoice } from './icons.js';
 import { buildWorkbook, readWorkbook, spreadsheetUrl, clipboardSheets } from './sheets.js';
 
@@ -101,6 +101,21 @@ const AGGRO_RANGE = 9;
 const ATTACK_RANGE = 2.6;
 const NPC_HIT_RANGE = 1.55;
 const SETTLEMENT_RADIUS = 14;
+
+const CITY_PEOPLE = [
+    { name: 'Arlo', title: 'Porter', text: 'The south road is the busy one.', lx: -23, lz: 0 },
+    { name: 'Bess', title: 'Clerk', text: 'The hall keeps the city books.', lx: 23, lz: 0 },
+    { name: 'Cora', title: 'Crier', text: 'No fighting inside the city.', lx: 0, lz: 23 },
+    { name: 'Dara', title: 'Weaver', text: 'The stalls change by the hour.', lx: 0, lz: -23 },
+    { name: 'Ewan', title: 'Mason', text: 'These streets were cut for wagons.', lx: -37, lz: 23 },
+    { name: 'Faye', title: 'Baker', text: 'The ovens are down the west row.', lx: 37, lz: -23 },
+    { name: 'Gita', title: 'Scout', text: 'The wilds start past the last house.', lx: -23, lz: 37 },
+    { name: 'Ivo', title: 'Lampman', text: 'I walk the avenues until dusk.', lx: 23, lz: -37 },
+    { name: 'Joss', title: 'Herbalist', text: 'The city is safe. The road is not.', lx: -37, lz: -23 },
+    { name: 'Kira', title: 'Runner', text: 'Messages go from hall to gate.', lx: 37, lz: 23 },
+    { name: 'Ludo', title: 'Singer', text: 'The square is for talk, not swords.', lx: 0, lz: 37 },
+    { name: 'Nima', title: 'Watch', text: 'I keep an eye on the outer street.', lx: 0, lz: -37 }
+];
 
 const NPC_KINDS = {
     boar: { id: 'boar', name: 'Wild Boar', tint: '#8d6a3a', loot: 'hide' },
@@ -253,6 +268,28 @@ function rebuildCivilians() {
                 pushCampRole(CIVILIANS, camp, zone, index, 'trainer', 'Trainer', '#5dade2', 'I train spells in ' + zone.name + '.');
                 pushCampRole(CIVILIANS, camp, zone, index, 'quest', 'Quest giver', '#2ecc71', 'I keep the road through ' + zone.name + '.');
                 pushCampRole(CIVILIANS, camp, zone, index, 'broker', 'Market broker', '#d4a017', 'I keep the market board in ' + zone.name + '. List bag goods, or buy what others have listed.');
+                if (camp.layout === 'city') {
+                    CITY_PEOPLE.forEach((person, n) => {
+                        const spot = campOffset(camp.x, camp.z, person.lx, person.lz);
+                        if (!campStanding(spot.x, spot.z)) return;
+                        const civ = {
+                            id: 'dcitizen-' + zone.id + '-' + index + '-' + n,
+                            name: person.name,
+                            role: 'citizen',
+                            title: person.title,
+                            tint: '#f6e7c1',
+                            x: spot.x,
+                            z: spot.z,
+                            homeX: spot.x,
+                            homeZ: spot.z,
+                            text: person.text,
+                            quest: '',
+                            roam: 18
+                        };
+                        faceFolk(civ, camp.x, camp.z);
+                        CIVILIANS.push(civ);
+                    });
+                }
             });
         }
         for (const dungeon of listDungeons()) {
@@ -301,7 +338,7 @@ function rebuildCivilians() {
                 if (civ.rotY == null) faceFolk(civ, null, null);
             }
         }
-        for (const site of campSites()) sites.push({ x: site.x, z: site.z, mapId: brief.id || '' });
+        for (const site of campSites()) sites.push({ x: site.x, z: site.z, mapId: brief.id || '', r: site.layout === 'city' ? CITY_RADIUS : SETTLEMENT_RADIUS });
     });
     settlementSites = sites;
     if (briefs[0]) activateMap(briefs[0].id);
@@ -342,14 +379,14 @@ function inSettlement(x, z) {
 
 function settlementAt(x, z) {
     let best = null;
-    const reach = SETTLEMENT_RADIUS * SETTLEMENT_RADIUS;
     const mapId = currentMapId();
     for (const site of settlementSites) {
         if (mapId && site.mapId && site.mapId !== mapId) continue;
         const dx = x - site.x;
         const dz = z - site.z;
+        const radius = site.r || SETTLEMENT_RADIUS;
         const d = dx * dx + dz * dz;
-        if (d <= reach && (!best || d < best.d)) best = { x: site.x, z: site.z, d };
+        if (d <= radius * radius && (!best || d < best.d)) best = { x: site.x, z: site.z, d, r: radius };
     }
     return best;
 }
@@ -361,7 +398,7 @@ function outsideSettlement(x, z) {
     let dx = (x - site.x) / dist;
     let dz = (z - site.z) / dist;
     if (!dx && !dz) { dx = 1; dz = 0; }
-    const reach = SETTLEMENT_RADIUS + 2;
+    const reach = site.r + 2;
     return { x: site.x + dx * reach, z: site.z + dz * reach };
 }
 
@@ -833,8 +870,8 @@ function tickEscorts(dt, now) {
             }
             continue;
         }
-        const site = settlementAt(civ.homeX, civ.homeZ) || { x: civ.homeX, z: civ.homeZ };
-        const goal = SETTLEMENT_RADIUS + 22;
+        const site = settlementAt(civ.homeX, civ.homeZ) || { x: civ.homeX, z: civ.homeZ, r: SETTLEMENT_RADIUS };
+        const goal = (site.r || SETTLEMENT_RADIUS) + 22;
         if (stepCiv(civ, site.x + civ.escort.dx * goal, site.z + civ.escort.dz * goal, 2.2 * dt)) moved = true;
         if (!inSettlement(civ.x, civ.z) && !civ.escort.outsideAt) civ.escort.outsideAt = now;
     }
@@ -849,7 +886,7 @@ function folkNear(civ) {
     for (const player of players.values()) {
         if ((player.mapId || '') !== (civ.mapId || '')) continue;
         if (player.dungeonId) continue;
-        if (Math.hypot(player.x - (civ.homeX ?? civ.x), player.z - (civ.homeZ ?? civ.z)) < 64) return true;
+        if (Math.hypot(player.x - (civ.homeX ?? civ.x), player.z - (civ.homeZ ?? civ.z)) < (civ.roam ? 140 : 64)) return true;
     }
     return false;
 }
@@ -868,15 +905,16 @@ function tickFolk(dt, now) {
         const dist = Math.hypot(dx, dz);
         if (dist < 0.2) {
             const ang = Math.random() * Math.PI * 2;
-            const rad = 0.35 + Math.random() * 1.15;
+            const reach = civ.roam || 1.15;
+            const rad = civ.roam ? 4 + Math.random() * Math.max(1, reach - 4) : 0.35 + Math.random() * reach;
             civ.wander.tx = civ.homeX + Math.sin(ang) * rad;
             civ.wander.tz = civ.homeZ + Math.cos(ang) * rad;
-            civ.wander.until = now + 1600 + Math.random() * 2600;
+            civ.wander.until = now + (civ.roam ? 400 : 1600) + Math.random() * (civ.roam ? 900 : 2600);
             civ.rotY = Math.atan2(civ.wander.tx - civ.x, civ.wander.tz - civ.z);
             moved = true;
             continue;
         }
-        const step = Math.min(0.65 * dt, dist);
+        const step = Math.min((civ.roam ? 1.45 : 0.65) * dt, dist);
         dx /= dist;
         dz /= dist;
         const held = clampWorld(civ.x + dx * step, civ.z + dz * step, 2);
