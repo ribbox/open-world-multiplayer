@@ -3946,10 +3946,9 @@ function publicChest(chest) {
 function spawnChest(npc, owners) {
     if (npc.chapel) return spawnChapelChests(npc, owners);
     const items = rollLoot(npc.level, npc.loot);
-    const list = Array.isArray(owners) ? owners : [owners];
+    const list = (Array.isArray(owners) ? owners : [owners]).filter(Boolean);
     const seen = new Set();
     for (const owner of list) {
-        if (!owner) continue;
         for (const drop of questChestDrops(owner, npc)) {
             const key = (drop.questId || '') + '\n' + drop.name;
             if (seen.has(key)) continue;
@@ -3958,17 +3957,22 @@ function spawnChest(npc, owners) {
         }
     }
     if (mobIsNamed(npc)) stampNamed(items);
+    const mapId = npc.mapId || (list[0] && list[0].mapId) || currentMapId();
     const chest = {
         id: 'c' + (chestSeq++),
         x: npc.x,
         z: npc.z,
         level: npc.level,
         items,
-        mapId: npc.mapId || currentMapId(),
+        mapId,
         spawnedAt: Date.now()
     };
     chests.set(chest.id, chest);
-    broadcastMap(chest.mapId, { type: 'chest', chest: publicChest(chest) });
+    const packet = { type: 'chest', chest: publicChest(chest) };
+    broadcastMap(mapId, packet);
+    for (const owner of list) {
+        if (owner.ws && (owner.mapId || '') !== (mapId || '')) send(owner.ws, packet);
+    }
     return chest;
 }
 
