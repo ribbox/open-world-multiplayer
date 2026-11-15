@@ -2008,9 +2008,14 @@ function partyMembersNear(player) {
     return near;
 }
 
+function mobTag(npc) {
+    const id = String((npc && npc.id) || '').slice(-8);
+    return ((npc && npc.name) || 'Mob') + (id ? ' #' + id : '');
+}
+
 function tellCombat(player, text, kind) {
     if (!player || !player.ws || !text) return;
-    send(player.ws, { type: 'combatLog', text: String(text).slice(0, 160), kind: kind || 'combat' });
+    send(player.ws, { type: 'combatLog', text: String(text).slice(0, 220), kind: kind || 'combat' });
 }
 
 function tellParty(actor, text, kind) {
@@ -4769,12 +4774,14 @@ function threatLiving(npc, row) {
     if (row.kind === 'player') {
         const player = players.get(row.id);
         if (!sameFight(npc, player)) return null;
+        if (!npc.dungeonId && inSettlement(player.x, player.z)) return null;
         return { id: row.id, name: player.name, kind: 'player', player, body: null, x: player.x, z: player.z };
     }
     const owner = players.get(row.ownerId);
     if (!sameFight(npc, owner)) return null;
     const body = row.kind === 'minion' ? owner.minion : owner.pet;
     if (!body || !body.alive || body.hp <= 0) return null;
+    if (!npc.dungeonId && inSettlement(body.x, body.z)) return null;
     return { id: row.id, name: body.name || row.name, kind: row.kind, player: owner, body, x: body.x, z: body.z };
 }
 
@@ -4791,7 +4798,7 @@ function threatFocus(npc) {
         }
     }
     const near = npc.dungeonId ? dungeonThreat(npc) : nearestPlayer(npc, AGGRO_RANGE);
-    if (!near) return null;
+    if (!near || (!npc.dungeonId && inSettlement(near.x, near.z))) return null;
     return { id: near.persistentId, name: near.name, kind: 'player', player: near, body: null, x: near.x, z: near.z };
 }
 
@@ -4848,10 +4855,9 @@ function companionStrike(owner, victim, amount, kind) {
     }, dealt);
     enterCombat(owner, Date.now());
     const petLabel = (body && body.name) || (kind === 'minion' ? 'Minion' : 'Pet');
-    const mobLabel = victim.name || 'Mob';
     const verb = victim.hp <= 0 ? ' kills ' : ' hits ';
-    tellCombat(owner, petLabel + verb + mobLabel + ' for ' + dealt);
-    tellParty(owner, (owner.name || 'Ally') + "'s " + petLabel + verb + mobLabel + ' for ' + dealt);
+    tellCombat(owner, petLabel + verb + mobTag(victim) + ' for ' + dealt);
+    tellParty(owner, (owner.name || 'Ally') + "'s " + petLabel + verb + mobTag(victim) + ' for ' + dealt);
     if (victim.hp <= 0) {
         downNpc(victim);
         const award = awardKill(owner, victim);
@@ -5000,6 +5006,7 @@ function tickCompanions(now, dt) {
                 player.pet.strength = next.strength;
             }
             if (player.pet.alive && !player.ghost) {
+                if (!player.dungeonId && inSettlement(player.pet.x, player.pet.z)) player.pet.attackerId = '';
                 tickCompanionBody(player, player.pet, now, dt);
                 if (player.pet.hp > 0 && player.pet.hp < player.pet.maxHp && now >= (player.combatUntil || 0)) {
                     player.pet.hp = Math.min(player.pet.maxHp, player.pet.hp + dt * player.pet.maxHp * 0.04);
@@ -5284,6 +5291,11 @@ function tickNpcs() {
             }
             const owner = focus.player;
             const victim = focus.kind === 'player' ? owner : focus.body;
+            if (!npc.dungeonId && victim && inSettlement(victim.x, victim.z)) {
+                npc.aggroId = null;
+                if (npc.threat) npc.threat.delete(focus.id);
+                continue;
+            }
             const shielded = focus.kind === 'player' && now < (owner.invulnUntil || 0);
             if (victim && now >= npc.attackAt && !shielded) {
                 npc.attackAt = now + (casting ? 1800 : 1400);
@@ -5312,10 +5324,9 @@ function tickNpcs() {
                         if (victim === owner.minion) owner.minion = null;
                     }
                     const petLabel = victim.name || (focus.kind === 'minion' ? 'Minion' : 'Pet');
-                    const mobLabel = npc.name || 'Mob';
-                    const taken = mobLabel + (victim.hp <= 0 ? ' kills ' : ' hits ') + petLabel + ' for ' + damage;
+                    const taken = mobTag(npc) + (victim.hp <= 0 ? ' kills ' : ' hits ') + petLabel + ' for ' + damage;
                     tellCombat(owner, taken);
-                    tellParty(owner, mobLabel + (victim.hp <= 0 ? ' kills ' : ' hits ') + (owner.name || 'Ally') + "'s " + petLabel + ' for ' + damage);
+                    tellParty(owner, mobTag(npc) + (victim.hp <= 0 ? ' kills ' : ' hits ') + (owner.name || 'Ally') + "'s " + petLabel + ' for ' + damage);
                     const swing = { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: bolt, x: npc.x, z: npc.z, tx: victim.x, tz: victim.z };
                     for (const watcher of players.values()) {
                         if ((watcher.mapId || '') !== (npc.mapId || '')) continue;
