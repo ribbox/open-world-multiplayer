@@ -9483,11 +9483,13 @@
                 for (const remoteMixer of remoteMixers) remoteMixer.update(delta);
                 for (const entry of worldNpcs.values()) {
                     if (entry.dying) continue;
-                    entry.group.visible = !!entry.dungeonId || hillDrawn(entry.tx, entry.tz);
+                    entry.group.visible = !!entry.dungeonId || hillDrawn(entry.tx, entry.tz) || Math.hypot(entry.tx - characterGroup.position.x, entry.tz - characterGroup.position.z) < 36;
                     entry.group.position.x += (entry.tx - entry.group.position.x) * Math.min(1, delta * 10);
                     entry.group.position.z += (entry.tz - entry.group.position.z) * Math.min(1, delta * 10);
                     entry.group.rotation.y = entry.rotY;
                     if (!entry.dying) entry.group.position.y = entry.dungeonId ? 0.2 : terrainHeight(entry.group.position.x, entry.group.position.z);
+                    const name = entry.group.userData.label;
+                    if (name) name.visible = entry.group.visible && (entry.group.userData.npcId === selectedNpcId || Math.hypot(entry.group.position.x - characterGroup.position.x, entry.group.position.z - characterGroup.position.z) < 28);
                     const body = entry.group.userData.body;
                     const moved = Math.hypot(entry.group.position.x - (entry.gx ?? entry.group.position.x), entry.group.position.z - (entry.gz ?? entry.group.position.z));
                     entry.gx = entry.group.position.x;

@@ -4907,11 +4907,23 @@ function stepCompanion(body, tx, tz, speed, dt) {
     return Math.hypot(tx - body.x, tz - body.z);
 }
 
+function companionPrey(owner, body) {
+    if (!body || body.mode === 'stay' || owner.ghost) return null;
+    const chosen = playerFocus(owner);
+    const chosenOk = chosen && !inSettlement(chosen.x, chosen.z);
+    if (body.mode === 'attack' && chosenOk) return chosen;
+    const foe = body.attackerId ? npcs.get(body.attackerId) : null;
+    if (foe && foe.alive && (body.attackerAt || 0) > Date.now() - 8000 && !inSettlement(foe.x, foe.z)) {
+        if ((foe.mapId || '') === (owner.mapId || '') && Math.hypot(foe.x - body.x, foe.z - body.z) < 18) return foe;
+    }
+    return chosenOk ? chosen : null;
+}
+
 function tickCompanionBody(owner, body, now, dt) {
     if (!body || !body.alive || owner.ghost) return;
-    const focus = playerFocus(owner);
-    const safe = inSettlement(owner.x, owner.z) || (focus && inSettlement(focus.x, focus.z));
-    const chase = body.mode !== 'stay' && focus && !safe;
+    const prey = companionPrey(owner, body);
+    const safe = inSettlement(owner.x, owner.z);
+    const chase = prey && !safe;
     const fromOwner = Math.hypot(body.x - owner.x, body.z - owner.z);
     let tx = owner.x + Math.sin((owner.rotY || 0) + 2.4) * 1.6;
     let tz = owner.z + Math.cos((owner.rotY || 0) + 2.4) * 1.6;
@@ -4919,15 +4931,14 @@ function tickCompanionBody(owner, body, now, dt) {
     if (body.mode === 'stay') {
         speed = 0;
     } else if (chase && fromOwner < 24) {
-        tx = focus.x;
-        tz = focus.z;
+        tx = prey.x;
+        tz = prey.z;
         speed = fromOwner > 12 ? 12 : 6.2;
     } else if (fromOwner > 8) {
         speed = 14;
     }
     stepCompanion(body, tx, tz, speed, dt);
-    const prey = (body.mode === 'stay' || chase) && focus && !safe ? focus : null;
-    if (!prey) return;
+    if (!chase) return;
     if (Math.hypot(prey.x - body.x, prey.z - body.z) > 2.1) return;
     if (now < (body.attackAt || 0)) return;
     const biting = body.bite && now < body.bite;
@@ -5281,6 +5292,8 @@ function tickNpcs() {
                     victim.hp = Math.max(0, victim.hp - damage);
                     enterCombat(owner, now);
                     victim.combatUntil = now + COMBAT_HOLD;
+                    victim.attackerId = npc.id;
+                    victim.attackerAt = now;
                     if (victim.hp <= 0) {
                         victim.alive = false;
                         if (victim === owner.pet) {
@@ -5312,6 +5325,10 @@ function tickNpcs() {
                 }
                 if (damage > 0) owner.hp = Math.max(0, owner.hp - damage);
                 enterCombat(owner, now);
+                if (owner.pet && owner.pet.alive) {
+                    owner.pet.attackerId = npc.id;
+                    owner.pet.attackerAt = now;
+                }
                 send(owner.ws, { type: 'hurt', damage, absorbed, attackerId: npc.id, attacker: npc.level, ...statsOf(owner) });
                 const swing = { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: bolt, x: npc.x, z: npc.z, tx: owner.x, tz: owner.z };
                 for (const watcher of players.values()) {
