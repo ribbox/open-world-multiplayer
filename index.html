@@ -150,6 +150,32 @@
             background: rgba(0,0,0,0.72); border: 1px solid rgba(255,255,255,0.45);
             border-radius: 4px; cursor: pointer;
         }
+        #threatButton {
+            position: absolute; right: 60px; top: 156px; z-index: 12;
+            height: 20px; padding: 0 6px; font-size: 11px; color: white;
+            background: rgba(0,0,0,0.72); border: 1px solid rgba(255,255,255,0.45);
+            border-radius: 4px; cursor: pointer;
+        }
+        #threatButton.on { border-color: #f1c40f; color: #f1c40f; }
+        #threatWindow {
+            position: absolute; left: 12px; top: 64px; z-index: 22; width: 280px;
+            max-height: calc(100vh - 190px); overflow: auto; color: white;
+            background: rgba(12, 14, 18, 0.94); border: 1px solid rgba(241,196,15,0.7);
+            border-radius: 8px; padding: 10px 12px; pointer-events: auto;
+        }
+        #threatWindow[hidden] { display: none; }
+        #threatHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        #threatHead h2 { margin: 0; font-size: 15px; }
+        #threatWindow h3 { margin: 10px 0 4px; font-size: 13px; color: #f1c40f; }
+        #threatWindow p { margin: 0 0 3px; font-size: 12px; }
+        #threatWindow .muted { color: #bbb; }
+        .threat-row { margin: 0 0 6px; }
+        .threat-label { font-size: 12px; }
+        .threat-row.top .threat-label { color: #f1c40f; }
+        .threat-track { position: relative; height: 12px; margin-top: 2px; background: rgba(255,255,255,0.12); border-radius: 3px; overflow: hidden; }
+        .threat-track i { display: block; height: 100%; width: 0; background: #c0392b; }
+        .threat-row.top .threat-track i { background: #e2c48a; }
+        .threat-track span { position: absolute; right: 4px; top: -1px; font-size: 10px; line-height: 12px; }
         #mapLayers {
             position: absolute; right: 204px; top: 12px; z-index: 12;
             width: 128px; color: white; background: rgba(0,0,0,0.82);
@@ -1002,6 +1028,7 @@
             <button type="button" class="text-btn" id="worldmapClose">Close</button>
         </div>
     </div>
+    <button type="button" id="threatButton" title="Threat list">Threat</button>
     <button type="button" id="mapLayersButton" title="Choose what the minimap shows">Map</button>
     <div id="mapLayers" hidden>
         <label><input type="checkbox" data-layer="grid" checked> <i style="background:#fff"></i> Grid</label>
@@ -1013,6 +1040,13 @@
         <label><input type="checkbox" data-layer="players" checked> <i style="background:#5dade2;border-radius:50%"></i> Players</label>
     </div>
     <div id="questTracker" hidden></div>
+    <div id="threatWindow" hidden>
+        <div id="threatHead">
+            <h2>Threat</h2>
+            <button type="button" class="text-btn" id="threatClose">Close</button>
+        </div>
+        <div id="threatBody"><p class="muted">Open during a fight. The number is threat. The bar is that fighter's share of the damage.</p></div>
+    </div>
     <div id="party" hidden></div>
     <div id="partyPrompt" hidden>
         <div id="partyPromptText">Party invite</div>
@@ -8991,6 +9025,66 @@
             const tradeButton = document.getElementById('tradeButton');
             if (tradeButton) tradeButton.addEventListener('click', () => toggleTrade());
             document.getElementById('questButton').addEventListener('click', () => toggleQuestLog());
+            function setThreatWatch(on) {
+                const panel = document.getElementById('threatWindow');
+                const button = document.getElementById('threatButton');
+                panel.hidden = !on;
+                button.classList.toggle('on', !!on);
+                if (gameSocket && gameSocket.readyState === WebSocket.OPEN) gameSocket.send(JSON.stringify({ type: 'threatWatch', on: !!on }));
+            }
+            function renderThreat(data) {
+                const body = document.getElementById('threatBody');
+                body.textContent = '';
+                const peopleTitle = document.createElement('h3');
+                peopleTitle.textContent = 'Players';
+                body.appendChild(peopleTitle);
+                const people = data.people || [];
+                if (!people.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'muted';
+                    empty.textContent = 'No one nearby';
+                    body.appendChild(empty);
+                }
+                for (const person of people) {
+                    const line = document.createElement('p');
+                    line.textContent = person.name + ' · ' + (person.class || 'no class') + ' · ' + person.level;
+                    body.appendChild(line);
+                }
+                const mobs = data.mobs || [];
+                if (!mobs.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'muted';
+                    empty.textContent = 'No threat yet. Hit a mob.';
+                    body.appendChild(empty);
+                    return;
+                }
+                for (const mob of mobs) {
+                    const title = document.createElement('h3');
+                    title.textContent = (mob.elite ? 'Elite ' : '') + mob.name + ' · ' + mob.level;
+                    body.appendChild(title);
+                    for (const row of mob.rows || []) {
+                        const line = document.createElement('div');
+                        line.className = 'threat-row' + (row.top ? ' top' : '');
+                        const label = document.createElement('div');
+                        label.className = 'threat-label';
+                        const who = row.kind && row.kind !== 'player' ? row.name + ' · ' + row.kind : row.name;
+                        label.textContent = (row.top ? '▸ ' : '') + who + '  ' + row.threat;
+                        const track = document.createElement('div');
+                        track.className = 'threat-track';
+                        const fill = document.createElement('i');
+                        fill.style.width = Math.max(0, Math.min(100, row.pct || 0)) + '%';
+                        const pct = document.createElement('span');
+                        pct.textContent = (row.pct || 0) + '%';
+                        track.append(fill, pct);
+                        line.append(label, track);
+                        body.appendChild(line);
+                    }
+                }
+            }
+            document.getElementById('threatButton').addEventListener('click', () => {
+                setThreatWatch(document.getElementById('threatWindow').hidden);
+            });
+            document.getElementById('threatClose').addEventListener('click', () => setThreatWatch(false));
             document.getElementById('sheetButton').addEventListener('click', toggleSheet);
             document.getElementById('reclaimButton').addEventListener('click', tryReclaim);
             document.getElementById('pagePrev').addEventListener('mousedown', (e) => e.preventDefault());
@@ -10384,6 +10478,8 @@
                         applyStats(data);
                         showMessage('Defeated. Respawned.');
                         sfx('death');
+                    } else if (data.type === 'threat') {
+                        if (!document.getElementById('threatWindow').hidden) renderThreat(data);
                     } else if (data.type === 'quests') {
                         if (data.questDefs) questDefs = data.questDefs;
                         if (data.inventory) applyInventory(data.inventory);

@@ -1504,6 +1504,7 @@ function placeNpc(npc, spot) {
     }
     npc.alive = true;
     npc.aggroId = null;
+    npc.threat = null;
     npc.homeX = npc.x;
     npc.homeZ = npc.z;
     npc.attackAt = 0;
@@ -1742,7 +1743,7 @@ function revealFog(player) {
 function restoreFoughtMobs(player) {
     for (const npc of npcs.values()) {
         if (!npc.alive || npc.hp >= npc.maxHp) continue;
-        const mine = npc.aggroId === player.persistentId;
+        const mine = fightingPlayer(npc, player);
         const near = Math.hypot(npc.x - player.x, npc.z - player.z) < 28;
         if (!mine && !near) continue;
         const other = nearestPlayer(npc, 12);
@@ -1794,6 +1795,9 @@ function becomeGhost(player, now) {
     const revealed = revealFog(player);
     if (revealed.length) send(player.ws, { type: 'fog', add: revealed });
     send(player.ws, { type: 'died', x: player.x, y: 0, z: player.z, corpse: player.corpse, ...statsOf(player) });
+    dropThreat(player.persistentId);
+    dropThreat(player.persistentId + ':pet');
+    dropThreat(player.persistentId + ':minion');
     broadcastSeen(player, { type: 'ghost', ...publicPlayer(player.persistentId, player) });
     refreshSight(player);
     savePlayer(player);
@@ -4642,11 +4646,142 @@ function playerFocus(player) {
     return npc;
 }
 
-function companionStrike(owner, victim, amount) {
+function fightingPlayer(npc, player) {
+    if (!npc || !player) return false;
+    if (npc.aggroId === player.persistentId) return true;
+    if (!npc.threat) return false;
+    const id = player.persistentId;
+    return npc.threat.has(id) || npc.threat.has(id + ':pet') || npc.threat.has(id + ':minion');
+}
+
+function dropThreat(id) {
+    if (!id) return;
+    for (const npc of npcs.values()) {
+        if (npc.threat) npc.threat.delete(id);
+    }
+}
+
+function sameFight(npc, player) {
+    if (!player || player.hp <= 0 || player.ghost) return false;
+    if ((player.mapId || '') !== (npc.mapId || '')) return false;
+    if ((player.instanceId || '') !== (npc.instanceId || '')) return false;
+    if ((player.dungeonId || '') !== (npc.dungeonId || '')) return false;
+    return true;
+}
+
+function plateFactor(player) {
+    if (!player || player.class !== 'warrior' || !player.equipment) return 1;
+    const slots = ['head', 'shoulders', 'chest', 'hands', 'waist', 'legs', 'feet'];
+    let plate = 0;
+    for (const slot of slots) {
+        const piece = player.equipment[slot];
+        if (piece && piece.style === 'plate') plate += 1;
+    }
+    if (!plate) return 1;
+    return 1 + plate / slots.length;
+}
+
+function noteThreat(npc, actor, damage) {
+    if (!npc || !npc.alive || !actor || !(damage > 0)) return;
+    if (!npc.threat) npc.threat = new Map();
+    let row = npc.threat.get(actor.id);
+    if (!row) {
+        row = { id: actor.id, name: actor.name || 'Fighter', kind: actor.kind || 'player', ownerId: actor.ownerId || '', threat: 0, damage: 0 };
+        npc.threat.set(actor.id, row);
+    }
+    row.name = actor.name || row.name;
+    row.kind = actor.kind || row.kind;
+    row.ownerId = actor.ownerId || row.ownerId;
+    row.damage += damage;
+    row.threat += damage * (actor.factor || 1);
+}
+
+function playerThreat(player) {
+    return { id: player.persistentId, name: player.name || 'Player', kind: 'player', ownerId: '', factor: plateFactor(player) };
+}
+
+function threatLiving(npc, row) {
+    if (!row) return null;
+    if (row.kind === 'player') {
+        const player = players.get(row.id);
+        if (!sameFight(npc, player)) return null;
+        return { id: row.id, name: player.name, kind: 'player', player, body: null, x: player.x, z: player.z };
+    }
+    const owner = players.get(row.ownerId);
+    if (!sameFight(npc, owner)) return null;
+    const body = row.kind === 'minion' ? owner.minion : owner.pet;
+    if (!body || !body.alive || body.hp <= 0) return null;
+    return { id: row.id, name: body.name || row.name, kind: row.kind, player: owner, body, x: body.x, z: body.z };
+}
+
+const THREAT_LEASH = 30;
+
+function threatFocus(npc) {
+    if (npc.threat && npc.threat.size) {
+        const ranked = [...npc.threat.values()].sort((a, b) => b.threat - a.threat || b.damage - a.damage);
+        for (const row of ranked) {
+            const live = threatLiving(npc, row);
+            if (!live) continue;
+            if (Math.hypot(live.x - npc.x, live.z - npc.z) > THREAT_LEASH) continue;
+            return live;
+        }
+    }
+    const near = npc.dungeonId ? dungeonThreat(npc) : nearestPlayer(npc, AGGRO_RANGE);
+    if (!near) return null;
+    return { id: near.persistentId, name: near.name, kind: 'player', player: near, body: null, x: near.x, z: near.z };
+}
+
+let lastThreatSend = 0;
+function publishThreat(now) {
+    if (now - lastThreatSend < 300) return;
+    lastThreatSend = now;
+    for (const player of players.values()) {
+        if (!player.threatWatch || !player.ws) continue;
+        const people = [];
+        for (const other of players.values()) {
+            if (other.ghost || other.hp <= 0) continue;
+            if ((other.mapId || '') !== (player.mapId || '')) continue;
+            if ((other.instanceId || '') !== (player.instanceId || '')) continue;
+            if (Math.hypot(other.x - player.x, other.z - player.z) > 48) continue;
+            people.push({ name: other.name || 'Player', class: other.class || '', level: other.level || 1 });
+        }
+        const mobs = [];
+        for (const npc of npcs.values()) {
+            if (!npc.alive || !npc.threat || !npc.threat.size) continue;
+            if ((npc.mapId || '') !== (player.mapId || '')) continue;
+            if ((npc.instanceId || '') !== (player.instanceId || '')) continue;
+            if ((npc.dungeonId || '') !== (player.dungeonId || '')) continue;
+            if (Math.hypot(npc.x - player.x, npc.z - player.z) > 48) continue;
+            let total = 0;
+            for (const row of npc.threat.values()) total += row.damage;
+            const focus = threatFocus(npc);
+            const rows = [...npc.threat.values()].sort((a, b) => b.threat - a.threat).map(row => ({
+                name: row.name,
+                kind: row.kind,
+                threat: Math.round(row.threat),
+                damage: Math.round(row.damage),
+                pct: total > 0 ? Math.round((row.damage / total) * 100) : 0,
+                top: !!(focus && focus.id === row.id)
+            }));
+            mobs.push({ name: npc.name || 'Mob', level: npc.level || 1, elite: !!npc.elite, rows });
+            if (mobs.length >= 6) break;
+        }
+        send(player.ws, { type: 'threat', people, mobs });
+    }
+}
+
+function companionStrike(owner, victim, amount, kind) {
     if (!victim || !victim.alive) return;
     const dealt = Math.max(1, Math.round(amount * damageScale(owner.level, victim.level)));
     victim.hp -= dealt;
-    victim.aggroId = owner.persistentId;
+    const body = kind === 'minion' ? owner.minion : owner.pet;
+    noteThreat(victim, {
+        id: owner.persistentId + ':' + (kind || 'pet'),
+        name: (body && body.name) || (kind === 'minion' ? 'Minion' : 'Pet'),
+        kind: kind || 'pet',
+        ownerId: owner.persistentId,
+        factor: 1
+    }, dealt);
     enterCombat(owner, Date.now());
     if (victim.hp <= 0) {
         downNpc(victim);
@@ -4737,7 +4872,7 @@ function tickCompanionBody(owner, body, now, dt) {
     const biting = body.bite && now < body.bite;
     body.attackAt = now + (biting ? 2400 : 1600);
     if (biting) body.bite = 0;
-    companionStrike(owner, prey, companionPower(owner, biting) * (body.power || 1));
+    companionStrike(owner, prey, companionPower(owner, biting) * (body.power || 1), body === owner.minion ? 'minion' : 'pet');
 }
 
 let lastCompanionSend = 0;
@@ -5015,15 +5150,15 @@ function tickNpcs() {
             npc.aggroId = null;
             continue;
         }
-        const target = npc.dungeonId ? dungeonThreat(npc) : nearestPlayer(npc, AGGRO_RANGE);
-        if (npc.dungeonId && !target) npc.aggroId = null;
+        const focus = threatFocus(npc);
+        if (!focus) npc.aggroId = null;
         let tx = npc.wanderX;
         let tz = npc.wanderZ;
         let speed = 1.7;
-        if (target) {
-            npc.aggroId = target.persistentId;
-            tx = target.x;
-            tz = target.z;
+        if (focus) {
+            npc.aggroId = focus.kind === 'player' ? focus.player.persistentId : focus.id;
+            tx = focus.x;
+            tz = focus.z;
             speed = 3.8;
         } else if (now > npc.wanderUntil) {
             pickWander(npc);
@@ -5043,7 +5178,7 @@ function tickNpcs() {
             casting = !!npc.cultistCast;
             reach = casting ? 8.4 : NPC_HIT_RANGE;
         }
-        if (target && dist <= reach) {
+        if (focus && dist <= reach) {
             npc.rotY = Math.atan2(dx, dz);
             if (pureCaster && dist < 4.2) {
                 const back = Math.min(2.4 * dt, 4.2 - dist);
@@ -5054,41 +5189,49 @@ function tickNpcs() {
                 npc.x -= (dx / dist) * back;
                 npc.z -= (dz / dist) * back;
             }
-            if (now >= npc.attackAt && now >= target.invulnUntil) {
+            const owner = focus.player;
+            const victim = focus.kind === 'player' ? owner : focus.body;
+            const shielded = focus.kind === 'player' && now < (owner.invulnUntil || 0);
+            if (victim && now >= npc.attackAt && !shielded) {
                 npc.attackAt = now + (casting ? 1800 : 1400);
                 if (cultist) npc.cultistCast = !casting;
                 const block = npc.stats || mobStatBlock(npc.level, npc.kind, npc.style);
                 const primary = casting ? (block.intellect || npc.level) : (block.strength || npc.level);
                 const raw = 1 + primary;
-                let damage = npc.elite ? eliteStrike(npc, target) : Math.max(1, Math.round(raw) - target.armor);
-                const guard = companionGuard(npc, target);
-                if (guard) {
-                    const soaked = Math.min(damage, Math.max(4, Math.round((guard.maxHp || 20) * 0.22)));
-                    guard.hp = Math.max(0, guard.hp - soaked);
-                    enterCombat(target, now);
-                    guard.combatUntil = now + COMBAT_HOLD;
-                    if (guard.hp <= 0) {
-                        guard.alive = false;
-                        if (guard === target.pet) {
-                            guard.cause = 'dead';
-                            send(target.ws, { type: 'petResult', ok: false, reason: 'Your pet has fallen', command: 'down', alive: false, hp: 0, maxHp: guard.maxHp, mode: guard.mode });
+                let damage = npc.elite ? eliteStrike(npc, victim) : Math.max(1, Math.round(raw) - (victim.armor || 0));
+                const bolt = npc.kind === 'wisp' ? '#7ee7ff' : npc.kind === 'cultist' ? '#d56bff' : '#b46bff';
+                if (focus.kind !== 'player') {
+                    victim.hp = Math.max(0, victim.hp - damage);
+                    enterCombat(owner, now);
+                    victim.combatUntil = now + COMBAT_HOLD;
+                    if (victim.hp <= 0) {
+                        victim.alive = false;
+                        if (victim === owner.pet) {
+                            victim.cause = 'dead';
+                            send(owner.ws, { type: 'petResult', ok: false, reason: 'Your pet has fallen', command: 'down', alive: false, hp: 0, maxHp: victim.maxHp, mode: victim.mode });
                         }
-                        if (guard === target.minion) target.minion = null;
+                        if (victim === owner.minion) owner.minion = null;
                     }
-                    send(target.ws, { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: '#c0392b', x: npc.x, z: npc.z, tx: guard.x, tz: guard.z });
+                    const swing = { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: bolt, x: npc.x, z: npc.z, tx: victim.x, tz: victim.z };
+                    for (const watcher of players.values()) {
+                        if ((watcher.mapId || '') !== (npc.mapId || '')) continue;
+                        if ((watcher.instanceId || '') !== (npc.instanceId || '')) continue;
+                        if (npc.dungeonId && watcher.dungeonId !== npc.dungeonId) continue;
+                        if (Math.hypot(watcher.x - npc.x, watcher.z - npc.z) > 70) continue;
+                        send(watcher.ws, swing);
+                    }
                     continue;
                 }
                 let absorbed = 0;
-                if ((target.absorbUntil || 0) > now && target.absorb > 0) {
-                    absorbed = Math.min(target.absorb, damage);
-                    target.absorb -= absorbed;
+                if ((owner.absorbUntil || 0) > now && owner.absorb > 0) {
+                    absorbed = Math.min(owner.absorb, damage);
+                    owner.absorb -= absorbed;
                     damage -= absorbed;
                 }
-                if (damage > 0) target.hp = Math.max(0, target.hp - damage);
-                enterCombat(target, now);
-                send(target.ws, { type: 'hurt', damage, absorbed, attackerId: npc.id, attacker: npc.level, ...statsOf(target) });
-                const bolt = npc.kind === 'wisp' ? '#7ee7ff' : npc.kind === 'cultist' ? '#d56bff' : '#b46bff';
-                const swing = { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: bolt, x: npc.x, z: npc.z, tx: target.x, tz: target.z };
+                if (damage > 0) owner.hp = Math.max(0, owner.hp - damage);
+                enterCombat(owner, now);
+                send(owner.ws, { type: 'hurt', damage, absorbed, attackerId: npc.id, attacker: npc.level, ...statsOf(owner) });
+                const swing = { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: bolt, x: npc.x, z: npc.z, tx: owner.x, tz: owner.z };
                 for (const watcher of players.values()) {
                     if ((watcher.mapId || '') !== (npc.mapId || '')) continue;
                     if ((watcher.instanceId || '') !== (npc.instanceId || '')) continue;
@@ -5096,12 +5239,12 @@ function tickNpcs() {
                     if (Math.hypot(watcher.x - npc.x, watcher.z - npc.z) > 70) continue;
                     send(watcher.ws, swing);
                 }
-                if (target.hp <= 0) becomeGhost(target, now);
+                if (owner.hp <= 0) becomeGhost(owner, now);
             }
             continue;
         }
         if (dist < 0.4) {
-            if (!target) pickWander(npc);
+            if (!focus) pickWander(npc);
             continue;
         }
         const step = Math.min(speed * dt, dist);
@@ -5160,6 +5303,7 @@ function tickNpcs() {
     syncPartyVitals();
     syncQuestActors(now);
     tickCompanions(now, dt);
+    publishThreat(now);
 }
 
 setInterval(tickNpcs, 50);
@@ -5341,6 +5485,11 @@ wss.on('connection', (ws) => {
         const player = sessionId ? players.get(sessionId) : null;
         if (!player || player.ws !== ws) return;
         if (player.mapId) activateMap(player.mapId);
+
+        if (data.type === 'threatWatch') {
+            player.threatWatch = !!data.on;
+            return;
+        }
 
         if (data.type === 'update') {
             const prevX = player.x;
@@ -5756,7 +5905,7 @@ wss.on('connection', (ws) => {
                 if ((player.shoutUntil || 0) > Date.now()) scale *= 1.25;
                 const dealtNow = Math.max(1, Math.round(per * scale * damageScale(player.level, victim.level)));
                 victim.hp -= dealtNow;
-                victim.aggroId = player.persistentId;
+                noteThreat(victim, playerThreat(player), dealtNow);
                 if (spec.slow) victim.slowUntil = Math.max(victim.slowUntil || 0, Date.now() + spec.slow);
                 let gained = 0;
                 let leveled = false;
@@ -6220,6 +6369,7 @@ wss.on('connection', (ws) => {
                 const damage = slot.amount || 10;
                 enterCombat(player, now);
                 npc.hp -= damage;
+                noteThreat(npc, playerThreat(player), damage);
                 let gained = 0;
                 let leveled = false;
                 let chest = null;
