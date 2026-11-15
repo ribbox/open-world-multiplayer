@@ -128,7 +128,7 @@
                 <button type="button" id="addRow">Add drop</button>
             </div>
             <div id="panelQuests" hidden>
-                <p>Select a zone, then create the quest. The giver is an NPC from that zone. Kill and gather quests use the zone's mob. A gather item can be one placed in the zone. Paste a Google Sheet link. That same link is the export link. Share the sheet as anyone with the link, edit it in Google Sheets, then import from the link.</p>
+                <p>Select a zone, then create the quest. The giver is an NPC from that zone. Kill and gather quests use the zone's mob. Items and quests are also read from the Google Sheet linked on the right. Edit that sheet, then use Import sheet.</p>
                 <label>Zone</label>
                 <select id="questZone"></select>
                 <button type="button" id="addQuest">New quest</button>
@@ -150,22 +150,15 @@
             <button type="button" id="exportMap">Export world</button>
             <button type="button" id="importMapBtn">Import world</button>
             <input id="importMap" type="file" accept="application/json,.json" hidden>
-            <label for="sheetUrl">Google Sheet link</label>
+            <label for="sheetUrl">Google Sheet</label>
             <input id="sheetUrl" type="url" inputmode="url" placeholder="https://docs.google.com/spreadsheets/d/..." autocomplete="off">
-            <button type="button" id="importSheetUrl">Import from link</button>
-            <button type="button" id="downloadSheet">Download spreadsheet</button>
-            <button type="button" id="copyItems">Copy items</button>
-            <button type="button" id="copyQuests">Copy quests</button>
-            <label for="exportSheetUrl">Google Sheet</label>
-            <input id="exportSheetUrl" type="text" readonly>
-            <button type="button" id="exportSheet">Copy Google Sheet link</button>
-            <button type="button" id="importSheetBtn">Import a file</button>
-            <input id="importSheet" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+            <button type="button" id="importSheetUrl">Import sheet</button>
+            <button type="button" id="openSheet">Open sheet</button>
         </div>
     </div>
     <script type="module">
         import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve, polygonIntersection, downsampleRing, DUNGEON_HALF, applyWorldConfig, zoneName, zoneNpc, zoneCamp, boundaryInset, waterAt } from './worldgen.js';
-        import { readWorkbook, applyQuestPlaces } from './sheets.js';
+        import { applyQuestPlaces } from './sheets.js';
 
         const MOBS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
         const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes', 'city'];
@@ -2019,7 +2012,6 @@
             const input = document.getElementById('sheetUrl');
             if (input && !input.value) input.value = (config && config.sheetUrl) || sessionStorage.getItem('ow-sheet-url') || '';
             const url = googleSheetUrl();
-            document.getElementById('exportSheetUrl').value = url;
             if (config && url) config.sheetUrl = url;
         }
         async function importParsed(parsed) {
@@ -2049,82 +2041,14 @@
             note('Imported ' + parts.join(' and '));
         }
         document.getElementById('sheetUrl').addEventListener('input', showSheetLink);
-        document.getElementById('exportSheet').addEventListener('click', async () => {
+        document.getElementById('importSheetUrl').addEventListener('click', async () => {
             const url = googleSheetUrl();
             if (!url || url.indexOf('docs.google.com/spreadsheets') < 0) {
-                note('Paste the Google Sheet link. The export link is that sheet, not this computer.');
+                note('Set the Google Sheet link. Share the sheet as anyone with the link.');
                 return;
             }
             document.getElementById('sheetUrl').value = url;
-            document.getElementById('exportSheetUrl').value = url;
             if (config) config.sheetUrl = url;
-            sessionStorage.setItem('ow-sheet-url', url);
-            const field = document.getElementById('exportSheetUrl');
-            field.focus();
-            field.select();
-            try {
-                await navigator.clipboard.writeText(url);
-                note('Google Sheet link copied. Open that link, edit it, then import from the same link.');
-            } catch {
-                note('Google Sheet link selected. Copy it, then open it.');
-            }
-        });
-        document.getElementById('downloadSheet').addEventListener('click', async () => {
-            const response = await fetch('/api/setup/sheet.xlsx', { headers: token ? { authorization: 'Bearer ' + token } : {} });
-            if (response.status === 401) {
-                token = '';
-                sessionStorage.removeItem('ow-setup');
-                showLogin('Login again');
-                return;
-            }
-            if (!response.ok) {
-                note('The spreadsheet could not be built');
-                return;
-            }
-            const blob = await response.blob();
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = 'quests-and-items.xlsx';
-            link.click();
-            URL.revokeObjectURL(link.href);
-            note('Downloaded. In Google Sheets use File, Import, Upload, and replace the current sheet.');
-        });
-        async function copyRows(which) {
-            try {
-                const data = await api('/api/setup/rows');
-                const text = data && data[which];
-                if (!text) {
-                    note('Nothing to copy');
-                    return;
-                }
-                if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
-                else {
-                    const area = document.createElement('textarea');
-                    area.value = text;
-                    area.setAttribute('readonly', '');
-                    area.style.position = 'fixed';
-                    area.style.left = '-9999px';
-                    document.body.appendChild(area);
-                    area.select();
-                    const ok = document.execCommand('copy');
-                    area.remove();
-                    if (!ok) throw new Error('Could not copy');
-                }
-                note(which === 'quests'
-                    ? 'Quests copied. On the Quests tab, click cell A1 and paste.'
-                    : 'Items copied. On the Items tab, click cell A1 and paste.');
-            } catch (err) {
-                note(err && err.message ? err.message : 'Could not copy. Use Download spreadsheet instead.');
-            }
-        }
-        document.getElementById('copyItems').addEventListener('click', () => copyRows('items'));
-        document.getElementById('copyQuests').addEventListener('click', () => copyRows('quests'));
-        document.getElementById('importSheetUrl').addEventListener('click', async () => {
-            const url = document.getElementById('sheetUrl').value.trim();
-            if (!url) {
-                note('Paste a Google Sheet link first. Share it as anyone with the link.');
-                return;
-            }
             sessionStorage.setItem('ow-sheet-url', url);
             try {
                 const parsed = await api('/api/setup/sheet', { method: 'POST', body: JSON.stringify({ url }) });
@@ -2133,16 +2057,15 @@
                 note(err.message || 'That spreadsheet could not be read');
             }
         });
-        document.getElementById('importSheetBtn').addEventListener('click', () => document.getElementById('importSheet').click());
-        document.getElementById('importSheet').addEventListener('change', async (event) => {
-            const file = event.target.files && event.target.files[0];
-            event.target.value = '';
-            if (!file) return;
-            try {
-                await importParsed(await readWorkbook(await file.arrayBuffer()));
-            } catch (err) {
-                note(err.message || 'That spreadsheet could not be read');
+        document.getElementById('openSheet').addEventListener('click', () => {
+            const url = googleSheetUrl();
+            if (!url || url.indexOf('docs.google.com/spreadsheets') < 0) {
+                note('Set the Google Sheet link first.');
+                return;
             }
+            document.getElementById('sheetUrl').value = url;
+            if (config) config.sheetUrl = url;
+            window.open(url, '_blank', 'noopener');
         });
         document.getElementById('importMapBtn').addEventListener('click', () => document.getElementById('importMap').click());
         document.getElementById('importMap').addEventListener('change', async (event) => {

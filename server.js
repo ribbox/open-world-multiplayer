@@ -7914,7 +7914,8 @@ app.put('/api/setup/config', requireAdmin, (req, res) => {
 
 app.post('/api/setup/sheet', requireAdmin, async (req, res) => {
     try {
-        const target = spreadsheetUrl(req.body && req.body.url);
+        const raw = (req.body && req.body.url) || (worldConfig && worldConfig.sheetUrl) || '';
+        const target = spreadsheetUrl(raw);
         const bytes = await fetchSpreadsheet(target);
         const parsed = await readWorkbook(bytes);
         res.json({ items: parsed.items, quests: parsed.quests });
