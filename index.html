@@ -6907,8 +6907,15 @@
             }
 
             function addChest(chest) {
-                if (!chest || worldChests.has(chest.id)) {
-                    if (chest && worldChests.has(chest.id)) worldChests.get(chest.id).items = chest.items;
+                if (!chest) return;
+                const existing = worldChests.get(chest.id);
+                if (existing) {
+                    existing.items = chest.items;
+                    if (Number.isFinite(chest.x) && Number.isFinite(chest.z)) {
+                        existing.x = chest.x;
+                        existing.z = chest.z;
+                        existing.group.position.set(chest.x, chest.x > 80000 ? 0.2 : terrainHeight(chest.x, chest.z), chest.z);
+                    }
                     return;
                 }
                 const group = new THREE.Group();
@@ -10523,6 +10530,18 @@
                         else if (data.command === 'attack') showMessage('Pet attacking');
                         else if (data.command === 'stay') showMessage('Pet holding');
                         else if (data.command === 'follow') showMessage('Pet following');
+                    } else if (data.type === 'killCredit') {
+                        applyStats(data);
+                        if (data.inventory) applyInventory(data.inventory);
+                        const ready = data.quests ? applyQuests(data.quests) : '';
+                        if (data.chest) addChest(data.chest);
+                        if (data.leveled) showLevel(data.level);
+                        const xp = data.gained > 0
+                            ? (data.leveled ? 'Level ' + data.level + '! +' + data.gained + ' XP' : '+' + data.gained + ' XP')
+                            : '';
+                        const parts = ['Your pet killed ' + (data.name || 'it'), xp, ...(data.progress || []), ready, data.questNote].filter(Boolean);
+                        showMessage(parts.join(' · '));
+                        sfx('kill');
                     } else if (data.type === 'combatLog') {
                         addLogLine('activity', data.text, data.kind === 'heal' ? 'heal' : 'combat');
                     } else if (data.type === 'attackResult') {

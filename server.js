@@ -667,18 +667,22 @@ function placePlayer(player, data) {
 function noteKill(player, npc) {
     let changed = false;
     let item = false;
+    const progress = [];
     for (const [id, quest] of Object.entries(QUESTS)) {
         const row = player.quests && player.quests[id];
         if (!row || row.state !== 'active' || row.failed || row.count >= quest.count) continue;
         if (quest.dungeonId && npc.dungeonId !== quest.dungeonId) continue;
         const namedHit = quest.named && npc.name === quest.named;
         const kindHit = quest.mob && npc.kind === quest.mob;
+        let progressed = false;
         if (quest.type === 'kill' && kindHit) {
             row.count += 1;
             changed = true;
+            progressed = true;
         } else if (quest.type === 'named' && (npc.questId === id || namedHit)) {
             row.count = 1;
             changed = true;
+            progressed = true;
             if (quest.item) {
                 const leftover = addToSlots(player, { kind: 'quest', name: quest.item, qty: 1 });
                 if (leftover) player.questNote = 'Bag full';
@@ -687,11 +691,13 @@ function noteKill(player, npc) {
         } else if (quest.type === 'protect' && npc.questId === id) {
             row.count += 1;
             changed = true;
+            progressed = true;
         }
+        if (progressed) progress.push((quest.name || 'Quest') + ' ' + row.count + '/' + (quest.count || 1));
     }
     if (changed || item) player.questDirty = true;
     if (changed) savePlayer(player);
-    return { changed, item };
+    return { changed, item, progress };
 }
 
 function questDoneByName(player, name) {
@@ -2028,15 +2034,17 @@ function awardKill(killer, npc) {
     const count = earning.length;
     let killerGain = 0;
     let killerLevel = false;
+    let killerProgress = [];
     for (const member of members) {
         const full = xpForKill(member, npc);
         const share = count > 1 && full > 0 ? Math.floor(full / count) + (member === earning[0] ? full % count : 0) : full;
         const gained = share > 0 ? share : 0;
         const leveled = gained > 0 ? grantXp(member, gained) : false;
-        noteKill(member, npc);
+        const noted = noteKill(member, npc);
         if (member === killer) {
             killerGain = gained;
             killerLevel = leveled;
+            killerProgress = noted.progress || [];
             continue;
         }
         send(member.ws, {
@@ -2052,7 +2060,7 @@ function awardKill(killer, npc) {
         member.questDirty = false;
         member.questNote = '';
     }
-    return { gained: killerGain, leveled: killerLevel, members };
+    return { gained: killerGain, leveled: killerLevel, members, progress: killerProgress };
 }
 
 function publicParty(party) {
@@ -3963,25 +3971,25 @@ function publicChest(chest) {
     return { id: chest.id, x: chest.x, z: chest.z, level: chest.level, items: chest.items };
 }
 
-function spawnChest(npc, owners) {
+function spawnChest(npc, owners, drop) {
     if (npc.chapel) return spawnChapelChests(npc, owners);
     const items = rollLoot(npc.level, npc.loot);
     const list = (Array.isArray(owners) ? owners : [owners]).filter(Boolean);
     const seen = new Set();
     for (const owner of list) {
-        for (const drop of questChestDrops(owner, npc)) {
-            const key = (drop.questId || '') + '\n' + drop.name;
+        for (const dropItem of questChestDrops(owner, npc)) {
+            const key = (dropItem.questId || '') + '\n' + dropItem.name;
             if (seen.has(key)) continue;
             seen.add(key);
-            items.push(drop);
+            items.push(dropItem);
         }
     }
     if (mobIsNamed(npc)) stampNamed(items);
     const mapId = npc.mapId || (list[0] && list[0].mapId) || currentMapId();
     const chest = {
         id: 'c' + (chestSeq++),
-        x: npc.x,
-        z: npc.z,
+        x: drop && Number.isFinite(drop.x) ? drop.x : npc.x,
+        z: drop && Number.isFinite(drop.z) ? drop.z : npc.z,
         level: npc.level,
         items,
         mapId,
@@ -3991,7 +3999,7 @@ function spawnChest(npc, owners) {
     const packet = { type: 'chest', chest: publicChest(chest) };
     broadcastMap(mapId, packet);
     for (const owner of list) {
-        if (owner.ws && (owner.mapId || '') !== (mapId || '')) send(owner.ws, packet);
+        if (owner.ws) send(owner.ws, packet);
     }
     return chest;
 }
@@ -4847,21 +4855,22 @@ function companionStrike(owner, victim, amount, kind) {
     if (victim.hp <= 0) {
         downNpc(victim);
         const award = awardKill(owner, victim);
-        const chest = spawnChest(victim, award.members);
+        const away = Math.hypot(owner.x - victim.x, owner.z - victim.z) || 1;
+        const drop = away > 8
+            ? { x: owner.x + (victim.x - owner.x) / away * 1.6, z: owner.z + (victim.z - owner.z) / away * 1.6 }
+            : { x: victim.x, z: victim.z };
+        const chest = spawnChest(victim, award.members, drop);
+        const credit = chest ? publicChest(chest) : null;
         send(owner.ws, {
-            type: 'attackResult',
-            ok: true,
-            damage: dealt,
-            note: 'Companion',
-            npcId: victim.id,
-            killed: true,
+            type: 'killCredit',
+            name: victim.name || 'it',
             gained: award.gained,
             leveled: award.leveled,
-            ability: 'pet',
-            chest: chest ? publicChest(chest) : null,
+            progress: award.progress || [],
             quests: owner.quests,
             inventory: owner.questDirty ? inventoryOf(owner) : undefined,
             questNote: owner.questNote || '',
+            chest: credit,
             ...statsOf(owner)
         });
         owner.questDirty = false;
