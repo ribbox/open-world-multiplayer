@@ -350,7 +350,7 @@
             if (!current) return;
             current.name = document.getElementById('zName').value.slice(0, 32) || 'Zone';
             current.mob = document.getElementById('zMob').value;
-            current.level = Math.max(1, Math.min(30, Number(document.getElementById('zLevel').value) || 1));
+            current.level = Math.max(1, Math.min(62, Number(document.getElementById('zLevel').value) || 1));
             const hp = document.getElementById('zHp').value;
             current.hp = hp === '' ? 0 : Math.max(1, Math.min(500, Number(hp) || 0));
             current.loot = document.getElementById('zLoot').value;
@@ -380,6 +380,8 @@
             }
             const level = field('Mob level', 'zLevel', current.level);
             level.type = 'number';
+            level.min = '1';
+            level.max = '62';
             const hp = field('Hit points override', 'zHp', current.hp || '');
             const loot = document.createElement('select');
             loot.id = 'zLoot';
@@ -1483,7 +1485,7 @@
             const level = document.createElement('input');
             level.type = 'number';
             level.min = '1';
-            level.max = '30';
+            level.max = '62';
             level.value = dungeon.level || 1;
             level.addEventListener('change', () => { remember(); dungeon.level = Number(level.value) || 1; });
             form.append(levelLabel, level);

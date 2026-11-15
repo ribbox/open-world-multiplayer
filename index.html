@@ -956,9 +956,9 @@
             <button type="button" class="bar-slot" data-pet="attack" title="Send your pet at your target.&#10;No cooldown"><span class="key">Atk</span></button>
             <button type="button" class="bar-slot" data-pet="follow" title="Your pet follows you.&#10;No cooldown"><span class="key">Fol</span></button>
             <button type="button" class="bar-slot" data-pet="stay" title="Your pet holds still.&#10;No cooldown"><span class="key">Stay</span></button>
-            <button type="button" class="bar-slot" data-pet="heal" data-action="pet-heal" title="Heal your pet.&#10;Cooldown 8 seconds" hidden><span class="key">Heal</span></button>
+            <button type="button" class="bar-slot" data-pet="heal" data-action="pet-heal" title="Heal your pet.&#10;Costs 10 mana" hidden><span class="key">Heal</span></button>
             <button type="button" class="bar-slot" data-pet="bite" data-action="pet-bite" title="A heavy hit, then it keeps attacking.&#10;Cooldown 8 seconds" hidden><span class="key">Bite</span></button>
-            <button type="button" class="bar-slot" data-pet="call" data-action="pet-call" title="Summon your pet beside you.&#10;Cooldown 8 seconds after it dies" hidden><span class="key">Sum</span></button>
+            <button type="button" class="bar-slot" data-pet="call" data-action="pet-call" title="Summon your pet beside you.&#10;Costs 15 mana. Cooldown 8 seconds after it dies" hidden><span class="key">Sum</span></button>
         </div>
         <div id="barRow">
             <button type="button" class="bar-nav" id="pagePrev">‹</button>
@@ -6735,7 +6735,7 @@
                     showMessage('You are a ghost');
                     return;
                 }
-                if ((command === 'bite' && cooling('pet-bite')) || (command === 'call' && cooling('pet-call')) || (command === 'heal' && cooling('pet-heal'))) {
+                if ((command === 'bite' && cooling('pet-bite')) || (command === 'call' && cooling('pet-call'))) {
                     showMessage('Not ready');
                     return;
                 }
@@ -7558,7 +7558,7 @@
                 'arcane-bolt': 1800, 'arcane-surge': 8000, mend: 5000,
                 health: 12000, mana: 12000, potion: 12000, bomb: 4000,
                 'battle-shout': 45000, rally: 60000, 'frost-armor': 30000, blink: 20000,
-                'raise-dead': 40000, 'dread-guard': 60000, 'pet-bite': 8000, 'pet-call': 8000, 'pet-heal': 8000
+                'raise-dead': 40000, 'dread-guard': 60000, 'pet-bite': 8000, 'pet-call': 8000
             };
             const cdReady = {};
             const cdTotal = {};

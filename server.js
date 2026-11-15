@@ -4793,6 +4793,9 @@ function commandPet(player, command) {
             const left = cooldownLeft(player, 'pet-call', now);
             if (left > 0) return 'Not ready';
         }
+        if ((player.mana || 0) < 15) return 'Not enough mana';
+        player.mana -= 15;
+        noteMana(player);
         const yaw = player.rotY || 0;
         player.pet.alive = true;
         player.pet.hp = player.pet.maxHp;
@@ -4812,13 +4815,13 @@ function commandPet(player, command) {
         player.pet.mode = 'attack';
     } else if (command === 'heal') {
         if (player.pet.hp >= player.pet.maxHp - 0.5) return 'Your pet is fine';
-        const left = cooldownLeft(player, 'pet-heal', now);
-        if (left > 0) return 'Not ready';
+        if ((player.mana || 0) < 10) return 'Not enough mana';
+        player.mana -= 10;
+        noteMana(player);
         const amount = Math.max(6, Math.round(player.pet.maxHp * 0.45));
         const before = player.pet.hp;
         player.pet.hp = Math.min(player.pet.maxHp, before + amount);
         player.pet.healed = Math.round(player.pet.hp - before);
-        startCooldown(player, 'pet-heal', 8000, now);
     } else if (command === 'bite') {
         if (!hasSpecial(player, 'pet-bite')) return 'A trainer teaches Bite at level 40';
         if (!playerFocus(player)) return 'Select a target';
@@ -6281,7 +6284,7 @@ wss.on('connection', (ws) => {
             const error = commandPet(player, data.command);
             const pet = player.pet;
             const now = Date.now();
-            const cdKey = data.command === 'bite' ? 'pet-bite' : data.command === 'call' ? 'pet-call' : data.command === 'heal' ? 'pet-heal' : '';
+            const cdKey = data.command === 'bite' ? 'pet-bite' : data.command === 'call' ? 'pet-call' : '';
             const cd = cdKey ? cooldownLeft(player, cdKey, now) : 0;
             send(ws, {
                 type: 'petResult',
@@ -6790,7 +6793,7 @@ function sanitizeDungeons(input) {
             id,
             name: String(raw.name || 'Cavern').slice(0, 32),
             mob: MOB_IDS.includes(raw.mob) ? raw.mob : 'spider',
-            level: clampNum(raw.level, 1, 1, 30),
+            level: clampNum(raw.level, 1, 1, 62),
             elite: !!raw.elite,
             endName: String(raw.endName || 'Warden').slice(0, 24),
             portal: { x: Math.round(px), z: Math.round(pz) },
