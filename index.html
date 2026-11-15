@@ -1303,9 +1303,11 @@
             renderer.domElement.tabIndex = -1;
             document.body.appendChild(renderer.domElement);
 
-            const ambientLight = new THREE.AmbientLight(0x404040, 0.7);
+            const ambientLight = new THREE.AmbientLight(0x6a6258, 0.45);
             scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
+            const skyFill = new THREE.HemisphereLight(0xd5e6ff, 0x8d6844, 0.85);
+            scene.add(skyFill);
+            const directionalLight = new THREE.DirectionalLight(0xfff4e0, 0.72);
             directionalLight.position.set(50, 100, 50);
             directionalLight.castShadow = true;
             scene.add(directionalLight);
@@ -2036,6 +2038,23 @@
                 model.position.x -= (grounded.min.x + grounded.max.x) / 2;
                 model.position.z -= (grounded.min.z + grounded.max.z) / 2;
                 model.userData.foot = model.position.y;
+            }
+            function liftCharacter(mat) {
+                if (!mat || mat.userData.lifted) return mat;
+                mat.userData.lifted = 1;
+                if (mat.metalness != null) mat.metalness = 0;
+                const oldCompile = mat.onBeforeCompile;
+                const oldKey = mat.customProgramCacheKey;
+                mat.onBeforeCompile = (shader, renderer) => {
+                    if (oldCompile) oldCompile.call(mat, shader, renderer);
+                    shader.fragmentShader = shader.fragmentShader.replace(
+                        '#include <lights_fragment_begin>',
+                        '#include <lights_fragment_begin>\n\treflectedLight.indirectDiffuse += diffuseColor.rgb * 0.46;'
+                    );
+                };
+                mat.customProgramCacheKey = () => (oldKey ? oldKey.call(mat) : '') + '|lift';
+                mat.needsUpdate = true;
+                return mat;
             }
             function markBold(mat) {
                 mat.userData.bold = 1;
@@ -6154,6 +6173,8 @@
                         return next;
                     };
                     obj.material = Array.isArray(obj.material) ? obj.material.map(cloneMat) : cloneMat(obj.material);
+                    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+                    for (const mat of mats) liftCharacter(mat);
                 });
                 if (clips) startNpcRig(model, clips);
                 return model;
