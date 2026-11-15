@@ -4633,16 +4633,48 @@ function ensurePet(player, saved) {
         player.pet = null;
         return;
     }
-    const maxHp = Math.max(8, Math.round((player.maxHp || 20) * 0.7));
     if (!player.pet) {
-        player.pet = { name: 'Wolf', hp: maxHp, maxHp, x: player.x + 1.2, z: player.z + 0.4, rotY: player.rotY || 0, mode: 'follow', alive: true, attackAt: 0 };
+        player.pet = { name: 'Wolf', hp: 1, maxHp: 1, x: player.x + 1.2, z: player.z + 0.4, rotY: player.rotY || 0, mode: 'follow', alive: true, attackAt: 0 };
     }
-    player.pet.maxHp = maxHp;
+    const next = petDerived(player);
+    player.pet.level = next.level;
+    player.pet.armor = next.armor;
+    player.pet.stamina = next.stamina;
+    player.pet.strength = next.strength;
+    player.pet.maxHp = next.maxHp;
     if (saved && saved.alive === false) {
         player.pet.alive = false;
         player.pet.hp = 0;
-    } else if (saved && saved.hp != null) player.pet.hp = Math.max(0, Math.min(maxHp, Number(saved.hp) || 0));
-    else if (player.pet.hp == null || player.pet.hp > maxHp) player.pet.hp = player.pet.alive ? maxHp : 0;
+    } else if (saved && saved.hp != null) player.pet.hp = Math.max(0, Math.min(next.maxHp, Number(saved.hp) || 0));
+    else if (player.pet.hp == null || player.pet.hp > next.maxHp) player.pet.hp = player.pet.alive ? next.maxHp : 0;
+}
+
+function petDerived(player) {
+    const level = Math.max(1, player.level || 1);
+    const stats = player.stats || classBaseStats(player);
+    const stamina = Math.max(0, Math.round(stats.stamina || 0));
+    const strength = Math.max(0, Math.round(stats.strength || 0));
+    const armor = Math.max(0, Math.round((player.armor || 0) * 0.75 + stamina * 0.4));
+    const maxHp = Math.max(8, Math.round((player.maxHp || maxHpFor(level)) * 0.7));
+    return { level, armor, maxHp, stamina, strength };
+}
+
+function petResist(pet) {
+    const armor = Math.max(0, pet.armor || 0);
+    const level = Math.max(1, pet.level || 1);
+    return armor / (armor + level);
+}
+
+function petEliteHit(npc, pet) {
+    const resist = petResist(pet);
+    const gap = (npc.level || 1) - Math.max(1, pet.level || 1);
+    let portion = 0.3;
+    if (gap >= 5) portion = 0.62;
+    else if (gap >= 3) portion = 0.48;
+    else if (gap > 0) portion = 0.3 + gap * 0.06;
+    else portion = Math.max(0.16, 0.3 * (1 + gap * 0.05));
+    portion *= 1 - resist * 0.65;
+    return Math.max(1, Math.round((pet.maxHp || 1) * portion));
 }
 
 function learnSpecial(player, id) {
@@ -4931,11 +4963,21 @@ function publicCompanion(owner, kind) {
 function tickCompanions(now, dt) {
     for (const player of players.values()) {
         if (player.pet && hasSpecial(player, 'call-pet')) {
-            const want = Math.max(8, Math.round((player.maxHp || 20) * 0.7));
-            if (player.pet.maxHp !== want && player.pet.alive) {
-                const full = player.pet.hp >= player.pet.maxHp;
-                player.pet.maxHp = want;
-                if (full) player.pet.hp = want;
+            const next = petDerived(player);
+            if (player.pet.alive && (player.pet.maxHp !== next.maxHp || player.pet.armor !== next.armor || player.pet.level !== next.level)) {
+                const full = player.pet.hp >= player.pet.maxHp - 0.5;
+                player.pet.maxHp = next.maxHp;
+                player.pet.level = next.level;
+                player.pet.armor = next.armor;
+                player.pet.stamina = next.stamina;
+                player.pet.strength = next.strength;
+                if (full) player.pet.hp = next.maxHp;
+                else if (player.pet.hp > next.maxHp) player.pet.hp = next.maxHp;
+            } else {
+                player.pet.level = next.level;
+                player.pet.armor = next.armor;
+                player.pet.stamina = next.stamina;
+                player.pet.strength = next.strength;
             }
             if (player.pet.alive && !player.ghost) {
                 tickCompanionBody(player, player.pet, now, dt);
@@ -5230,6 +5272,10 @@ function tickNpcs() {
                 const primary = casting ? (block.intellect || npc.level) : (block.strength || npc.level);
                 const raw = 1 + primary;
                 let damage = npc.elite ? eliteStrike(npc, victim) : Math.max(1, Math.round(raw) - (victim.armor || 0));
+                if (focus.kind === 'pet') {
+                    const resist = petResist(victim);
+                    damage = npc.elite ? petEliteHit(npc, victim) : Math.max(1, Math.round(raw * (1 - resist * 0.5)));
+                }
                 const bolt = npc.kind === 'wisp' ? '#7ee7ff' : npc.kind === 'cultist' ? '#d56bff' : '#b46bff';
                 if (focus.kind !== 'player') {
                     victim.hp = Math.max(0, victim.hp - damage);
