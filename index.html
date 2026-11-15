@@ -1906,8 +1906,10 @@
             let innTemplate = null;
             let cabinTemplate = null;
             let chestTemplate = null;
+            let castleTemplate = null;
+            let chapelTemplate = null;
             let lastCamps = null;
-            let structureLoads = 4;
+            let structureLoads = 6;
             function structureReady() {
                 structureLoads -= 1;
                 if (structureLoads > 0) return;
@@ -1918,6 +1920,8 @@
             loader.load('/models/inn.glb', (gltf) => { innTemplate = fitProp(gltf.scene); structureReady(); }, undefined, () => structureReady());
             loader.load('/models/cabin.glb', (gltf) => { cabinTemplate = fitProp(gltf.scene); structureReady(); }, undefined, () => structureReady());
             loader.load('/models/chest.glb', (gltf) => { chestTemplate = fitProp(gltf.scene); structureReady(); }, undefined, () => structureReady());
+            loader.load('/models/castle.glb', (gltf) => { castleTemplate = fitProp(gltf.scene); structureReady(); }, undefined, () => structureReady());
+            loader.load('/models/chapel.glb', (gltf) => { chapelTemplate = fitProp(gltf.scene); structureReady(); }, undefined, () => structureReady());
 
             // Each NPC kind is a file in /models.
             const npcModels = new Map();
@@ -6245,12 +6249,22 @@
                     campBlock(parent, site, 0, 2.2, 6, 8.4, 4.2, 6.2, 0x6b4423, true);
                     campBlock(parent, site, 0, 4.6, 6, 9.6, 0.7, 7.4, roof, false);
                 }
+                if (castleTemplate) {
+                    const spot = localCampPoint(site, 0, -38);
+                    placeStructure(parent, castleTemplate, spot.x, spot.z, spot.yaw, 32, 7);
+                }
+                if (chapelTemplate) {
+                    const spot = localCampPoint(site, 34, 18);
+                    placeStructure(parent, chapelTemplate, spot.x, spot.z, spot.yaw + Math.atan2(-34, -18), 18, 4);
+                }
                 const lines = [-46, -32, -18, 10, 18, 32, 46];
                 let n = 0;
                 for (const lz of lines) {
                     for (const lx of lines) {
                         if (Math.hypot(lx, lz) < 14) continue;
                         if (Math.hypot(lx, lz - 6) < 10) continue;
+                        if (Math.hypot(lx, lz + 38) < 18) continue;
+                        if (Math.hypot(lx - 34, lz - 18) < 12) continue;
                         const spot = localCampPoint(site, lx, lz);
                         const face = spot.yaw + (n % 4) * (Math.PI / 2);
                         const scale = 5.4 + (n % 5) * 0.45;
