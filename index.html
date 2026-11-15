@@ -6198,6 +6198,16 @@
                 }
             }
 
+            function structureFootprint(template) {
+                if (template.userData.span) return template.userData.span;
+                template.updateWorldMatrix(true, true);
+                const box = new THREE.Box3().setFromObject(template);
+                const size = box.getSize(new THREE.Vector3());
+                const span = { hx: Math.max(0.05, size.x / 2), hz: Math.max(0.05, size.z / 2) };
+                template.userData.span = span;
+                return span;
+            }
+
             function placeStructure(parent, template, x, z, yaw, scale, radius) {
                 if (!template) return;
                 const mesh = template.clone(true);
@@ -6208,7 +6218,13 @@
                 mesh.rotation.y = yaw;
                 mesh.position.set(x, terrainHeight(x, z), z);
                 parent.add(mesh);
-                if (radius) allColliders.push({ x, z, r: radius, camp: true });
+                const span = structureFootprint(template);
+                allColliders.push({
+                    x, z, yaw,
+                    hx: Math.max(radius || 0, span.hx * scale),
+                    hz: Math.max(radius || 0, span.hz * scale),
+                    camp: true
+                });
             }
 
             function localCampPoint(site, lx, lz) {
@@ -6234,7 +6250,7 @@
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
                 parent.add(mesh);
-                if (solid) allColliders.push({ x: wx, z: wz, r: Math.max(w, d) * 0.42 + 0.35, camp: true });
+                if (solid) allColliders.push({ x: wx, z: wz, yaw, hx: w / 2, hz: d / 2, camp: true });
             }
 
             function buildCity(parent, site) {
@@ -9112,17 +9128,44 @@
             });
 
             function resolveCollisions(pos) {
-                for (const c of allColliders) {
-                    const dx = pos.x - c.x;
-                    const dz = pos.z - c.z;
-                    const distSq = dx * dx + dz * dz;
-                    const minDist = c.r;
-                    if (distSq < minDist * minDist && distSq > 0.0001) {
-                        const dist = Math.sqrt(distSq);
-                        const overlap = minDist - dist;
-                        pos.x += (dx / dist) * overlap;
-                        pos.z += (dz / dist) * overlap;
+                for (let pass = 0; pass < 3; pass++) {
+                    let hit = false;
+                    for (const c of allColliders) {
+                        const dx = pos.x - c.x;
+                        const dz = pos.z - c.z;
+                        if (c.hx != null) {
+                            const cos = Math.cos(c.yaw || 0);
+                            const sin = Math.sin(c.yaw || 0);
+                            const lx = dx * cos - dz * sin;
+                            const lz = dx * sin + dz * cos;
+                            const hx = c.hx + 0.45;
+                            const hz = c.hz + 0.45;
+                            const penX = hx - Math.abs(lx);
+                            const penZ = hz - Math.abs(lz);
+                            if (penX <= 0 || penZ <= 0) continue;
+                            hit = true;
+                            if (penX < penZ) {
+                                const ox = (lx < 0 ? -1 : 1) * penX;
+                                pos.x += ox * cos;
+                                pos.z -= ox * sin;
+                            } else {
+                                const oz = (lz < 0 ? -1 : 1) * penZ;
+                                pos.x += oz * sin;
+                                pos.z += oz * cos;
+                            }
+                            continue;
+                        }
+                        const distSq = dx * dx + dz * dz;
+                        const minDist = c.r;
+                        if (distSq < minDist * minDist && distSq > 0.0001) {
+                            const dist = Math.sqrt(distSq);
+                            const overlap = minDist - dist;
+                            pos.x += (dx / dist) * overlap;
+                            pos.z += (dz / dist) * overlap;
+                            hit = true;
+                        }
                     }
+                    if (!hit) break;
                 }
             }
 
