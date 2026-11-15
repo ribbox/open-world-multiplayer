@@ -97,6 +97,8 @@
                 <input id="grayLevels" type="number" min="1" max="20">
                 <label>XP per mob level</label>
                 <input id="xpPerMobLevel" type="number" min="0" max="100">
+                <label>XP needed to level, percent. 100 is the old amount. 250 needs 150% more.</label>
+                <input id="xpLevelScale" type="number" min="50" max="1000" step="10">
                 <label>Mobs spawned per minute, outside a drawn zone</label>
                 <input id="spawnPerMin" type="number" min="0" max="30">
                 <label>Most mobs in one of those areas</label>
@@ -2039,6 +2041,7 @@
                 hpPerLevel: config.hpPerLevel,
                 grayLevels: config.grayLevels,
                 xpPerMobLevel: config.xpPerMobLevel,
+                xpLevelScale: config.xpLevelScale,
                 spawnPerMin: config.spawnPerMin,
                 spawnCap: config.spawnCap,
                 bounds: config.bounds,
@@ -2168,6 +2171,7 @@
             document.getElementById('hpPerLevel').value = config.hpPerLevel;
             document.getElementById('grayLevels').value = config.grayLevels;
             document.getElementById('xpPerMobLevel').value = config.xpPerMobLevel;
+            document.getElementById('xpLevelScale').value = config.xpLevelScale == null ? 250 : config.xpLevelScale;
             document.getElementById('spawnPerMin').value = config.spawnPerMin == null ? 4 : config.spawnPerMin;
             document.getElementById('spawnCap').value = config.spawnCap == null ? 8 : config.spawnCap;
             document.getElementById('worldHalf').value = config.bounds.half;
@@ -2177,7 +2181,7 @@
         }
         function fillRules() {
             applyRuleFields();
-            for (const id of ['hpBase', 'hpPerLevel', 'grayLevels', 'xpPerMobLevel', 'spawnPerMin', 'spawnCap']) {
+            for (const id of ['hpBase', 'hpPerLevel', 'grayLevels', 'xpPerMobLevel', 'xpLevelScale', 'spawnPerMin', 'spawnCap']) {
                 document.getElementById(id).addEventListener('change', () => { config[id] = Number(document.getElementById(id).value); });
             }
             document.getElementById('worldHalf').addEventListener('change', () => { config.bounds.half = Number(document.getElementById('worldHalf').value); draw(); });

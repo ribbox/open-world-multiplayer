@@ -18,7 +18,7 @@ const PORT = process.env.PORT || 3000;
 const GATHER_RANGE = 3.2;
 const GATHER_COOLDOWN_MS = 400;
 const COLORS = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c', '#ec4899'];
-const worldRules = { hpBase: 6, hpPerLevel: 4, grayLevels: 5, xpPerMobLevel: 20, spawnPerMin: 4, spawnCap: 8 };
+const worldRules = { hpBase: 6, hpPerLevel: 4, grayLevels: 5, xpPerMobLevel: 20, xpLevelScale: 250, spawnPerMin: 4, spawnCap: 8 };
 let lootTables = null;
 
 const dataDir = path.join(__dirname, 'data');
@@ -1288,7 +1288,8 @@ function coinRoom() {
 }
 
 function xpToNext(level) {
-    return 50 * level;
+    const scale = Math.max(0.5, (worldRules.xpLevelScale || 100) / 100);
+    return Math.max(1, Math.round(50 * level * scale));
 }
 
 const MAX_LEVEL = 60;
@@ -6754,6 +6755,7 @@ function defaultWorldConfig() {
         hpPerLevel: 4,
         grayLevels: 5,
         xpPerMobLevel: 20,
+        xpLevelScale: 250,
         spawnPerMin: 4,
         spawnCap: 8,
         adminPassword: '',
@@ -7492,6 +7494,7 @@ function sanitizeWorld(input) {
         hpPerLevel: clampNum(src.hpPerLevel, 4, 0, 40),
         grayLevels: clampNum(src.grayLevels, 5, 1, 20),
         xpPerMobLevel: clampNum(src.xpPerMobLevel, 20, 0, 100),
+        xpLevelScale: clampNum(src.xpLevelScale, 250, 50, 1000),
         spawnPerMin: clampNum(src.spawnPerMin, 4, 0, 30),
         spawnCap: clampNum(src.spawnCap, 8, 0, 40),
         adminPassword: typeof src.adminPassword === 'string' ? src.adminPassword.slice(0, 64) : '',
@@ -7546,6 +7549,7 @@ function publicWorld() {
         hpPerLevel: worldRules.hpPerLevel,
         grayLevels: worldRules.grayLevels,
         xpPerMobLevel: worldRules.xpPerMobLevel,
+        xpLevelScale: worldRules.xpLevelScale,
         spawnPerMin: worldRules.spawnPerMin,
         spawnCap: worldRules.spawnCap,
         bounds: worldShape(),
@@ -7566,6 +7570,7 @@ function applyLoaded(config) {
     worldRules.hpPerLevel = config.hpPerLevel;
     worldRules.grayLevels = config.grayLevels;
     worldRules.xpPerMobLevel = config.xpPerMobLevel;
+    worldRules.xpLevelScale = config.xpLevelScale;
     worldRules.spawnPerMin = config.spawnPerMin;
     worldRules.spawnCap = config.spawnCap;
     const maps = config.maps && config.maps.length ? config.maps : [{
@@ -7977,6 +7982,7 @@ app.put('/api/setup/config', requireAdmin, (req, res) => {
             savePlayer(player);
             moved = true;
         }
+        const leveled = grantXp(player, 0);
         const scene = sceneFor(player);
         send(player.ws, {
             type: 'world',
@@ -7994,6 +8000,7 @@ app.put('/api/setup/config', requireAdmin, (req, res) => {
             questDefs: publicQuests(),
             craft: publicCraft()
         });
+        send(player.ws, { type: 'stats', leveled, ...statsOf(player) });
     }
     res.json({ ok: true, config: setupPayload() });
 });
