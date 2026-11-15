@@ -6746,7 +6746,7 @@ function sanitizeQuests(input) {
     const list = Array.isArray(input) ? input : [];
     const out = [];
     const seen = new Set();
-    for (const raw of list.slice(0, 80)) {
+    for (const raw of list.slice(0, 600)) {
         if (!raw || typeof raw !== 'object') continue;
         let id = String(raw.id || '').slice(0, 24);
         if (!/^[a-z0-9-]{2,24}$/i.test(id)) id = 'q' + Math.random().toString(36).slice(2, 8);
@@ -6756,7 +6756,7 @@ function sanitizeQuests(input) {
         out.push({
             id,
             name: String(raw.name || 'Quest').slice(0, 32),
-            minLevel: clampNum(raw.minLevel, 1, 1, 30),
+            minLevel: clampNum(raw.minLevel, 1, 1, 60),
             giver: String(raw.giver || '').trim().slice(0, 24),
             giverRole: ['inn', 'shop', 'trainer', 'quest'].includes(raw.giverRole) ? raw.giverRole : '',
             giverCamp: clampNum(raw.giverCamp, 0, 0, 5),
@@ -6773,8 +6773,8 @@ function sanitizeQuests(input) {
             elite: type === 'named' && sheetFlag(raw.elite),
             custom: sheetFlag(raw.custom),
             text: String(raw.text || '').slice(0, 180),
-            coins: clampNum(raw.coins, 10, 0, 500),
-            xp: clampNum(raw.xp, 40, 0, 2000),
+            coins: clampNum(raw.coins, 10, 0, 5000),
+            xp: clampNum(raw.xp, 40, 0, 20000),
             rewardKind: LOOT_KINDS.includes(raw.rewardKind) ? raw.rewardKind : '',
             rewardName: String(raw.rewardName || '').trim().slice(0, 24),
             rewardQty: clampNum(raw.rewardQty, 1, 1, 10)

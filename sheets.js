@@ -341,7 +341,7 @@ function listColumn(rows, index) {
 }
 
 function validation(column, formula) {
-    return { sqref: column + '2:' + column + '300', formula };
+    return { sqref: column + '2:' + column + '800', formula };
 }
 
 function listRule(column, sheet, count, sourceColumn = 'A') {
