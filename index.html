@@ -3794,6 +3794,17 @@
                 return { x: x / zone.points.length, z: z / zone.points.length };
             }
 
+            function travelCampMark(def) {
+                const zoneId = def && def.travelZone || '';
+                const index = Number(def && def.travelCamp) || 0;
+                if (lastCamps && zoneId) {
+                    const site = lastCamps.find(entry => entry.id === 'dcamp-' + zoneId + '-' + index)
+                        || lastCamps.find(entry => entry.id === 'dcamp-' + zoneId + '-0');
+                    if (site) return { x: site.x, z: site.z };
+                }
+                return zoneCenter(zoneId);
+            }
+
             function trackedQuestMarks() {
                 const marks = [];
                 for (const id of trackedQuests) {
@@ -3807,15 +3818,19 @@
                         const giver = findQuestGiver(def);
                         if (giver) spot = { x: giver.x, z: giver.z, kind: 'turnin', name: def.name || 'Quest' };
                     }
-                    if (!spot && !turnIn && def.dungeonId) {
+                    if (!spot && !turnIn && def.type === 'travel') {
+                        const camp = travelCampMark(def);
+                        if (camp) spot = { x: camp.x, z: camp.z, kind: 'travel', name: def.travelName || def.name || 'Camp' };
+                    }
+                    if (!spot && !turnIn && def.type !== 'travel' && def.dungeonId) {
                         const cave = dungeonById(def.dungeonId);
                         if (cave && cave.portal) spot = { x: cave.portal.x, z: cave.portal.z, kind: 'dungeon', name: (def.name || 'Quest') + (cave.name ? ' · ' + cave.name : '') };
                     }
-                    if (!spot && !turnIn && def.zoneId) {
+                    if (!spot && !turnIn && def.type !== 'travel' && def.zoneId) {
                         const center = zoneCenter(def.zoneId);
                         if (center) spot = { x: center.x, z: center.z, kind: 'zone', name: def.name || 'Quest' };
                     }
-                    if (!spot) {
+                    if (!spot && def.type !== 'travel') {
                         const giver = findQuestGiver(def);
                         if (giver) spot = { x: giver.x, z: giver.z, kind: turnIn ? 'turnin' : 'giver', name: def.name || 'Quest' };
                     }
@@ -4114,7 +4129,7 @@
                 if (!activeCave) {
                     for (const mark of trackedQuestMarks()) {
                         const fill = mark.kind === 'turnin' ? '#2ecc71' : mark.kind === 'dungeon' ? '#c39bff' : mark.kind === 'giver' ? '#5dade2' : '#f1c40f';
-                        const what = mark.kind === 'turnin' ? 'Turn in ' : mark.kind === 'dungeon' ? 'Portal ' : mark.kind === 'giver' ? 'Quest giver ' : '';
+                        const what = mark.kind === 'turnin' ? 'Turn in ' : mark.kind === 'dungeon' ? 'Portal ' : mark.kind === 'travel' ? 'Go to ' : mark.kind === 'giver' ? 'Quest giver ' : '';
                         aimMarker(mark.x, mark.z, fill, what + (mark.name || 'Quest'));
                     }
                 }
@@ -4356,6 +4371,26 @@
                     ctx.fill();
                     ctx.stroke();
                     ctx.restore();
+                }
+                if (!activeCave) {
+                    for (const mark of trackedQuestMarks()) {
+                        if (mark.kind !== 'travel' && mark.kind !== 'turnin' && mark.kind !== 'dungeon') continue;
+                        const markSpot = toMap(mark.x, mark.z);
+                        ctx.save();
+                        ctx.translate(markSpot.mx, markSpot.mz);
+                        ctx.fillStyle = mark.kind === 'turnin' ? '#2ecc71' : mark.kind === 'dungeon' ? '#c39bff' : '#f1c40f';
+                        ctx.strokeStyle = '#1a1204';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(0, -8);
+                        ctx.lineTo(6, 0);
+                        ctx.lineTo(0, 8);
+                        ctx.lineTo(-6, 0);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.restore();
+                    }
                 }
                 const known = exploredZones.has(here.zx + ',' + here.zz);
                 document.getElementById('worldmapReadout').textContent = (known ? here.name : 'Unexplored') + '  ' + here.x.toFixed(0) + ', ' + here.z.toFixed(0) + '   ·   right-click to mark a point';
@@ -7916,6 +7951,7 @@
 
             function questZoneLabel(def) {
                 if (!def) return 'Anywhere';
+                if (def.type === 'travel' && def.travelName) return def.travelName;
                 if (def.zoneName) return def.zoneName;
                 if (def.zoneId) {
                     const zone = listDesignedZones().find(entry => entry.id === def.zoneId);
@@ -7956,6 +7992,7 @@
                     title.textContent = def.name || 'Quest';
                     const line = document.createElement('p');
                     if (row.failed) line.textContent = 'Failed. Speak to the giver.';
+                    else if (def.type === 'travel') line.textContent = def.text || 'Travel to the camp';
                     else if (done) line.textContent = 'Done ' + need + '/' + need + '. Turn it in.';
                     else line.textContent = (def.text || 'Objective') + '  ' + Math.min(row.count, need) + '/' + need;
                     block.append(title, line);
@@ -8019,7 +8056,7 @@
                     for (const [id, row, def] of groups.get(name)) {
                         const need = def.count || 1;
                         const ready = !row.failed && row.count >= need;
-                        const progress = row.failed ? 'Failed' : Math.min(row.count, need) + '/' + need + (ready ? ' · turn in' : '');
+                        const progress = def.type === 'travel' && !ready ? 'On the way' : (row.failed ? 'Failed' : Math.min(row.count, need) + '/' + need + (ready ? ' · turn in' : ''));
                         const block = document.createElement('div');
                         block.className = 'qrow' + (row.failed ? ' failed' : ready ? ' ready' : '');
                         const text = document.createElement('p');

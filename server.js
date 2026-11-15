@@ -409,11 +409,17 @@ function publicCivilian(civ) {
     return { id: civ.id, name: civ.name, role: civ.role, title: civ.title, tint: civ.tint, x: civ.x, z: civ.z, rotY: civ.rotY || 0, text: civ.text, quest: quests[0] || '', quests, dungeonId: civ.dungeonId || '', travel: !!civ.travel };
 }
 
-const QUEST_TYPES = ['kill', 'gather', 'named', 'protect'];
+const QUEST_TYPES = ['kill', 'gather', 'named', 'protect', 'travel'];
 const MOB_IDS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
 
 function questBlurb(quest) {
     if (quest.custom && quest.text) return quest.text;
+    if (quest.type === 'travel') {
+        const found = zoneRecord(quest.travelZone);
+        const place = found ? found.zone.name : 'the next camp';
+        const role = { inn: 'inn', shop: 'shop', trainer: 'trainer', quest: 'quest giver' }[quest.travelRole] || 'inn';
+        return 'Travel to the ' + role + ' in ' + place + '.';
+    }
     const mob = NPC_KINDS[quest.mob];
     const label = mob ? mob.name : 'creature';
     const many = quest.count === 1 ? label : label + 's';
@@ -429,6 +435,74 @@ function questBlurb(quest) {
         if (cave) text += ' Do this in ' + cave.name + ', then turn it in at the end.';
     }
     return text;
+}
+
+function zoneRecord(zoneId) {
+    if (!zoneId || !worldConfig) return null;
+    const maps = Array.isArray(worldConfig.maps) && worldConfig.maps.length ? worldConfig.maps : [{ id: '', zones: worldConfig.zones || [] }];
+    for (const map of maps) {
+        const zone = (map.zones || []).find(entry => entry && entry.id === zoneId);
+        if (zone) return { zone, map };
+    }
+    return null;
+}
+
+function travelSpot(quest) {
+    const found = zoneRecord(quest && quest.travelZone);
+    if (!found) return null;
+    const camps = Array.isArray(found.zone.camps) ? found.zone.camps : [];
+    const index = Math.max(0, Math.min(5, Number(quest.travelCamp) || 0));
+    const camp = camps[index] || camps[0];
+    if (!camp || !Number.isFinite(Number(camp.x)) || !Number.isFinite(Number(camp.z))) return null;
+    return {
+        x: Number(camp.x),
+        z: Number(camp.z),
+        mapId: found.map.id || '',
+        layout: camp.layout || 'hamlet',
+        zoneName: found.zone.name || 'the camp'
+    };
+}
+
+function noteTravel(player) {
+    if (!player || !player.quests || player.ghost || player.dungeonId) return;
+    const now = Date.now();
+    for (const [id, quest] of Object.entries(QUESTS)) {
+        if (quest.type !== 'travel') continue;
+        const row = player.quests[id];
+        if (!row || row.state !== 'active' || row.failed) continue;
+        const spot = travelSpot(quest);
+        if (!spot) continue;
+        if (spot.mapId && player.mapId && spot.mapId !== player.mapId) continue;
+        const reach = spot.layout === 'city' ? CITY_RADIUS : SETTLEMENT_RADIUS + 4;
+        if (Math.hypot(player.x - spot.x, player.z - spot.z) > reach) continue;
+        if (quest.rewardKind && quest.rewardKind !== 'coins') {
+            const reward = rewardFromCatalog(quest);
+            if (addToSlots(player, reward)) {
+                if (now - (player.travelFullNote || 0) > 8000) {
+                    player.travelFullNote = now;
+                    send(player.ws, { type: 'quests', ok: false, reason: 'Inventory full', quests: player.quests });
+                }
+                return;
+            }
+        }
+        row.state = 'done';
+        row.count = 1;
+        row.failed = false;
+        if (quest.coins) addToSlots(player, { kind: 'coins', name: 'Coins', qty: quest.coins });
+        const leveled = grantXp(player, quest.xp || 0);
+        savePlayer(player);
+        send(player.ws, {
+            type: 'quests',
+            ok: true,
+            note: 'Quest complete. Reached ' + spot.zoneName,
+            leveled,
+            quests: player.quests,
+            questDefs: publicQuests(),
+            inventory: inventoryOf(player),
+            ...statsOf(player)
+        });
+        return;
+    }
 }
 
 const QUESTS = {
@@ -504,6 +578,10 @@ function publicQuests() {
             zoneName: questZoneName(quest),
             dungeonId: quest.dungeonId || '',
             giver: quest.giver || '',
+            travelZone: quest.travelZone || '',
+            travelName: (zoneRecord(quest.travelZone) || {}).zone ? zoneRecord(quest.travelZone).zone.name : '',
+            travelRole: quest.travelRole || '',
+            travelCamp: quest.travelCamp || 0,
             rewardKind: quest.rewardKind || '',
             rewardName: quest.rewardName || '',
             rewardQty: quest.rewardQty || 1
@@ -5311,6 +5389,7 @@ wss.on('connection', (ws) => {
             broadcastSeen(player, { type: 'update', ...publicPlayer(sessionId, player) });
             if (revealed.length) send(ws, { type: 'fog', add: revealed });
             if (notePlace(player)) scheduleSave();
+            noteTravel(player);
             return;
         }
 
@@ -5960,6 +6039,10 @@ wss.on('connection', (ws) => {
             }
             if (!questDoneByName(player, quest.requires)) {
                 send(ws, { type: 'quests', ok: false, reason: 'Requires ' + quest.requires, quests: player.quests });
+                return;
+            }
+            if (quest.type === 'travel' && !travelSpot(quest)) {
+                send(ws, { type: 'quests', ok: false, reason: 'That camp is not in the world', quests: player.quests });
                 return;
             }
             if (quest.type === 'protect' && !protectTarget(quest)) {
@@ -6767,10 +6850,13 @@ function sanitizeQuests(input) {
             requires: String(raw.requires || '').trim().slice(0, 32),
             type,
             mob: MOB_IDS.includes(raw.mob) ? raw.mob : 'boar',
-            count: type === 'named' ? 1 : clampNum(raw.count, 3, 1, 40),
+            count: type === 'named' || type === 'travel' ? 1 : clampNum(raw.count, 3, 1, 40),
             item: String(raw.item || '').trim().slice(0, 24),
             named: String(raw.named || '').trim().slice(0, 24),
             elite: type === 'named' && sheetFlag(raw.elite),
+            travelZone: String(raw.travelZone || '').slice(0, 24),
+            travelRole: ['inn', 'shop', 'trainer', 'quest'].includes(raw.travelRole) ? raw.travelRole : (type === 'travel' ? 'inn' : ''),
+            travelCamp: clampNum(raw.travelCamp, 0, 0, 5),
             custom: sheetFlag(raw.custom),
             text: String(raw.text || '').slice(0, 180),
             coins: clampNum(raw.coins, 10, 0, 5000),
@@ -7779,7 +7865,7 @@ function workbookSource() {
             weapon: ['sword', 'staff'],
             set: [...sets],
             yes: ['yes', 'no'],
-            type: ['kill', 'gather', 'named', 'protect'],
+            type: ['kill', 'gather', 'named', 'protect', 'travel'],
             mob: ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'],
             reward: ['junk', 'health', 'mana', 'cloth', 'leather', 'ore', 'gem', 'stone', 'herb', 'powder', 'silk', 'recipe', 'armor', 'bag'],
             role: ['inn', 'shop', 'trainer', 'quest']

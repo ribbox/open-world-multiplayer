@@ -1639,6 +1639,12 @@
             const label = MOB_LABEL[quest.mob] || 'creature';
             const many = Number(quest.count) === 1 ? label : label + 's';
             if (quest.custom && quest.text) return quest.text;
+            if (quest.type === 'travel') {
+                const dest = allZones().find(row => row.zone.id === quest.travelZone);
+                const place = dest ? ((dest.mapName ? dest.mapName + ' — ' : '') + (dest.zone.name || 'zone')) : 'the next camp';
+                const who = { inn: 'inn', shop: 'shop', trainer: 'trainer', quest: 'quest giver' }[quest.travelRole] || 'inn';
+                return 'Travel to the ' + who + ' in ' + place + '.';
+            }
             if (quest.type === 'gather') return 'Gather ' + (quest.count || 1) + ' ' + (quest.item || 'items') + '. ' + (quest.named || many) + ' drop them.';
             if (quest.type === 'named') return 'Kill ' + (quest.elite ? 'the elite ' : '') + (quest.named || label) + '.';
             if (quest.type === 'protect') return 'Protect ' + (quest.named || 'the villager') + '. They leave the camp. Defeat ' + (quest.count || 1) + ' attackers.';
@@ -1751,7 +1757,7 @@
             const typeLabel = document.createElement('label');
             typeLabel.textContent = 'Type';
             const type = document.createElement('select');
-            for (const [id, caption] of [['kill', 'Kill a number'], ['gather', 'Gather items'], ['named', 'Kill a named mob'], ['protect', 'Protect a named person']]) {
+            for (const [id, caption] of [['kill', 'Kill a number'], ['gather', 'Gather items'], ['named', 'Kill a named mob'], ['protect', 'Protect a named person'], ['travel', 'Travel to a camp']]) {
                 const option = document.createElement('option');
                 option.value = id;
                 option.textContent = caption;
@@ -1787,7 +1793,7 @@
                 inside.textContent = 'Kills count only inside ' + (cave ? cave.name : 'the dungeon') + '. Turn it in at ' + ((cave && cave.endName) || 'the end NPC') + '.';
                 form.appendChild(inside);
             }
-            if (quest.type !== 'named') addField(quest.type === 'protect' ? 'Attackers to defeat' : 'How many', quest.count, value => { quest.count = value; }, 'number');
+            if (quest.type !== 'named' && quest.type !== 'travel') addField(quest.type === 'protect' ? 'Attackers to defeat' : 'How many', quest.count, value => { quest.count = value; }, 'number');
             if (quest.type === 'gather' || quest.type === 'named') {
                 const items = zoneItems(zone);
                 const itemLabel = document.createElement('label');
@@ -1839,6 +1845,56 @@
                     renderQuests();
                 });
                 form.append(protectLabel, protect);
+            } else if (quest.type === 'travel') {
+                const destLabel = document.createElement('label');
+                destLabel.textContent = 'Camp to reach';
+                const dest = document.createElement('select');
+                const blankDest = document.createElement('option');
+                blankDest.value = '';
+                blankDest.textContent = 'Choose a zone';
+                dest.appendChild(blankDest);
+                for (const row of allZones()) {
+                    const option = document.createElement('option');
+                    option.value = row.zone.id;
+                    option.textContent = (row.mapName ? row.mapName + ' — ' : '') + (row.zone.name || 'Zone');
+                    dest.appendChild(option);
+                }
+                dest.value = quest.travelZone || '';
+                dest.addEventListener('change', () => {
+                    quest.travelZone = dest.value;
+                    quest.travelCamp = 0;
+                    if (!quest.travelRole) quest.travelRole = 'inn';
+                    renderQuests();
+                });
+                form.append(destLabel, dest);
+                const destZone = (allZones().find(row => row.zone.id === quest.travelZone) || {}).zone;
+                const camps = destZone && destZone.camps || [];
+                if (camps.length > 1) {
+                    const campLabel = document.createElement('label');
+                    campLabel.textContent = 'Which camp';
+                    const camp = document.createElement('select');
+                    camps.forEach((site, index) => {
+                        const option = document.createElement('option');
+                        option.value = String(index);
+                        option.textContent = 'Camp ' + (index + 1) + (site.layout ? ' · ' + site.layout : '');
+                        camp.appendChild(option);
+                    });
+                    camp.value = String(quest.travelCamp || 0);
+                    camp.addEventListener('change', () => { quest.travelCamp = Number(camp.value) || 0; renderQuests(); });
+                    form.append(campLabel, camp);
+                }
+                const roleLabel = document.createElement('label');
+                roleLabel.textContent = 'Place in the camp';
+                const role = document.createElement('select');
+                for (const [id, caption] of [['inn', 'Inn'], ['shop', 'Shop'], ['trainer', 'Trainer'], ['quest', 'Quest giver']]) {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = caption;
+                    role.appendChild(option);
+                }
+                role.value = quest.travelRole || 'inn';
+                role.addEventListener('change', () => { quest.travelRole = role.value; renderQuests(); });
+                form.append(roleLabel, role);
             } else if (quest.type === 'named') {
                 addField('Mob name', quest.named, value => { quest.named = value; });
                 const eliteLabel = document.createElement('label');

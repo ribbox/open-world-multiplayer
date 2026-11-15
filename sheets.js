@@ -4,9 +4,9 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 const ITEM_HEADERS = ['Name', 'What it is', 'Crafting set', 'Kind', 'Worn on', 'Armor type', 'Weapon', 'Armor', 'Potion or bomb amount', 'Magic', 'Found in chests', 'Materials', 'Strength', 'Stamina', 'Intellect', 'Required level', 'Icon', 'Game id'];
-const QUEST_HEADERS = ['Name', 'What it is', 'Zone', 'Zone id', 'Minimum level', 'Giver', 'Giver role', 'Camp number', 'After quest', 'Type', 'Creature', 'How many', 'Item', 'Named target', 'Elite', 'Dungeon', 'Dungeon id', 'Protect role', 'Protect camp', 'Custom text', 'Quest text', 'Coin reward', 'XP reward', 'Reward kind', 'Reward item', 'Reward amount', 'Game id'];
+const QUEST_HEADERS = ['Name', 'What it is', 'Zone', 'Zone id', 'Minimum level', 'Giver', 'Giver role', 'Camp number', 'After quest', 'Type', 'Creature', 'How many', 'Item', 'Named target', 'Elite', 'Dungeon', 'Dungeon id', 'Protect role', 'Protect camp', 'Destination', 'Destination id', 'Destination role', 'Destination camp', 'Custom text', 'Quest text', 'Coin reward', 'XP reward', 'Reward kind', 'Reward item', 'Reward amount', 'Game id'];
 const ITEM_WIDTHS = [24, 56, 16, 12, 16, 14, 12, 10, 22, 12, 16, 24, 12, 12, 12, 16, 20, 22];
-const QUEST_WIDTHS = [24, 56, 22, 18, 16, 16, 14, 14, 18, 12, 14, 12, 16, 18, 10, 22, 18, 14, 14, 14, 42, 14, 12, 14, 20, 16, 22];
+const QUEST_WIDTHS = [24, 56, 22, 18, 16, 16, 14, 14, 18, 12, 14, 12, 16, 18, 10, 22, 18, 14, 14, 22, 18, 16, 16, 14, 42, 14, 12, 14, 20, 16, 22];
 
 const HEADER_ALIAS = new Map([
     ['id', 'id'],
@@ -68,6 +68,15 @@ const HEADER_ALIAS = new Map([
     ['protect role', 'protectRole'],
     ['protectcamp', 'protectCamp'],
     ['protect camp', 'protectCamp'],
+    ['destination', 'travelZoneName'],
+    ['destination zone', 'travelZoneName'],
+    ['destination id', 'travelZone'],
+    ['destination zone id', 'travelZone'],
+    ['travelzone', 'travelZone'],
+    ['destination role', 'travelRole'],
+    ['travel role', 'travelRole'],
+    ['destination camp', 'travelCamp'],
+    ['travel camp', 'travelCamp'],
     ['custom', 'custom'],
     ['custom text', 'custom'],
     ['text', 'text'],
@@ -235,10 +244,11 @@ function pluralMob(mob, count) {
     return word + 's';
 }
 
-function questAbout(quest, zoneLabel, dungeonLabel) {
+function questAbout(quest, zoneLabel, dungeonLabel, travelLabel) {
     const place = dungeonLabel || zoneLabel || (quest.dungeonId ? 'dungeon ' + quest.dungeonId : (quest.zoneId ? 'zone ' + quest.zoneId : 'any zone'));
     let job;
-    if (quest.type === 'gather') job = 'Collect ' + (quest.count || 1) + ' ' + (quest.item || 'items') + ' from ' + pluralMob(quest.mob, quest.count) + ' in ' + place;
+    if (quest.type === 'travel') job = 'Travel to the ' + ({ inn: 'inn', shop: 'shop', trainer: 'trainer', quest: 'quest giver' }[quest.travelRole] || 'inn') + ' in ' + (travelLabel || 'the next camp');
+    else if (quest.type === 'gather') job = 'Collect ' + (quest.count || 1) + ' ' + (quest.item || 'items') + ' from ' + pluralMob(quest.mob, quest.count) + ' in ' + place;
     else if (quest.type === 'named') job = 'Defeat ' + (quest.named || quest.mob || 'a named foe') + (yesNo(quest.elite) === 'yes' ? ', an elite,' : '') + ' in ' + place;
     else if (quest.type === 'protect') job = 'Protect the ' + (quest.protectRole || 'camp') + ' in ' + place + ' from ' + (quest.count || 1) + ' ' + pluralMob(quest.mob, quest.count);
     else job = 'Kill ' + (quest.count || 1) + ' ' + pluralMob(quest.mob, quest.count) + ' in ' + place;
@@ -303,9 +313,10 @@ function labelFor(choices, id) {
 function questRow(quest, zoneChoices, dungeonChoices) {
     const zoneLabel = labelFor(zoneChoices, quest.zoneId);
     const dungeonLabel = labelFor(dungeonChoices, quest.dungeonId);
+    const travelLabel = labelFor(zoneChoices, quest.travelZone);
     return [
         quest.name || '',
-        questAbout(quest, zoneLabel, dungeonLabel),
+        questAbout(quest, zoneLabel, dungeonLabel, travelLabel),
         zoneLabel,
         quest.zoneId || '',
         numberOrBlank(quest.minLevel, 1),
@@ -323,6 +334,10 @@ function questRow(quest, zoneChoices, dungeonChoices) {
         quest.dungeonId || '',
         quest.protectRole || '',
         numberOrBlank(quest.protectCamp, 0),
+        travelLabel,
+        quest.travelZone || '',
+        quest.travelRole || '',
+        numberOrBlank(quest.travelCamp, 0),
         yesNo(quest.custom),
         quest.text || '',
         numberOrBlank(quest.coins, 0),
@@ -488,10 +503,12 @@ export function applyQuestPlaces(quests, zones, dungeons) {
         const next = {
             ...quest,
             zoneId: resolvePlace(quest.zoneName, quest.zoneId, zoneChoices),
-            dungeonId: resolvePlace(quest.dungeonName, quest.dungeonId, dungeonChoices)
+            dungeonId: resolvePlace(quest.dungeonName, quest.dungeonId, dungeonChoices),
+            travelZone: resolvePlace(quest.travelZoneName, quest.travelZone, zoneChoices)
         };
         delete next.zoneName;
         delete next.dungeonName;
+        delete next.travelZoneName;
         delete next.about;
         return next;
     });
@@ -785,6 +802,10 @@ function normalizeQuest(row) {
         dungeonId: row.dungeonId || '',
         protectRole: row.protectRole || '',
         protectCamp: row.protectCamp == null ? '' : row.protectCamp,
+        travelZoneName: row.travelZoneName || '',
+        travelZone: row.travelZone || '',
+        travelRole: row.travelRole || '',
+        travelCamp: row.travelCamp == null ? '' : row.travelCamp,
         custom: row.custom || '',
         text: row.text || '',
         coins: row.coins == null ? '' : row.coins,
