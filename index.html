@@ -6236,36 +6236,33 @@
             function buildCity(parent, site) {
                 const wood = 0x8b5a2b;
                 const roof = 0x7b2d2d;
-                const stone = 0x8a8f93;
                 const plaster = [0xc8b48a, 0xd9c7a2, 0xb7a48a, 0x8d6b4a, 0x6e5344];
                 const roofs = [0x7b2d2d, 0x5c4033, 0x2c3e50, 0x6b3a2a];
-                for (const [lx, lz] of [[0, 0], [6, 0], [-6, 0], [0, 6], [0, -6], [6, 6], [-6, 6], [6, -6], [-6, -6]]) {
-                    campBlock(parent, site, lx, 0.06, lz, 5.4, 0.1, 5.4, stone, false);
-                }
                 if (innTemplate) {
-                    const hall = localCampPoint(site, 0, 8);
-                    placeStructure(parent, innTemplate, hall.x, hall.z, hall.yaw, 7.4, 2.6);
+                    const hall = localCampPoint(site, 0, 6);
+                    placeStructure(parent, innTemplate, hall.x, hall.z, hall.yaw, 7.2, 2.2);
                 } else {
-                    campBlock(parent, site, 0, 2.2, 8, 8.4, 4.2, 6.2, 0x6b4423, true);
-                    campBlock(parent, site, 0, 4.6, 8, 9.6, 0.7, 7.4, roof, false);
+                    campBlock(parent, site, 0, 2.2, 6, 8.4, 4.2, 6.2, 0x6b4423, true);
+                    campBlock(parent, site, 0, 4.6, 6, 9.6, 0.7, 7.4, roof, false);
                 }
-                campBlock(parent, site, 0, 0.45, -2, 1.4, 0.8, 1.4, stone, true);
-                const rows = [-40, -28, -16, 18, 30, 42];
-                const cols = [-44, -30, -16, 16, 30, 44];
+                const lines = [-46, -32, -18, 10, 18, 32, 46];
                 let n = 0;
-                for (const lz of rows) {
-                    for (const lx of cols) {
-                        const scale = 3.15 + (n % 4) * 0.28;
+                for (const lz of lines) {
+                    for (const lx of lines) {
+                        if (Math.hypot(lx, lz) < 14) continue;
+                        if (Math.hypot(lx, lz - 6) < 10) continue;
                         const spot = localCampPoint(site, lx, lz);
-                        if (cabinTemplate) placeStructure(parent, cabinTemplate, spot.x, spot.z, spot.yaw + (n % 2) * 0.5, scale, 1.55);
+                        const face = spot.yaw + (n % 4) * (Math.PI / 2);
+                        const scale = 5.4 + (n % 5) * 0.45;
+                        if (innTemplate) placeStructure(parent, innTemplate, spot.x, spot.z, face, scale, 1.55);
                         else {
-                            campBlock(parent, site, lx, 1.15, lz, 3.3, 2.2, 2.9, plaster[n % plaster.length], true);
-                            campBlock(parent, site, lx, 2.5, lz, 3.9, 0.55, 3.5, roofs[n % roofs.length], false);
+                            campBlock(parent, site, lx, 1.5, lz, 4.2, 3.0, 3.8, plaster[n % plaster.length], true);
+                            campBlock(parent, site, lx, 3.2, lz, 4.8, 0.7, 4.4, roofs[n % roofs.length], false);
                         }
                         n += 1;
                     }
                 }
-                for (const [lx, lz, color] of [[-10, -6, 0xc0392b], [10, -6, 0x2471a3], [-10, 4, 0x1e8449], [10, 4, 0xe67e22]]) {
+                for (const [lx, lz, color] of [[-12, -4, 0xc0392b], [12, -4, 0x2471a3], [-12, 8, 0x1e8449], [12, 8, 0xe67e22], [0, -12, 0xd68910], [-8, 14, 0x6c3483]]) {
                     campBlock(parent, site, lx, 1.35, lz, 3.6, 0.12, 2.3, color, false);
                     for (const ox of [-1.5, 1.5]) {
                         for (const oz of [-0.9, 0.9]) campBlock(parent, site, lx + ox, 0.7, lz + oz, 0.16, 1.4, 0.16, wood, true);
