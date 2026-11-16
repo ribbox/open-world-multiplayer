@@ -6968,6 +6968,16 @@
                 const existing = worldChests.get(chest.id);
                 if (existing) {
                     existing.items = chest.items;
+                    existing.mark = existing.mark || !!chest.mark;
+                    if (chest.mark && existing.group && !existing.group.userData.beam) {
+                        const beam = new THREE.Mesh(
+                            new THREE.CylinderGeometry(0.12, 0.12, 5, 8),
+                            new THREE.MeshBasicMaterial({ color: 0xffe27a })
+                        );
+                        beam.position.y = 2.6;
+                        existing.group.add(beam);
+                        existing.group.userData.beam = beam;
+                    }
                     if (Number.isFinite(chest.x) && Number.isFinite(chest.z)) {
                         existing.x = chest.x;
                         existing.z = chest.z;
@@ -7016,6 +7026,15 @@
                 label.scale.set(1.6, 0.4, 1);
                 label.position.y = 1.15;
                 group.add(label);
+                if (chest.mark) {
+                    const beam = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.12, 0.12, 5, 8),
+                        new THREE.MeshBasicMaterial({ color: 0xffe27a })
+                    );
+                    beam.position.y = 2.6;
+                    group.add(beam);
+                    group.userData.beam = beam;
+                }
                 group.position.set(chest.x, chest.x > 80000 ? 0.2 : terrainHeight(chest.x, chest.z), chest.z);
                 scene.add(group);
                 worldChests.set(chest.id, { ...chest, group });
@@ -10592,6 +10611,16 @@
                         else if (data.command === 'stay') showMessage('Pet holding');
                         else if (data.command === 'follow') showMessage('Pet following');
                     } else if (data.type === 'killCredit') {
+                        if (data.chest) {
+                            const yaw = characterGroup.rotation.y || 0;
+                            data.chest.x = characterGroup.position.x + Math.sin(yaw) * 1.5;
+                            data.chest.z = characterGroup.position.z + Math.cos(yaw) * 1.5;
+                            data.chest.mark = true;
+                            addChest(data.chest);
+                            if (gameSocket && gameSocket.readyState === WebSocket.OPEN) {
+                                gameSocket.send(JSON.stringify({ type: 'chestPlace', id: data.chest.id, x: data.chest.x, z: data.chest.z }));
+                            }
+                        }
                         applyStats(data);
                         if (data.inventory) applyInventory(data.inventory);
                         const ready = data.quests ? applyQuests(data.quests) : '';

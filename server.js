@@ -3973,7 +3973,7 @@ const chests = new Map();
 let chestSeq = 1;
 
 function publicChest(chest) {
-    return { id: chest.id, x: chest.x, z: chest.z, level: chest.level, items: chest.items };
+    return { id: chest.id, x: chest.x, z: chest.z, level: chest.level, items: chest.items, mark: !!chest.mark };
 }
 
 function spawnChest(npc, owners, drop) {
@@ -4863,8 +4863,27 @@ function companionStrike(owner, victim, amount, kind) {
         const award = awardKill(owner, victim);
         const yaw = owner.rotY || 0;
         const drop = { x: owner.x + Math.sin(yaw) * 1.4, z: owner.z + Math.cos(yaw) * 1.4 };
-        const chest = spawnChest(victim, award.members, drop);
-        const credit = chest ? publicChest(chest) : null;
+        let chest = null;
+        try {
+            chest = spawnChest(victim, award.members, drop);
+        } catch (err) {
+            chest = null;
+        }
+        if (!chest) {
+            chest = {
+                id: 'c' + (chestSeq++),
+                x: drop.x,
+                z: drop.z,
+                level: victim.level || 1,
+                items: [{ kind: 'coins', name: 'Coins', qty: Math.max(1, victim.level || 1) }],
+                mapId: owner.mapId || currentMapId(),
+                spawnedAt: Date.now()
+            };
+            chests.set(chest.id, chest);
+        }
+        chest.mark = true;
+        const credit = publicChest(chest);
+        send(owner.ws, { type: 'chest', chest: credit });
         send(owner.ws, {
             type: 'killCredit',
             name: victim.name || 'it',
@@ -4874,6 +4893,7 @@ function companionStrike(owner, victim, amount, kind) {
             quests: owner.quests,
             inventory: owner.questDirty ? inventoryOf(owner) : undefined,
             questNote: owner.questNote || '',
+            dropAt: 'player',
             chest: credit,
             ...statsOf(owner)
         });
@@ -6135,6 +6155,18 @@ wss.on('connection', (ws) => {
             player.invulnUntil = Date.now() + 2000;
             broadcastSeen(player, { type: 'ghost', ...publicPlayer(player.persistentId, player) });
             send(ws, { type: 'reclaim', ok: true, ...statsOf(player) });
+            return;
+        }
+
+        if (data.type === 'chestPlace') {
+            const chest = chests.get(String(data.id || ''));
+            const placedX = Number(data.x);
+            const placedZ = Number(data.z);
+            if (!chest || Date.now() - chest.spawnedAt > 8000) return;
+            if (!Number.isFinite(placedX) || !Number.isFinite(placedZ)) return;
+            if (Math.hypot(placedX - chest.x, placedZ - chest.z) > 80) return;
+            chest.x = placedX;
+            chest.z = placedZ;
             return;
         }
 
