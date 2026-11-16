@@ -4941,15 +4941,10 @@ function stepCompanion(body, tx, tz, speed, dt) {
 }
 
 function companionPrey(owner, body) {
-    if (!body || body.mode === 'stay' || owner.ghost) return null;
+    if (!body || body.mode !== 'attack' || owner.ghost) return null;
     const chosen = playerFocus(owner);
-    const chosenOk = chosen && !inSettlement(chosen.x, chosen.z);
-    if (body.mode === 'attack' && chosenOk) return chosen;
-    const foe = body.attackerId ? npcs.get(body.attackerId) : null;
-    if (foe && foe.alive && (body.attackerAt || 0) > Date.now() - 8000 && !inSettlement(foe.x, foe.z)) {
-        if ((foe.mapId || '') === (owner.mapId || '') && Math.hypot(foe.x - body.x, foe.z - body.z) < 18) return foe;
-    }
-    return chosenOk ? chosen : null;
+    if (!chosen || inSettlement(chosen.x, chosen.z)) return null;
+    return chosen;
 }
 
 function tickCompanionBody(owner, body, now, dt) {
@@ -5315,22 +5310,13 @@ function tickNpcs() {
             reach = casting ? 8.4 : NPC_HIT_RANGE;
         }
         if (focusNow && dist <= reach) {
-            const awayX = dist > 0.2 ? dx / dist : Math.sin(npc.attackAt || 1);
-            const awayZ = dist > 0.2 ? dz / dist : Math.cos(npc.attackAt || 1);
-            if (dist < 2.4) {
-                npc.x -= awayX * Math.min(3.2, 2.4 - dist + 0.4);
-                npc.z -= awayZ * Math.min(3.2, 2.4 - dist + 0.4);
+            if (dist < 0.35) {
+                const awayX = dist > 0.05 ? dx / dist : 1;
+                const awayZ = dist > 0.05 ? dz / dist : 0;
+                npc.x -= awayX * 0.2;
+                npc.z -= awayZ * 0.2;
             }
             npc.rotY = Math.atan2(dx, dz);
-            if (pureCaster && dist < 5.2 && dist >= 2.4) {
-                const back = Math.min(2.4 * dt, 5.2 - dist);
-                npc.x -= awayX * back;
-                npc.z -= awayZ * back;
-            } else if (cultist && !casting && dist < 1.15 && dist > 0.2) {
-                const back = Math.min(1.6 * dt, 1.15 - dist);
-                npc.x -= (dx / dist) * back;
-                npc.z -= (dz / dist) * back;
-            }
             const owner = focusNow.player;
             const victim = focusNow.kind === 'player' ? owner : focusNow.body;
             if (!npc.dungeonId && victim && inSettlement(victim.x, victim.z)) {
