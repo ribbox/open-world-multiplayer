@@ -5274,19 +5274,11 @@ function tickNpcs() {
             npc.aggroId = null;
             continue;
         }
-        const fromHome = Math.hypot(npc.x - homeX, npc.z - homeZ);
         let tx = npc.wanderX;
         let tz = npc.wanderZ;
         let speed = 1.7;
         let focusNow = focus;
-        if (!npc.dungeonId && !npc.guardId && fromHome > 34) {
-            if (npc.threat) npc.threat.clear();
-            npc.aggroId = null;
-            focusNow = null;
-            tx = homeX;
-            tz = homeZ;
-            speed = 5;
-        } else if (focusNow) {
+        if (focusNow) {
             npc.aggroId = focusNow.kind === 'player' ? focusNow.player.persistentId : focusNow.id;
             tx = focusNow.x;
             tz = focusNow.z;
@@ -5303,20 +5295,12 @@ function tickNpcs() {
         const pureCaster = npc.style === 'caster' || npc.kind === 'wisp';
         const cultist = npc.kind === 'cultist';
         let casting = pureCaster;
-        let reach = pureCaster ? 8.4 : NPC_HIT_RANGE;
         if (cultist) {
             if (npc.cultistCast == null) npc.cultistCast = true;
             casting = !!npc.cultistCast;
-            reach = casting ? 8.4 : NPC_HIT_RANGE;
         }
-        if (focusNow && dist <= reach) {
-            if (dist < 0.35) {
-                const awayX = dist > 0.05 ? dx / dist : 1;
-                const awayZ = dist > 0.05 ? dz / dist : 0;
-                npc.x -= awayX * 0.2;
-                npc.z -= awayZ * 0.2;
-            }
-            npc.rotY = Math.atan2(dx, dz);
+        const attackReach = casting ? 8.4 : NPC_HIT_RANGE;
+        if (focusNow && dist <= attackReach) {
             const owner = focusNow.player;
             const victim = focusNow.kind === 'player' ? owner : focusNow.body;
             if (!npc.dungeonId && victim && inSettlement(victim.x, victim.z)) {
@@ -5389,7 +5373,10 @@ function tickNpcs() {
                 }
                 if (owner.hp <= 0) becomeGhost(owner, now);
             }
-            continue;
+            if (dist <= NPC_HIT_RANGE) {
+                npc.rotY = Math.atan2(dx, dz);
+                continue;
+            }
         }
         if (dist < 0.4) {
             if (!focusNow) pickWander(npc);
