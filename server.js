@@ -4861,10 +4861,8 @@ function companionStrike(owner, victim, amount, kind) {
     if (victim.hp <= 0) {
         downNpc(victim);
         const award = awardKill(owner, victim);
-        const away = Math.hypot(owner.x - victim.x, owner.z - victim.z) || 1;
-        const drop = away > 8
-            ? { x: owner.x + (victim.x - owner.x) / away * 1.6, z: owner.z + (victim.z - owner.z) / away * 1.6 }
-            : { x: victim.x, z: victim.z };
+        const yaw = owner.rotY || 0;
+        const drop = { x: owner.x + Math.sin(yaw) * 1.4, z: owner.z + Math.cos(yaw) * 1.4 };
         const chest = spawnChest(victim, award.members, drop);
         const credit = chest ? publicChest(chest) : null;
         send(owner.ws, {
@@ -5252,13 +5250,31 @@ function tickNpcs() {
         }
         const focus = threatFocus(npc);
         if (!focus) npc.aggroId = null;
+        const homeX = Number.isFinite(npc.homeX) ? npc.homeX : npc.x;
+        const homeZ = Number.isFinite(npc.homeZ) ? npc.homeZ : npc.z;
+        if (!Number.isFinite(npc.x) || !Number.isFinite(npc.z)) {
+            npc.x = homeX;
+            npc.z = homeZ;
+            if (npc.threat) npc.threat.clear();
+            npc.aggroId = null;
+            continue;
+        }
+        const fromHome = Math.hypot(npc.x - homeX, npc.z - homeZ);
         let tx = npc.wanderX;
         let tz = npc.wanderZ;
         let speed = 1.7;
-        if (focus) {
-            npc.aggroId = focus.kind === 'player' ? focus.player.persistentId : focus.id;
-            tx = focus.x;
-            tz = focus.z;
+        let focusNow = focus;
+        if (!npc.dungeonId && !npc.guardId && fromHome > 34) {
+            if (npc.threat) npc.threat.clear();
+            npc.aggroId = null;
+            focusNow = null;
+            tx = homeX;
+            tz = homeZ;
+            speed = 5;
+        } else if (focusNow) {
+            npc.aggroId = focusNow.kind === 'player' ? focusNow.player.persistentId : focusNow.id;
+            tx = focusNow.x;
+            tz = focusNow.z;
             speed = 3.8;
         } else if (now > npc.wanderUntil) {
             pickWander(npc);
@@ -5268,7 +5284,7 @@ function tickNpcs() {
         if ((npc.slowUntil || 0) > now) speed *= 0.4;
         const dx = tx - npc.x;
         const dz = tz - npc.z;
-        const dist = Math.hypot(dx, dz) || 0;
+        const dist = Math.hypot(dx, dz);
         const pureCaster = npc.style === 'caster' || npc.kind === 'wisp';
         const cultist = npc.kind === 'cultist';
         let casting = pureCaster;
@@ -5278,25 +5294,31 @@ function tickNpcs() {
             casting = !!npc.cultistCast;
             reach = casting ? 8.4 : NPC_HIT_RANGE;
         }
-        if (focus && dist <= reach) {
+        if (focusNow && dist <= reach) {
+            const awayX = dist > 0.2 ? dx / dist : Math.sin(npc.attackAt || 1);
+            const awayZ = dist > 0.2 ? dz / dist : Math.cos(npc.attackAt || 1);
+            if (dist < 2.4) {
+                npc.x -= awayX * Math.min(3.2, 2.4 - dist + 0.4);
+                npc.z -= awayZ * Math.min(3.2, 2.4 - dist + 0.4);
+            }
             npc.rotY = Math.atan2(dx, dz);
-            if (pureCaster && dist < 4.2) {
-                const back = Math.min(2.4 * dt, 4.2 - dist);
-                npc.x -= (dx / dist) * back;
-                npc.z -= (dz / dist) * back;
-            } else if (cultist && !casting && dist < 1.15) {
+            if (pureCaster && dist < 5.2 && dist >= 2.4) {
+                const back = Math.min(2.4 * dt, 5.2 - dist);
+                npc.x -= awayX * back;
+                npc.z -= awayZ * back;
+            } else if (cultist && !casting && dist < 1.15 && dist > 0.2) {
                 const back = Math.min(1.6 * dt, 1.15 - dist);
                 npc.x -= (dx / dist) * back;
                 npc.z -= (dz / dist) * back;
             }
-            const owner = focus.player;
-            const victim = focus.kind === 'player' ? owner : focus.body;
+            const owner = focusNow.player;
+            const victim = focusNow.kind === 'player' ? owner : focusNow.body;
             if (!npc.dungeonId && victim && inSettlement(victim.x, victim.z)) {
                 npc.aggroId = null;
-                if (npc.threat) npc.threat.delete(focus.id);
+                if (npc.threat) npc.threat.delete(focusNow.id);
                 continue;
             }
-            const shielded = focus.kind === 'player' && now < (owner.invulnUntil || 0);
+            const shielded = focusNow.kind === 'player' && now < (owner.invulnUntil || 0);
             if (victim && now >= npc.attackAt && !shielded) {
                 npc.attackAt = now + (casting ? 1800 : 1400);
                 if (cultist) npc.cultistCast = !casting;
@@ -5304,12 +5326,12 @@ function tickNpcs() {
                 const primary = casting ? (block.intellect || npc.level) : (block.strength || npc.level);
                 const raw = 1 + primary;
                 let damage = npc.elite ? eliteStrike(npc, victim) : Math.max(1, Math.round(raw) - (victim.armor || 0));
-                if (focus.kind === 'pet') {
+                if (focusNow.kind === 'pet') {
                     const resist = petResist(victim);
                     damage = npc.elite ? petEliteHit(npc, victim) : Math.max(1, Math.round(raw * (1 - resist * 0.5)));
                 }
                 const bolt = npc.kind === 'wisp' ? '#7ee7ff' : npc.kind === 'cultist' ? '#d56bff' : '#b46bff';
-                if (focus.kind !== 'player') {
+                if (focusNow.kind !== 'player') {
                     victim.hp = Math.max(0, victim.hp - damage);
                     enterCombat(owner, now);
                     victim.combatUntil = now + COMBAT_HOLD;
@@ -5323,8 +5345,9 @@ function tickNpcs() {
                         }
                         if (victim === owner.minion) owner.minion = null;
                     }
-                    const petLabel = victim.name || (focus.kind === 'minion' ? 'Minion' : 'Pet');
-                    const taken = mobTag(npc) + (victim.hp <= 0 ? ' kills ' : ' hits ') + petLabel + ' for ' + damage;
+                    const petLabel = victim.name || (focusNow.kind === 'minion' ? 'Minion' : 'Pet');
+                    const gap = Math.max(0, Math.round(dist));
+                    const taken = mobTag(npc) + (victim.hp <= 0 ? ' kills ' : ' hits ') + petLabel + ' for ' + damage + ' (' + gap + 'm)';
                     tellCombat(owner, taken);
                     tellParty(owner, mobTag(npc) + (victim.hp <= 0 ? ' kills ' : ' hits ') + (owner.name || 'Ally') + "'s " + petLabel + ' for ' + damage);
                     const swing = { type: 'npcAttack', id: npc.id, style: casting ? 'caster' : (npc.style || ''), color: bolt, x: npc.x, z: npc.z, tx: victim.x, tz: victim.z };
@@ -5363,7 +5386,7 @@ function tickNpcs() {
             continue;
         }
         if (dist < 0.4) {
-            if (!focus) pickWander(npc);
+            if (!focusNow) pickWander(npc);
             continue;
         }
         const step = Math.min(speed * dt, dist);
@@ -6123,7 +6146,7 @@ wss.on('connection', (ws) => {
             }
             if (typeof data.x === 'number') player.x = data.x;
             if (typeof data.z === 'number') player.z = data.z;
-            if (Math.hypot(player.x - chest.x, player.z - chest.z) > 2.6) {
+            if (Math.hypot(player.x - chest.x, player.z - chest.z) > 6) {
                 send(ws, { type: 'lootResult', ok: false, reason: 'Too far' });
                 return;
             }
