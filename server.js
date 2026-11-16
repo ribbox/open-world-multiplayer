@@ -4942,9 +4942,14 @@ function stepCompanion(body, tx, tz, speed, dt) {
 
 function companionPrey(owner, body) {
     if (!body || body.mode !== 'attack' || owner.ghost) return null;
-    const chosen = playerFocus(owner);
-    if (!chosen || inSettlement(chosen.x, chosen.z)) return null;
-    return chosen;
+    const marked = body.attackId ? npcs.get(body.attackId) : null;
+    if (marked && marked.alive && !inSettlement(marked.x, marked.z)) return marked;
+    const foe = body.attackerId ? npcs.get(body.attackerId) : null;
+    const recent = foe && foe.alive && (body.attackerAt || 0) > Date.now() - 4000 && !inSettlement(foe.x, foe.z);
+    if (recent && (foe.mapId || '') === (owner.mapId || '') && Math.hypot(foe.x - body.x, foe.z - body.z) < 16) return foe;
+    body.mode = 'follow';
+    body.attackId = '';
+    return null;
 }
 
 function tickCompanionBody(owner, body, now, dt) {
@@ -5172,11 +5177,17 @@ function commandPet(player, command) {
         return null;
     }
     if (!player.pet.alive || player.pet.hp <= 0) return 'Summon your pet first';
-    if (command === 'follow') player.pet.mode = 'follow';
-    else if (command === 'stay') player.pet.mode = 'stay';
-    else if (command === 'attack') {
-        if (!playerFocus(player)) return 'Select a target';
+    if (command === 'follow') {
+        player.pet.mode = 'follow';
+        player.pet.attackId = '';
+    } else if (command === 'stay') {
+        player.pet.mode = 'stay';
+        player.pet.attackId = '';
+    } else if (command === 'attack') {
+        const focus = playerFocus(player);
+        if (!focus) return 'Select a target';
         player.pet.mode = 'attack';
+        player.pet.attackId = focus.id;
     } else if (command === 'heal') {
         if (player.pet.hp >= player.pet.maxHp - 0.5) return 'Your pet is fine';
         if ((player.mana || 0) < 10) return 'Not enough mana';
@@ -5193,6 +5204,7 @@ function commandPet(player, command) {
         const left = cooldownLeft(player, 'pet-bite', now);
         if (left > 0) return 'Not ready';
         player.pet.mode = 'attack';
+        player.pet.attackId = playerFocus(player).id;
         player.pet.bite = now + 2500;
         startCooldown(player, 'pet-bite', 8000, now);
     } else return 'Unknown order';
