@@ -2012,8 +2012,7 @@ function partyMembersNear(player) {
 }
 
 function mobTag(npc) {
-    const id = String((npc && npc.id) || '').slice(-8);
-    return ((npc && npc.name) || 'Mob') + (id ? ' #' + id : '');
+    return (npc && npc.name) || 'Mob';
 }
 
 function tellCombat(player, text, kind) {
