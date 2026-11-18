@@ -31,9 +31,20 @@
             cursor: pointer; pointer-events: auto;
         }
         #changeChar[hidden] { display: none; }
-        #showInfo, #changeChar { box-shadow: 0 1px 3px rgba(0,0,0,0.45); }
+        #showInfo, #changeChar, #threatButton, #mapLayersButton { box-shadow: 0 1px 3px rgba(0,0,0,0.45); }
         #showInfo { width: 28px; height: 28px; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: 15px; font-weight: bold; }
         #showInfo[hidden] { display: none; }
+        #threatButton, #mapLayersButton {
+            position: absolute; right: 182px; z-index: 12;
+            display: grid; place-items: center;
+            width: 28px; height: 28px; padding: 0; margin: 0;
+            color: #f4efe4; background: rgba(8, 10, 14, 0.82);
+            border: 1px solid rgba(214, 176, 96, 0.7); border-radius: 50%;
+            cursor: pointer;
+        }
+        #threatButton { top: 64px; }
+        #mapLayersButton { top: 100px; }
+        #threatButton.on { border-color: #f1c40f; color: #f1c40f; }
         #inventory {
             display: none;
             position: absolute; right: 16px; bottom: 118px; color: white;
@@ -144,19 +155,6 @@
             text-shadow: 0 1px 2px #000; pointer-events: none; z-index: 10;
         }
         #zoneName { font-weight: bold; }
-        #mapLayersButton {
-            position: absolute; right: 18px; top: 156px; z-index: 12;
-            width: 36px; height: 20px; padding: 0; font-size: 11px; color: white;
-            background: rgba(0,0,0,0.72); border: 1px solid rgba(255,255,255,0.45);
-            border-radius: 4px; cursor: pointer;
-        }
-        #threatButton {
-            position: absolute; right: 60px; top: 156px; z-index: 12;
-            height: 20px; padding: 0 6px; font-size: 11px; color: white;
-            background: rgba(0,0,0,0.72); border: 1px solid rgba(255,255,255,0.45);
-            border-radius: 4px; cursor: pointer;
-        }
-        #threatButton.on { border-color: #f1c40f; color: #f1c40f; }
         #threatWindow {
             position: absolute; left: 12px; top: 64px; z-index: 22; width: 280px;
             max-height: calc(100vh - 190px); overflow: auto; color: white;
@@ -1035,8 +1033,8 @@
             <button type="button" class="text-btn" id="worldmapClose">Close</button>
         </div>
     </div>
-    <button type="button" id="threatButton" title="Threat list">Threat</button>
-    <button type="button" id="mapLayersButton" title="Choose what the minimap shows">Map</button>
+    <button type="button" id="threatButton" title="Threat list" aria-label="Threat list"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7h16M4 12h11M4 17h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+    <button type="button" id="mapLayersButton" title="Choose what the minimap shows" aria-label="Map layers"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7.2 12 4l8 3.2-8 3.2-8-3.2zM4 12l8 3.2L20 12M4 16.8 12 20l8-3.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg></button>
     <div id="mapLayers" hidden>
         <label><input type="checkbox" data-layer="grid" checked> <i style="background:#fff"></i> Grid</label>
         <label><input type="checkbox" data-layer="trees" checked> <i style="background:#228B22;border-radius:50%"></i> Trees</label>
