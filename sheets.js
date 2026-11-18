@@ -226,7 +226,7 @@ function itemAbout(item) {
     const req = Number(item.reqLevel) || 1;
     if (kind === 'armor' || kind === 'weapon') sentences.push(req > 1 ? 'Requires level ' + req : 'Anyone can equip it');
     if (kind === 'armor' && item.style && item.slot !== 'neck' && item.slot !== 'cloak') {
-        const who = { plate: 'Warriors', leather: 'Hunters', cloth: 'Mages and warlocks' }[item.style];
+        const who = { plate: 'Warriors and paladins', leather: 'Hunters and rogues', cloth: 'Mages and warlocks' }[item.style];
         if (who) sentences.push(who + ' can wear it');
     }
     const made = materialsPhrase(item.cost);

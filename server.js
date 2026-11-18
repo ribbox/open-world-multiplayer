@@ -1361,7 +1361,10 @@ function classBaseStats(player) {
     if (player.class === 'mage' || player.class === 'warlock') {
         return { strength: 0, stamina: 1 + Math.floor(steps / 2), intellect: 1 + steps };
     }
-    if (player.class === 'warrior' || player.class === 'hunter') {
+    if (player.class === 'paladin') {
+        return { strength: 1 + steps, stamina: 1 + Math.floor(steps / 2), intellect: Math.floor(steps / 3) };
+    }
+    if (player.class === 'warrior' || player.class === 'hunter' || player.class === 'rogue') {
         return { strength: 1 + steps, stamina: 1 + Math.floor(steps / 2), intellect: 0 };
     }
     return { strength: 1, stamina: 1, intellect: 0 };
@@ -2157,7 +2160,18 @@ const ABILITIES = {
     'drain-life': { weapon: 'wand', mana: 8, range: 8, bolt: true, leech: 1, damage: (level) => 4 + level },
     curse: { weapon: 'wand', mana: 6, range: 8, bolt: true, slow: 5000, damage: (level) => 3 + level },
     hellfire: { weapon: 'wand', mana: 12, range: 4.2, aoe: 4.2, aoeSelf: true, damage: (level) => 5 + level },
-    'soul-burn': { weapon: 'wand', mana: 14, range: 8, bolt: true, execute: 2, damage: (level) => 8 + level * 2 }
+    'soul-burn': { weapon: 'wand', mana: 14, range: 8, bolt: true, execute: 2, damage: (level) => 8 + level * 2 },
+    stab: { weapon: 'sword', mana: 0, range: 2.6, damage: (level) => 5 + level },
+    backstab: { weapon: 'sword', mana: 6, range: 2.6, damage: (level) => 9 + level * 2 },
+    gouge: { weapon: 'sword', mana: 4, range: 2.6, slow: 5000, damage: (level) => 2 + level },
+    eviscerate: { weapon: 'sword', mana: 8, range: 2.6, execute: 2, damage: (level) => 7 + level * 2 },
+    fan: { weapon: 'sword', mana: 8, range: 2.6, aoe: 2.4, aoeSelf: true, damage: (level) => 4 + level },
+    strike: { weapon: 'sword', mana: 0, range: 2.6, damage: (level) => 4 + level },
+    smite: { weapon: 'sword', mana: 6, range: 2.6, damage: (level) => 7 + level * 2 },
+    rebuke: { weapon: 'sword', mana: 4, range: 2.6, slow: 5000, damage: (level) => 2 + level },
+    judgment: { weapon: 'sword', mana: 8, range: 2.6, execute: 2, damage: (level) => 6 + level * 2 },
+    consecrate: { weapon: 'sword', mana: 10, range: 3.2, aoe: 2.8, aoeSelf: true, damage: (level) => 5 + level },
+    'lay-hands': { weapon: 'sword', mana: 10, range: 0, heal: (level) => 6 + level * 2 }
 };
 const ABILITY_COOLDOWN = {
     sword: 1000,
@@ -2184,6 +2198,21 @@ const ABILITY_COOLDOWN = {
     curse: 8000,
     hellfire: 12000,
     'soul-burn': 8000,
+    stab: 1000,
+    backstab: 6000,
+    gouge: 8000,
+    eviscerate: 8000,
+    fan: 10000,
+    strike: 1000,
+    smite: 6000,
+    rebuke: 8000,
+    judgment: 8000,
+    consecrate: 12000,
+    'lay-hands': 8000,
+    evasion: 30000,
+    adrenaline: 45000,
+    'divine-shield': 45000,
+    blessing: 60000,
     'battle-shout': 45000,
     rally: 60000,
     'frost-armor': 30000,
@@ -2206,7 +2235,7 @@ function startCooldown(player, key, ms, now) {
 
 const BAR_PAGES = 3;
 const BAR_SLOTS = 8;
-const ACTION_IDS = new Set(['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind', 'staff', 'arcane-bolt', 'frost-bolt', 'arcane-surge', 'mend', 'barrier', 'frost-nova', 'bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot', 'wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn', 'gather', 'health', 'mana', 'bomb', 'battle-shout', 'rally', 'frost-armor', 'blink', 'raise-dead', 'dread-guard']);
+const ACTION_IDS = new Set(['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind', 'staff', 'arcane-bolt', 'frost-bolt', 'arcane-surge', 'mend', 'barrier', 'frost-nova', 'bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot', 'wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn', 'stab', 'backstab', 'gouge', 'eviscerate', 'fan', 'strike', 'smite', 'rebuke', 'judgment', 'consecrate', 'lay-hands', 'gather', 'health', 'mana', 'bomb', 'battle-shout', 'rally', 'frost-armor', 'blink', 'raise-dead', 'dread-guard', 'evasion', 'adrenaline', 'divine-shield', 'blessing']);
 const BAR_UTILITY = new Set(['gather', 'health', 'mana', 'bomb']);
 
 function blankActionBar() {
@@ -2266,6 +2295,14 @@ const CLASS_KITS = {
     warlock: {
         weapon: { kind: 'weapon', weapon: 'wand', name: 'Apprentice Wand', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { intellect: 1 }, reqLevel: 1 },
         trained: ['wand']
+    },
+    rogue: {
+        weapon: { kind: 'weapon', weapon: 'sword', name: 'Worn Dagger', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { strength: 1 }, reqLevel: 1 },
+        trained: ['stab']
+    },
+    paladin: {
+        weapon: { kind: 'weapon', weapon: 'sword', name: 'Worn Blade', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { strength: 1 }, reqLevel: 1 },
+        trained: ['strike']
     }
 };
 const SPELLS = {
@@ -2292,7 +2329,18 @@ const SPELLS = {
     'drain-life': { class: 'warlock', name: 'Drain Life', level: 2, cost: 15, maxRank: 5, rankCost: 12, mana: 8, manaRank: 4, power: 4, scale: 1, leech: 1 },
     curse: { class: 'warlock', name: 'Curse', level: 3, cost: 15, maxRank: 5, rankCost: 12, mana: 6, manaRank: 3, power: 3, scale: 1 },
     hellfire: { class: 'warlock', name: 'Hellfire', level: 8, cost: 36, maxRank: 5, rankCost: 18, mana: 12, manaRank: 5, power: 5, scale: 1 },
-    'soul-burn': { class: 'warlock', name: 'Soul Burn', level: 6, cost: 30, maxRank: 5, rankCost: 18, mana: 14, manaRank: 6, power: 8, scale: 2, execute: true }
+    'soul-burn': { class: 'warlock', name: 'Soul Burn', level: 6, cost: 30, maxRank: 5, rankCost: 18, mana: 14, manaRank: 6, power: 8, scale: 2, execute: true },
+    stab: { class: 'rogue', name: 'Stab', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 0, manaRank: 2, power: 5, scale: 1 },
+    backstab: { class: 'rogue', name: 'Backstab', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 6, manaRank: 3, power: 9, scale: 2 },
+    gouge: { class: 'rogue', name: 'Gouge', level: 2, cost: 12, maxRank: 5, rankCost: 10, mana: 4, manaRank: 2, power: 2, scale: 1 },
+    eviscerate: { class: 'rogue', name: 'Eviscerate', level: 6, cost: 30, maxRank: 5, rankCost: 16, mana: 8, manaRank: 4, power: 7, scale: 2, execute: true },
+    fan: { class: 'rogue', name: 'Fan of Knives', level: 4, cost: 20, maxRank: 5, rankCost: 16, mana: 8, manaRank: 3, power: 4, scale: 1 },
+    strike: { class: 'paladin', name: 'Strike', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 0, manaRank: 2, power: 4, scale: 1 },
+    smite: { class: 'paladin', name: 'Smite', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 6, manaRank: 3, power: 7, scale: 2 },
+    rebuke: { class: 'paladin', name: 'Rebuke', level: 2, cost: 12, maxRank: 5, rankCost: 10, mana: 4, manaRank: 2, power: 2, scale: 1 },
+    judgment: { class: 'paladin', name: 'Judgment', level: 6, cost: 30, maxRank: 5, rankCost: 16, mana: 8, manaRank: 4, power: 6, scale: 2, execute: true },
+    consecrate: { class: 'paladin', name: 'Consecrate', level: 8, cost: 36, maxRank: 5, rankCost: 18, mana: 10, manaRank: 4, power: 5, scale: 1 },
+    'lay-hands': { class: 'paladin', name: 'Lay on Hands', level: 2, cost: 15, maxRank: 5, rankCost: 12, mana: 10, manaRank: 4, power: 6, scale: 2, effect: 'heal' }
 };
 
 const SPECIALS = {
@@ -2303,7 +2351,11 @@ const SPECIALS = {
     'frost-armor': { class: 'mage', level: 20, cost: 60, name: 'Frost Armor', text: 'A cold shell soaks damage for 20 seconds.' },
     blink: { class: 'mage', level: 40, cost: 120, name: 'Blink', text: 'Step forward a short way.' },
     'raise-dead': { class: 'warlock', level: 20, cost: 60, name: 'Raise Dead', text: 'A corpse fights your target for 20 seconds.' },
-    'dread-guard': { class: 'warlock', level: 40, cost: 120, name: 'Dread Guard', text: 'A tougher corpse fights your target for 25 seconds.' }
+    'dread-guard': { class: 'warlock', level: 40, cost: 120, name: 'Dread Guard', text: 'A tougher corpse fights your target for 25 seconds.' },
+    evasion: { class: 'rogue', level: 20, cost: 60, name: 'Evasion', text: 'A light step soaks the next hits for 12 seconds.' },
+    adrenaline: { class: 'rogue', level: 40, cost: 120, name: 'Adrenaline', text: 'Your attacks hit harder for 15 seconds.' },
+    'divine-shield': { class: 'paladin', level: 20, cost: 60, name: 'Divine Shield', text: 'A holy shell soaks damage for 12 seconds.' },
+    blessing: { class: 'paladin', level: 40, cost: 120, name: 'Blessing', text: 'Recover a large share of your health.' }
 };
 const TREE = {
     sword: { class: 'warrior', spell: 'sword', requires: null },
@@ -2357,7 +2409,36 @@ const TREE = {
     hellfire: { class: 'warlock', spell: 'hellfire', requires: 'wand' },
     reservoir: { class: 'warlock', name: 'Reservoir', max: 5, requires: 'hellfire', text: '+2 max mana per rank' },
     torment: { class: 'warlock', name: 'Torment', max: 5, requires: 'reservoir', text: '+2 max mana per rank' },
-    'soul-link': { class: 'warlock', name: 'Soul Link', max: 5, requires: 'torment', text: '+4 health per rank' }
+    'soul-link': { class: 'warlock', name: 'Soul Link', max: 5, requires: 'torment', text: '+4 health per rank' },
+    stab: { class: 'rogue', spell: 'stab', requires: null },
+    backstab: { class: 'rogue', spell: 'backstab', requires: 'stab' },
+    lethal: { class: 'rogue', name: 'Lethal', max: 5, requires: 'backstab', text: '+1 melee damage per rank' },
+    eviscerate: { class: 'rogue', spell: 'eviscerate', requires: 'lethal' },
+    murder: { class: 'rogue', name: 'Murder', max: 5, requires: 'eviscerate', text: '+1 melee damage per rank' },
+    gouge: { class: 'rogue', spell: 'gouge', requires: 'stab' },
+    'leather-skin': { class: 'rogue', name: 'Leather Skin', max: 5, requires: 'gouge', text: '+1 armor per rank' },
+    grit: { class: 'rogue', name: 'Grit', max: 5, requires: 'leather-skin', text: '+4 health per rank' },
+    sinew: { class: 'rogue', name: 'Sinew', max: 5, requires: 'grit', text: '+1 armor per rank' },
+    endurance: { class: 'rogue', name: 'Endurance', max: 5, requires: 'sinew', text: '+4 health per rank' },
+    fan: { class: 'rogue', spell: 'fan', requires: 'stab' },
+    scatter: { class: 'rogue', name: 'Scatter', max: 5, requires: 'fan', text: '+0.6m area per rank' },
+    flurry: { class: 'rogue', name: 'Flurry', max: 5, requires: 'scatter', text: '+0.6m area per rank' },
+    storm: { class: 'rogue', name: 'Storm', max: 5, requires: 'flurry', text: '+0.6m area per rank' },
+    strike: { class: 'paladin', spell: 'strike', requires: null },
+    smite: { class: 'paladin', spell: 'smite', requires: 'strike' },
+    zeal: { class: 'paladin', name: 'Zeal', max: 5, requires: 'smite', text: '+1 melee damage per rank' },
+    judgment: { class: 'paladin', spell: 'judgment', requires: 'zeal' },
+    conviction: { class: 'paladin', name: 'Conviction', max: 5, requires: 'judgment', text: '+1 melee damage per rank' },
+    rebuke: { class: 'paladin', spell: 'rebuke', requires: 'strike' },
+    bulwark: { class: 'paladin', name: 'Bulwark', max: 5, requires: 'rebuke', text: '+1 armor per rank' },
+    resolve: { class: 'paladin', name: 'Resolve', max: 5, requires: 'bulwark', text: '+4 health per rank' },
+    aegis: { class: 'paladin', name: 'Aegis', max: 5, requires: 'resolve', text: '+1 armor per rank' },
+    fortitude: { class: 'paladin', name: 'Fortitude', max: 5, requires: 'aegis', text: '+4 health per rank' },
+    'lay-hands': { class: 'paladin', spell: 'lay-hands', requires: 'strike' },
+    prayer: { class: 'paladin', name: 'Prayer', max: 5, requires: 'lay-hands', text: '+2 max mana per rank' },
+    consecrate: { class: 'paladin', spell: 'consecrate', requires: 'prayer' },
+    radiance: { class: 'paladin', name: 'Radiance', max: 5, requires: 'consecrate', text: '+0.6m area per rank' },
+    grace: { class: 'paladin', name: 'Grace', max: 5, requires: 'radiance', text: '+2 max mana per rank' }
 };
 const TALENTS = Object.fromEntries(Object.entries(TREE).filter(([, node]) => !node.spell).map(([id, node]) => [id, {
     class: node.class,
@@ -3365,7 +3446,7 @@ function equipItem(player, equipSlot, bagIndex) {
     if (!player.class) return 'Choose a class first';
     if (item.kind === 'weapon' && item.weapon !== CLASS_KITS[player.class].weapon.weapon) return 'Wrong class';
     if (item.kind === 'armor' && item.slot !== 'neck' && item.slot !== 'cloak') {
-        const need = { warrior: 'plate', hunter: 'leather', mage: 'cloth', warlock: 'cloth' }[player.class];
+        const need = classArmor(player.class);
         if (item.style && need && item.style !== need) {
             const who = player.class.charAt(0).toUpperCase() + player.class.slice(1);
             return who + 's wear ' + need;
@@ -4009,8 +4090,14 @@ function spawnChest(npc, owners, drop) {
     return chest;
 }
 
+function classArmor(className) {
+    if (className === 'warrior' || className === 'paladin') return 'plate';
+    if (className === 'mage' || className === 'warlock') return 'cloth';
+    return 'leather';
+}
+
 function chapelPiece(player) {
-    const style = { warrior: 'plate', hunter: 'leather', mage: 'cloth', warlock: 'cloth' }[player.class] || 'leather';
+    const style = classArmor(player.class);
     const slot = ['head', 'chest', 'legs'][(player.level + (player.persistentId || '').length) % 3];
     const names = {
         plate: { head: 'Chapel Helm', chest: 'Chapel Breastplate', legs: 'Chapel Greaves' },
@@ -4739,7 +4826,7 @@ function sameFight(npc, player) {
 }
 
 function plateFactor(player) {
-    if (!player || player.class !== 'warrior' || !player.equipment) return 1;
+    if (!player || (player.class !== 'warrior' && player.class !== 'paladin') || !player.equipment) return 1;
     const slots = ['head', 'shoulders', 'chest', 'hands', 'waist', 'legs', 'feet'];
     let plate = 0;
     for (const slot of slots) {
@@ -5145,6 +5232,25 @@ function castSpecial(player, id) {
         raiseMinion(player, id === 'dread-guard');
         startCooldown(player, id, cdMax, now);
         return { note: id === 'dread-guard' ? 'A dread guard rises' : 'A corpse rises', cd: cdMax, cdMax };
+    }
+    if (id === 'evasion' || id === 'divine-shield') {
+        const amount = Math.max(6, Math.round(8 + (player.level || 1) * (id === 'divine-shield' ? 1.6 : 1.2) + ((player.stats && player.stats.stamina) || 0)));
+        player.absorb = Math.max(now < (player.absorbUntil || 0) ? (player.absorb || 0) : 0, amount);
+        player.absorbUntil = now + 12000;
+        startCooldown(player, id, cdMax, now);
+        return { shield: player.absorb, cd: cdMax, cdMax };
+    }
+    if (id === 'adrenaline') {
+        player.shoutUntil = now + 15000;
+        startCooldown(player, id, cdMax, now);
+        return { note: 'Your attacks hit harder', cd: cdMax, cdMax };
+    }
+    if (id === 'blessing') {
+        const healed = Math.max(1, Math.round(player.maxHp * 0.35));
+        player.hp = Math.min(player.maxHp, player.hp + healed);
+        startCooldown(player, id, cdMax, now);
+        tellParty(player, (player.name || 'Ally') + ' heals themself for ' + healed, 'heal');
+        return { heal: healed, cd: cdMax, cdMax };
     }
     return 'Nothing happened';
 }
@@ -5980,13 +6086,13 @@ wss.on('connection', (ws) => {
             const statBonus = (spec.weapon === 'sword' || spec.weapon === 'bow')
                 ? ((player.stats && player.stats.strength) || 0)
                 : ((player.stats && player.stats.intellect) || 0);
-            const powerTalent = spec.weapon === 'sword' ? ['might', 'frenzy'] : spec.weapon === 'bow' ? ['precision', 'eagle-eye'] : spec.weapon === 'wand' ? ['affliction', 'ruin', 'siphon'] : ['arcane-power', 'focus'];
+            const powerTalent = player.class === 'rogue' ? ['lethal', 'murder'] : player.class === 'paladin' ? ['zeal', 'conviction'] : spec.weapon === 'sword' ? ['might', 'frenzy'] : spec.weapon === 'bow' ? ['precision', 'eagle-eye'] : spec.weapon === 'wand' ? ['affliction', 'ruin', 'siphon'] : ['arcane-power', 'focus'];
             const per = (spellAmount(abilityId, player.level) + statBonus + (spec.damage || spec.leech ? ranksIn(player, powerTalent) : 0)) * rankPower(rank);
             const projectile = !!spec.bolt;
             const travel = projectile ? Math.min(900, Math.max(220, Math.round(dist * 140))) : 0;
             const victims = [npc];
             if (spec.aoe && !projectile) {
-                const areaTalent = spec.weapon === 'sword' ? ['sweep'] : spec.weapon === 'bow' ? ['volley', 'barrage', 'salvo'] : spec.weapon === 'wand' ? ['immolate'] : ['blast', 'winter'];
+                const areaTalent = player.class === 'rogue' ? ['scatter', 'flurry', 'storm'] : player.class === 'paladin' ? ['radiance'] : spec.weapon === 'sword' ? ['sweep'] : spec.weapon === 'bow' ? ['volley', 'barrage', 'salvo'] : spec.weapon === 'wand' ? ['immolate'] : ['blast', 'winter'];
                 const reach = spec.aoe + ranksIn(player, areaTalent) * 0.6;
                 const ox = spec.aoeSelf ? player.x : npc.x;
                 const oz = spec.aoeSelf ? player.z : npc.z;
@@ -7987,7 +8093,7 @@ function characterOwnedBy(id) {
 function cleanAccountRoster(list) {
     if (!Array.isArray(list)) return [];
     const out = [];
-    const classes = new Set(['warrior', 'mage', 'hunter', 'warlock']);
+    const classes = new Set(['warrior', 'paladin', 'rogue', 'hunter', 'mage', 'warlock']);
     for (const row of list) {
         if (!row || typeof row.id !== 'string' || !/^[a-zA-Z0-9_-]{6,64}$/.test(row.id)) continue;
         if (out.some(item => item.id === row.id)) continue;

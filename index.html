@@ -724,15 +724,15 @@
         .pick-mini img { width: 100%; height: 100%; display: block; }
         .pick-slot .pick-minis { flex-wrap: wrap; justify-content: center; }
         .pick-slot .pick-mini { width: 16px; height: 22px; }
-        #pickClasses { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; margin: 0 auto 6px; }
+        #pickClasses { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; width: 100%; margin: 0 auto 6px; }
         .pick-class {
-            display: flex; flex-direction: column; align-items: center; gap: 2px;
-            padding: 4px; color: inherit; cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 1px;
+            padding: 2px; color: inherit; cursor: pointer;
             background: rgba(255,255,255,0.04); border: 1px solid rgba(214,176,96,0.28); border-radius: 6px;
         }
         .pick-class.on { border-color: #f1c40f; }
-        .pick-class img { width: 100%; aspect-ratio: 2 / 3; max-height: calc((100vh - 300px) / 2); object-fit: cover; object-position: center 18%; }
-        .pick-class span { font-size: 12px; }
+        .pick-class img { width: 100%; aspect-ratio: 2 / 3; max-height: calc((100vh - 380px) / 2); object-fit: cover; object-position: center 18%; }
+        .pick-class span { font-size: 11px; line-height: 1.1; }
         #pickCreate { display: flex; gap: 6px; width: 90%; margin: 0 auto; }
         #pickName {
             flex: 1; min-width: 0; font-size: 16px; color: #f4efe4;
@@ -909,7 +909,7 @@
         Enter: Talk. The open tab is the channel. /p is the party, /w Name whispers, /t whispers your target<br>
         Sounds play for combat, gathering, loot, quests, travel, chat, and the other events<br>
         C: Character sheet. The person icon on the minimap returns to the select screen. Reset character is on the sheet and returns that one to level 1<br>
-        Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health. Warriors wear plate, hunters wear leather, mages and warlocks wear cloth<br>
+        Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health. Warriors and paladins wear plate. Hunters and rogues wear leather. Mages and warlocks wear cloth<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
         Spells and talents share one tree. The sheet is only for looking. Talk to a trainer to spend points or to reset them and spend again. One point in a node opens the next. A branch does not wait on the other branch. Level 60 is not enough to fill every branch<br>
         At level 20 and 40 a trainer teaches a special skill. Specials are not talents. A hunter calls a wolf: Attack, Follow, Stay, and Heal. Bite comes at 40. Summon brings it back if it dies, or if it falls too far behind. The wolf fights your target. A warlock raises a corpse that fights your target for a short time<br>
@@ -2580,6 +2580,17 @@
                 curse: { name: 'Curse', short: 'Curse', kind: 'spell', weapon: 'wand', hint: 'A bolt that slows.', cooldown: '8 seconds' },
                 hellfire: { name: 'Hellfire', short: 'Hell', kind: 'spell', weapon: 'wand', hint: 'Hits every hostile around you.', cooldown: '12 seconds' },
                 'soul-burn': { name: 'Soul Burn', short: 'Soul', kind: 'spell', weapon: 'wand', hint: 'Double damage under 35% health.', cooldown: '8 seconds' },
+                stab: { name: 'Stab', short: 'Stab', kind: 'weapon', weapon: 'sword', hint: 'A quick blade hit. A higher rank hits harder. Keeps swinging once you attack.', cooldown: '1 second' },
+                backstab: { name: 'Backstab', short: 'Back', kind: 'spell', weapon: 'sword', hint: 'A heavy blade hit.', cooldown: '6 seconds' },
+                gouge: { name: 'Gouge', short: 'Gouge', kind: 'spell', weapon: 'sword', hint: 'A cut that slows.', cooldown: '8 seconds' },
+                eviscerate: { name: 'Eviscerate', short: 'Evis', kind: 'spell', weapon: 'sword', hint: 'Double damage under 35% health.', cooldown: '8 seconds' },
+                fan: { name: 'Fan of Knives', short: 'Fan', kind: 'spell', weapon: 'sword', hint: 'Hits every hostile around you.', cooldown: '10 seconds' },
+                strike: { name: 'Strike', short: 'Str', kind: 'weapon', weapon: 'sword', hint: 'A melee swing. A higher rank hits harder. Keeps swinging once you attack.', cooldown: '1 second' },
+                smite: { name: 'Smite', short: 'Smite', kind: 'spell', weapon: 'sword', hint: 'A heavy holy hit.', cooldown: '6 seconds' },
+                rebuke: { name: 'Rebuke', short: 'Reb', kind: 'spell', weapon: 'sword', hint: 'A strike that slows.', cooldown: '8 seconds' },
+                judgment: { name: 'Judgment', short: 'Judg', kind: 'spell', weapon: 'sword', hint: 'Double damage under 35% health.', cooldown: '8 seconds' },
+                consecrate: { name: 'Consecrate', short: 'Cons', kind: 'spell', weapon: 'sword', hint: 'Hits every hostile around you.', cooldown: '12 seconds' },
+                'lay-hands': { name: 'Lay on Hands', short: 'Lay', kind: 'spell', weapon: 'sword', hint: 'Restore health.', cooldown: '8 seconds' },
                 gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.', cooldown: '' },
                 health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion.', cooldown: '12 seconds' },
                 mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion.', cooldown: '12 seconds' },
@@ -2589,13 +2600,17 @@
                 'frost-armor': { name: 'Frost Armor', short: 'Frost', kind: 'special', hint: 'A cold shell soaks damage for 20 seconds.', cooldown: '30 seconds' },
                 blink: { name: 'Blink', short: 'Blink', kind: 'special', hint: 'Step forward a short way.', cooldown: '20 seconds' },
                 'raise-dead': { name: 'Raise Dead', short: 'Rise', kind: 'special', hint: 'A corpse fights your target for 20 seconds.', cooldown: '40 seconds' },
-                'dread-guard': { name: 'Dread Guard', short: 'Dread', kind: 'special', hint: 'A tougher corpse fights your target for 25 seconds.', cooldown: '60 seconds' }
+                'dread-guard': { name: 'Dread Guard', short: 'Dread', kind: 'special', hint: 'A tougher corpse fights your target for 25 seconds.', cooldown: '60 seconds' },
+                evasion: { name: 'Evasion', short: 'Evade', kind: 'special', hint: 'A light step soaks the next hits for 12 seconds.', cooldown: '30 seconds' },
+                adrenaline: { name: 'Adrenaline', short: 'Adr', kind: 'special', hint: 'Your attacks hit harder for 15 seconds.', cooldown: '45 seconds' },
+                'divine-shield': { name: 'Divine Shield', short: 'Div', kind: 'special', hint: 'A holy shell soaks damage for 12 seconds.', cooldown: '45 seconds' },
+                blessing: { name: 'Blessing', short: 'Bless', kind: 'special', hint: 'Recover a large share of your health.', cooldown: '60 seconds' }
             };
             const BAR_PAGES = 3;
             const BAR_SLOTS = 8;
             function defaultActionBar() {
                 const bar = Array.from({ length: BAR_PAGES }, () => Array(BAR_SLOTS).fill(null));
-                const attack = { warrior: 'sword', mage: 'staff', hunter: 'bow', warlock: 'wand' }[character && character.class];
+                const attack = { warrior: 'sword', rogue: 'stab', paladin: 'strike', mage: 'staff', hunter: 'bow', warlock: 'wand' }[character && character.class];
                 if (attack) bar[0][0] = attack;
                 return bar;
             }
@@ -2621,10 +2636,16 @@
             updateToolUI();
 
             const stats = { level: 1, xp: 0, xpToNext: 50, hp: 20, maxHp: 20, mana: 10, maxMana: 10, absorb: 0, armor: 0, strength: 0, stamina: 0, intellect: 0 };
-            const CLASS_LABEL = { warrior: 'Warrior', mage: 'Mage', hunter: 'Hunter', warlock: 'Warlock' };
-            const CLASS_IDS = ['warrior', 'mage', 'hunter', 'warlock'];
+            const CLASS_LABEL = { warrior: 'Warrior', paladin: 'Paladin', rogue: 'Rogue', mage: 'Mage', hunter: 'Hunter', warlock: 'Warlock' };
+            const CLASS_IDS = ['warrior', 'paladin', 'rogue', 'hunter', 'mage', 'warlock'];
+            const CLASS_ARMOR = { warrior: 'plate', paladin: 'plate', hunter: 'leather', rogue: 'leather', mage: 'cloth', warlock: 'cloth' };
+            const CLASS_WEAPON = { warrior: 'sword', rogue: 'sword', paladin: 'sword', hunter: 'bow', mage: 'staff', warlock: 'wand' };
+            const ARMOR_WHO = { plate: 'Warriors and paladins', leather: 'Hunters and rogues', cloth: 'Mages and warlocks' };
+            const WEAPON_WHO = { sword: 'Warriors, rogues, and paladins', bow: 'Hunters', staff: 'Mages', wand: 'Warlocks' };
             const LOOKS = {
                 warrior: '/portraits/warrior.jpg',
+                paladin: '/portraits/paladin.jpg',
+                rogue: '/portraits/rogue.jpg',
                 mage: '/portraits/mage.jpg',
                 hunter: '/portraits/hunter.jpg',
                 warlock: '/portraits/warlock.jpg'
@@ -2759,6 +2780,21 @@
                 mend: 53,
                 barrier: 56,
                 'frost-nova': 57,
+                stab: 81,
+                backstab: 48,
+                gouge: 50,
+                eviscerate: 58,
+                fan: 94,
+                strike: 81,
+                smite: 48,
+                rebuke: 50,
+                judgment: 58,
+                consecrate: 94,
+                'lay-hands': 53,
+                evasion: ['plate', 61],
+                adrenaline: ['wood', 20],
+                'divine-shield': ['stone', 56],
+                blessing: ['wood', 16],
                 gather: 70,
                 health: 144,
                 mana: 145,
@@ -2823,14 +2859,14 @@
                 else if (item.kind === 'bomb') push('Deals ' + (item.amount || 0) + ' damage');
                 else if (item.kind === 'armor') {
                     const style = STYLE_NAMES[item.style] || 'Armor';
-                    const mine = { warrior: 'plate', hunter: 'leather', mage: 'cloth', warlock: 'cloth' }[character.class];
+                    const mine = CLASS_ARMOR[character.class];
                     const wrongStyle = !!(item.style && mine && item.slot !== 'neck' && item.slot !== 'cloak' && item.style !== mine);
                     push(style + ' armor' + (item.magic ? ' · magic' : ''), wrongStyle);
                     if (SLOT_NAMES[item.slot]) push(SLOT_NAMES[item.slot]);
                     push('+' + (item.armor || 0) + ' Armor');
                 } else if (item.kind === 'weapon') {
                     const names = { sword: 'Sword', staff: 'Staff', bow: 'Bow', wand: 'Wand' };
-                    const mine = { warrior: 'sword', hunter: 'bow', mage: 'staff', warlock: 'wand' }[character.class];
+                    const mine = CLASS_WEAPON[character.class];
                     const wrongWeapon = !!(item.weapon && mine && item.weapon !== mine);
                     push((item.magic ? 'Magic ' : '') + (names[item.weapon] || 'Weapon'), wrongWeapon);
                     if (SLOT_NAMES[item.slot]) push(SLOT_NAMES[item.slot]);
@@ -2845,13 +2881,13 @@
                     if (bonus.stamina) push('+' + bonus.stamina + ' Stamina');
                     if (bonus.intellect) push('+' + bonus.intellect + ' Intellect');
                     if (item.kind === 'armor' && item.style && item.slot !== 'neck' && item.slot !== 'cloak') {
-                        const who = { plate: 'Warriors', leather: 'Hunters', cloth: 'Mages and warlocks' }[item.style];
-                        const mine = { warrior: 'plate', hunter: 'leather', mage: 'cloth', warlock: 'cloth' }[character.class];
+                        const who = ARMOR_WHO[item.style];
+                        const mine = CLASS_ARMOR[character.class];
                         if (who) push(who + ' only', !!(mine && item.style !== mine));
                     }
                     if (item.kind === 'weapon' && item.weapon) {
-                        const who = { sword: 'Warriors', bow: 'Hunters', staff: 'Mages', wand: 'Warlocks' }[item.weapon];
-                        const mine = { warrior: 'sword', hunter: 'bow', mage: 'staff', warlock: 'wand' }[character.class];
+                        const who = WEAPON_WHO[item.weapon];
+                        const mine = CLASS_WEAPON[character.class];
                         if (who) push(who + ' only', !!(mine && item.weapon !== mine));
                     }
                     if ((item.reqLevel || 1) > 1) push('Requires level ' + item.reqLevel, (item.reqLevel || 1) > (stats.level || 1));
@@ -5443,7 +5479,7 @@
             let autoNoteAt = 0;
 
             function basicAttackId() {
-                const byClass = { warrior: 'sword', mage: 'staff', hunter: 'bow', warlock: 'wand' }[character && character.class];
+                const byClass = { warrior: 'sword', rogue: 'stab', paladin: 'strike', mage: 'staff', hunter: 'bow', warlock: 'wand' }[character && character.class];
                 if (byClass) return byClass;
                 return { sword: 'sword', staff: 'staff', bow: 'bow', wand: 'wand' }[equippedWeapon] || null;
             }
@@ -5464,7 +5500,8 @@
                     return;
                 }
                 const aimed = currentTarget();
-                const offensive = ability !== 'mend' && ability !== 'barrier';
+                const selfCast = ability === 'mend' || ability === 'lay-hands';
+                const offensive = !selfCast && ability !== 'barrier';
                 if (!auto && offensive && aimed && aimed.kind === 'npc') autoAttack = true;
                 if (cooling(ability)) {
                     if (!auto) showMessage('Not ready');
@@ -5474,7 +5511,7 @@
                     if (!auto) showMessage('They are not hostile');
                     return;
                 }
-                if (ability !== 'mend' && (!aimed || aimed.kind !== 'npc')) {
+                if (!selfCast && (!aimed || aimed.kind !== 'npc')) {
                     if (!auto) showMessage('Select a target');
                     autoAttack = false;
                     return;
@@ -5492,7 +5529,7 @@
                 if (swinging) {
                     if (!auto) return;
                 } else if (!playSwing()) return;
-                sfx(ability === 'mend' || ability === 'drain-life' ? 'heal' : ability === 'barrier' ? 'shield' : (ability === 'frost-bolt' || ability === 'frost-nova') ? 'frost' : (action.weapon === 'staff' || action.weapon === 'wand') ? 'spell' : 'swing');
+                sfx(ability === 'mend' || ability === 'lay-hands' || ability === 'drain-life' ? 'heal' : ability === 'barrier' ? 'shield' : (ability === 'frost-bolt' || ability === 'frost-nova') ? 'frost' : (action.weapon === 'staff' || action.weapon === 'wand') ? 'spell' : 'swing');
                 if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) {
                     if (!auto) showMessage('Not connected');
                     return;
@@ -5502,7 +5539,7 @@
                 gameSocket.send(JSON.stringify({
                     type: 'attack',
                     ability,
-                    targetId: aimed ? aimed.id : null,
+                    targetId: selfCast ? (aimed && aimed.kind === 'player' ? aimed.id : null) : (aimed ? aimed.id : null),
                     x: characterGroup.position.x,
                     z: characterGroup.position.z,
                     rotY: characterGroup.rotation.y,
@@ -7182,10 +7219,12 @@
             const picker = document.getElementById('actionPicker');
             const PICKER_GROUPS = [
                 ['Warrior', ['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind']],
+                ['Paladin', ['strike', 'smite', 'rebuke', 'judgment', 'consecrate', 'lay-hands']],
+                ['Rogue', ['stab', 'backstab', 'gouge', 'eviscerate', 'fan']],
                 ['Mage', ['staff', 'arcane-bolt', 'frost-bolt', 'mend', 'barrier', 'frost-nova', 'arcane-surge']],
                 ['Hunter', ['bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot']],
                 ['Warlock', ['wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn']],
-                ['Specials', ['battle-shout', 'rally', 'frost-armor', 'blink', 'raise-dead', 'dread-guard']],
+                ['Specials', ['battle-shout', 'rally', 'frost-armor', 'blink', 'raise-dead', 'dread-guard', 'evasion', 'adrenaline', 'divine-shield', 'blessing']],
                 ['Field', ['gather']],
                 ['Potions', ['health', 'mana']],
                 ['Explosives', ['bomb']]
@@ -7208,9 +7247,9 @@
                 const level = stats.level || 1;
                 const raw = spell.power + level * (spell.scale || 0);
                 const effect = spell.effect || 'damage';
-                const melee = effect === 'damage' && (spell.class === 'warrior' || spell.class === 'hunter');
+                const melee = effect === 'damage' && (spell.class === 'warrior' || spell.class === 'hunter' || spell.class === 'rogue' || spell.class === 'paladin');
                 const stat = melee ? (stats.strength || 0) : (stats.intellect || 0);
-                const bonusId = spell.class === 'hunter' ? 'precision' : spell.class === 'warlock' ? 'affliction' : melee ? 'might' : 'arcane-power';
+                const bonusId = spell.class === 'hunter' ? 'precision' : spell.class === 'warlock' ? 'affliction' : spell.class === 'rogue' ? 'lethal' : spell.class === 'paladin' ? 'zeal' : melee ? 'might' : 'arcane-power';
                 const talent = effect !== 'damage' ? 0 : ((character.talents && character.talents[bonusId]) || 0);
                 const scaled = (raw + stat + talent) * (1 + Math.max(0, rank - 1) * 0.2);
                 const each = Math.max(1, Math.round(scaled));
@@ -7779,11 +7818,15 @@
             }
 
             const CD_MS = {
-                sword: 1000, staff: 1000, bow: 1000, wand: 1000, 'power-strike': 6000, cleave: 8000,
+                sword: 1000, staff: 1000, bow: 1000, wand: 1000, stab: 1000, strike: 1000,
+                'power-strike': 6000, cleave: 8000, backstab: 6000, smite: 6000,
+                gouge: 8000, eviscerate: 8000, rebuke: 8000, judgment: 8000, 'lay-hands': 8000,
+                fan: 10000, consecrate: 12000,
                 'arcane-bolt': 1800, 'arcane-surge': 8000, mend: 5000,
                 health: 12000, mana: 12000, potion: 12000, bomb: 4000,
                 'battle-shout': 45000, rally: 60000, 'frost-armor': 30000, blink: 20000,
-                'raise-dead': 40000, 'dread-guard': 60000, 'pet-bite': 8000, 'pet-call': 8000
+                'raise-dead': 40000, 'dread-guard': 60000, 'pet-bite': 8000, 'pet-call': 8000,
+                evasion: 30000, adrenaline: 45000, 'divine-shield': 45000, blessing: 60000
             };
             const cdReady = {};
             const cdTotal = {};
@@ -7898,7 +7941,7 @@
                 picker.style.left = Math.max(8, rect.left) + 'px';
                 picker.style.top = 'auto';
                 picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
-                const classGroup = { warrior: 'Warrior', mage: 'Mage', hunter: 'Hunter', warlock: 'Warlock' }[character.class];
+                const classGroup = CLASS_LABEL[character.class];
                 for (const [title, ids] of PICKER_GROUPS) {
                     if (title !== 'Field' && title !== 'Potions' && title !== 'Explosives' && title !== 'Specials' && title !== classGroup) continue;
                     const choices = [];
@@ -9256,10 +9299,9 @@
                     for (const c of allColliders) {
                         if (c.gather && Math.hypot(px - c.x, pz - c.z) < 2.8) near = true;
                     }
-                    const basic = { sword: 'sword', staff: 'staff', bow: 'bow', wand: 'wand' };
-                    const worn = character.class ? wornWeapon() : equippedWeapon;
+                    const basic = basicAttackId();
                     if (near) tryGather();
-                    else if (basic[worn]) tryAttack(basic[worn]);
+                    else if (basic) tryAttack(basic);
                     else showMessage('Select a spell');
                 }
                 if (k === 'l') toggleQuestLog();
