@@ -213,6 +213,8 @@ function itemAbout(item) {
         sentences.push('Mana potion' + (Number(item.amount) ? ' that restores ' + item.amount + ' mana' : ''));
     } else if (kind === 'bomb') {
         sentences.push('Bomb' + (Number(item.amount) ? ' that hits for ' + item.amount : ''));
+    } else if (kind === 'lure') {
+        sentences.push('Thrown on the ground. Explodes and draws nearby creatures');
     } else if (kind === 'junk') {
         sentences.push('Junk');
     } else {

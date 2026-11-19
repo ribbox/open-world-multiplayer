@@ -2296,8 +2296,8 @@ function startCooldown(player, key, ms, now) {
 
 const BAR_PAGES = 3;
 const BAR_SLOTS = 8;
-const ACTION_IDS = new Set(['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind', 'staff', 'arcane-bolt', 'frost-bolt', 'arcane-surge', 'mend', 'barrier', 'frost-nova', 'bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot', 'wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn', 'stab', 'backstab', 'gouge', 'eviscerate', 'fan', 'stealth', 'strike', 'smite', 'rebuke', 'judgment', 'consecrate', 'lay-hands', 'gather', 'health', 'mana', 'bomb', 'battle-shout', 'rally', 'frost-armor', 'blink', 'raise-dead', 'dread-guard', 'evasion', 'adrenaline', 'divine-shield', 'blessing']);
-const BAR_UTILITY = new Set(['gather', 'health', 'mana', 'bomb']);
+const ACTION_IDS = new Set(['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind', 'staff', 'arcane-bolt', 'frost-bolt', 'arcane-surge', 'mend', 'barrier', 'frost-nova', 'bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot', 'wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn', 'stab', 'backstab', 'gouge', 'eviscerate', 'fan', 'stealth', 'strike', 'smite', 'rebuke', 'judgment', 'consecrate', 'lay-hands', 'gather', 'health', 'mana', 'bomb', 'lure', 'battle-shout', 'rally', 'frost-armor', 'blink', 'raise-dead', 'dread-guard', 'evasion', 'adrenaline', 'divine-shield', 'blessing']);
+const BAR_UTILITY = new Set(['gather', 'health', 'mana', 'bomb', 'lure']);
 
 function blankActionBar() {
     return Array.from({ length: BAR_PAGES }, () => Array(BAR_SLOTS).fill(null));
@@ -2585,6 +2585,7 @@ const RECIPES = {
     'greater-health': { name: 'Greater Health Potion', set: 'alchemy', kind: 'health', amount: 40, cost: { herb: 4, powder: 1 }, loot: true },
     'greater-mana': { name: 'Greater Mana Potion', set: 'alchemy', kind: 'mana', amount: 30, cost: { herb: 4, powder: 1 }, loot: true },
     'rough-bomb': { name: 'Rough Bomb', set: 'explosive', kind: 'bomb', amount: 14, cost: { powder: 2, stone: 1 } },
+    'distraction': { name: 'Distraction', set: 'explosive', kind: 'lure', amount: 0, cost: { powder: 1, stone: 1 } },
     'bitter-flask': { name: 'Bitter Flask', set: 'explosive', kind: 'bomb', amount: 10, cost: { herb: 2, powder: 1 } },
     'heavy-bomb': { name: 'Heavy Bomb', set: 'explosive', kind: 'bomb', amount: 28, cost: { powder: 3, ore: 1 }, loot: true },
     'silk-robe': { name: 'Silk Robe', set: 'cloth', slot: 'chest', kind: 'armor', style: 'cloth', armor: 4, cost: { cloth: 8 }, tier: 75, craftLevel: 75 },
@@ -2731,7 +2732,7 @@ const CRAFT_SETS = {
     weapon: { name: 'Weaponsmithing', cost: 16, rarity: 1, text: 'Swords, staves, bows, and wands.' },
     magic: { name: 'Spellforging', cost: 28, rarity: 4, text: 'Enchanted blades, staves, bows, and wands.' },
     alchemy: { name: 'Alchemy', cost: 18, rarity: 2, text: 'Potions, and refining powder into gems.' },
-    explosive: { name: 'Explosives', cost: 22, rarity: 2, text: 'Charges and flasks from powder, stone, and ore.' }
+    explosive: { name: 'Explosives', cost: 22, rarity: 2, text: 'Charges, flasks, and distractions from powder, stone, and ore.' }
 };
 
 const SHOP_GOODS = [
@@ -2749,7 +2750,7 @@ const APPRENTICE_LEVEL = {
     'iron-sword': 1, 'oak-staff': 25, 'yew-bow': 10, 'oak-wand': 25,
     'rune-blade': 15, 'arcane-staff': 40,
     'minor-health': 1, 'minor-mana': 15,
-    'rough-bomb': 1, 'bitter-flask': 20
+    'rough-bomb': 1, 'bitter-flask': 20, 'distraction': 8
 };
 
 for (const [id, recipe] of Object.entries(RECIPES)) {
@@ -3038,8 +3039,18 @@ function ensureRogueKit(player) {
     }
 }
 
+function ensureDistractionRecipe(player) {
+    if (!player || !Array.isArray(player.recipes) || player.recipes.includes('distraction')) return;
+    const knows = player.recipes.some(id => {
+        const recipe = RECIPES[id];
+        return recipe && recipe.set === 'explosive' && !recipe.loot && !recipe.buy && !(recipe.tier > 0);
+    });
+    if (knows) player.recipes.push('distraction');
+}
+
 function refreshDerived(player) {
     ensureRogueKit(player);
+    ensureDistractionRecipe(player);
     player.stats = totalStats(player);
     player.armor = armorValue(player);
     const nextHp = maxHpFor(player.level) + player.stats.stamina * 4 + ranksIn(player, ['stalwart', 'last-stand', 'endure', 'soul-link']) * 4;
@@ -3718,7 +3729,7 @@ function stackLimit(item) {
     if (item.kind === 'bag') return 1;
     if (item.kind === 'wood' || item.kind === 'stone' || item.kind === 'cloth' || item.kind === 'leather' || item.kind === 'ore') return 20;
     if (item.kind === 'junk' || item.kind === 'gem' || item.kind === 'recipe' || item.kind === 'quest') return 10;
-    if (item.kind === 'health' || item.kind === 'mana' || item.kind === 'armor' || item.kind === 'bomb') return 5;
+    if (item.kind === 'health' || item.kind === 'mana' || item.kind === 'armor' || item.kind === 'bomb' || item.kind === 'lure') return 5;
     return 1;
 }
 
@@ -5505,6 +5516,14 @@ function tickNpcs() {
             tx = npc.wanderX;
             tz = npc.wanderZ;
         }
+        const lured = npc.lure && (npc.lure.until || 0) > now;
+        if (lured) {
+            tx = npc.lure.x;
+            tz = npc.lure.z;
+            speed = 3.4;
+            focusNow = null;
+            npc.aggroId = null;
+        } else if (npc.lure) npc.lure = null;
         if ((npc.slowUntil || 0) > now) speed *= 0.4;
         const dx = tx - npc.x;
         const dz = tz - npc.z;
@@ -5597,6 +5616,7 @@ function tickNpcs() {
             }
         }
         if (dist < 0.4) {
+            if (lured) continue;
             if (!focusNow) pickWander(npc);
             continue;
         }
@@ -6720,8 +6740,8 @@ wss.on('connection', (ws) => {
                 return;
             }
             const now = Date.now();
-            const cdKey = slot.kind === 'bomb' ? 'bomb' : (slot.kind === 'health' || slot.kind === 'mana' ? 'potion' : '');
-            const cdMax = cdKey === 'bomb' ? BOMB_COOLDOWN : POTION_COOLDOWN;
+            const cdKey = slot.kind === 'bomb' ? 'bomb' : slot.kind === 'lure' ? 'lure' : (slot.kind === 'health' || slot.kind === 'mana' ? 'potion' : '');
+            const cdMax = cdKey === 'bomb' || cdKey === 'lure' ? BOMB_COOLDOWN : POTION_COOLDOWN;
             if (cdKey) {
                 const left = cooldownLeft(player, cdKey, now);
                 if (left > 0) {
@@ -6793,6 +6813,41 @@ wss.on('connection', (ws) => {
                     leveled,
                     chest: chest ? publicChest(chest) : null,
                     quests: player.quests,
+                    inventory: inventoryOf(player),
+                    ...statsOf(player)
+                });
+                return;
+            } else if (slot.kind === 'lure') {
+                if (inSettlement(player.x, player.z)) {
+                    send(ws, { type: 'useResult', ok: false, reason: 'This camp is safe' });
+                    return;
+                }
+                const spot = distractionPoint(player, data.x, data.z);
+                if (inSettlement(spot.x, spot.z)) {
+                    send(ws, { type: 'useResult', ok: false, reason: 'This camp is safe' });
+                    return;
+                }
+                dropStealth(player, 'The blast gives you away');
+                const pulled = pullToBlast(player, spot.x, spot.z, now);
+                const note = pulled
+                    ? 'Your distraction draws ' + pulled + (pulled === 1 ? ' creature' : ' creatures')
+                    : 'Your distraction draws no one';
+                tellCombat(player, note);
+                announceBoom(player, spot.x, spot.z);
+                slot.qty -= 1;
+                if (slot.qty <= 0) player.slots[index] = null;
+                startCooldown(player, 'lure', BOMB_COOLDOWN, now);
+                savePlayer(player);
+                send(ws, {
+                    type: 'useResult',
+                    ok: true,
+                    item: 'lure',
+                    cd: BOMB_COOLDOWN,
+                    cdMax: BOMB_COOLDOWN,
+                    cdKey: 'lure',
+                    pulled,
+                    x: spot.x,
+                    z: spot.z,
                     inventory: inventoryOf(player),
                     ...statsOf(player)
                 });
@@ -7521,6 +7576,60 @@ function broadcastSeen(source, data) {
     }
 }
 
+const LURE_RANGE = 16;
+const LURE_TIME = 8000;
+
+function distractionPoint(player, x, z) {
+    const yaw = player.rotY || 0;
+    let lx = Number(x);
+    let lz = Number(z);
+    if (!Number.isFinite(lx) || !Number.isFinite(lz) || Math.hypot(lx - player.x, lz - player.z) > 12) {
+        lx = player.x + Math.sin(yaw) * 6;
+        lz = player.z + Math.cos(yaw) * 6;
+    }
+    if (player.dungeonId) {
+        const cave = dungeonById(player.dungeonId);
+        if (cave) {
+            const held = dungeonClamp(cave, lx, lz);
+            lx = held.x;
+            lz = held.z;
+        }
+    } else {
+        const held = clampWorld(lx, lz, 4);
+        lx = held.x;
+        lz = held.z;
+    }
+    return { x: lx, z: lz };
+}
+
+function announceBoom(player, x, z) {
+    const msg = { type: 'boom', x, z };
+    for (const other of players.values()) {
+        if ((other.mapId || '') !== (player.mapId || '')) continue;
+        if ((other.instanceId || '') !== (player.instanceId || '')) continue;
+        if ((other.dungeonId || '') !== (player.dungeonId || '')) continue;
+        if (Math.hypot((other.x || 0) - x, (other.z || 0) - z) > 70) continue;
+        send(other.ws, msg);
+    }
+}
+
+function pullToBlast(player, x, z, now) {
+    let pulled = 0;
+    for (const npc of npcs.values()) {
+        if (!npc.alive) continue;
+        if ((npc.mapId || '') !== (player.mapId || '')) continue;
+        if ((npc.instanceId || '') !== (player.instanceId || '')) continue;
+        if ((npc.dungeonId || '') !== (player.dungeonId || '')) continue;
+        if (inSettlement(npc.x, npc.z)) continue;
+        if (Math.hypot(npc.x - x, npc.z - z) > LURE_RANGE) continue;
+        npc.lure = { x, z, until: now + LURE_TIME };
+        if (npc.threat) npc.threat.clear();
+        npc.aggroId = null;
+        pulled += 1;
+    }
+    return pulled;
+}
+
 function refreshSight(player) {
     for (const [id, other] of players) {
         if (other === player) continue;
@@ -7874,7 +7983,7 @@ function sheetFlag(value) {
     return text === 'yes' || text === 'true' || text === '1' || text === 'y';
 }
 
-const ITEM_KINDS = ['armor', 'weapon', 'health', 'mana', 'bomb', 'junk'];
+const ITEM_KINDS = ['armor', 'weapon', 'health', 'mana', 'bomb', 'lure', 'junk'];
 const ITEM_SLOTS = ['', 'head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'waist', 'legs', 'feet', 'weapon', 'offhand'];
 const ITEM_STYLES = ['', 'cloth', 'leather', 'plate'];
 
@@ -7896,7 +8005,7 @@ function sanitizeItems(input) {
         const style = ITEM_STYLES.includes(raw.style) ? raw.style : '';
         const weapon = raw.weapon === 'staff' || raw.weapon === 'sword' || raw.weapon === 'bow' || raw.weapon === 'wand' ? raw.weapon : (kind === 'weapon' ? 'sword' : '');
         let set = String(raw.set || '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '').slice(0, 24);
-        if (!set) set = kind === 'health' || kind === 'mana' ? 'alchemy' : kind === 'bomb' ? 'explosive' : kind === 'weapon' ? 'weapon' : 'cloth';
+        if (!set) set = kind === 'health' || kind === 'mana' ? 'alchemy' : kind === 'bomb' || kind === 'lure' ? 'explosive' : kind === 'weapon' ? 'weapon' : 'cloth';
         out.push({
             id,
             name: String(raw.name || id).slice(0, 32),
@@ -8397,7 +8506,7 @@ function workbookSource() {
         zones: places.zones,
         dungeons: places.dungeons,
         lists: {
-            kind: ['armor', 'weapon', 'health', 'mana', 'bomb', 'junk'],
+            kind: ['armor', 'weapon', 'health', 'mana', 'bomb', 'lure', 'junk'],
             slot: ['head', 'neck', 'shoulders', 'cloak', 'chest', 'hands', 'waist', 'legs', 'feet', 'weapon', 'offhand'],
             style: ['cloth', 'leather', 'plate'],
             weapon: ['sword', 'staff'],

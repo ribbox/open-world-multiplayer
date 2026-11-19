@@ -2621,6 +2621,7 @@
                 health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion.', cooldown: '12 seconds' },
                 mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion.', cooldown: '12 seconds' },
                 bomb: { name: 'Explosives', short: 'Bomb', kind: 'explosive', item: 'bomb', hint: 'Throw a bomb at the targeted hostile.', cooldown: '4 seconds' },
+                lure: { name: 'Distraction', short: 'Lure', kind: 'explosive', item: 'lure', hint: 'Throw on the ground. It explodes and draws nearby creatures to the blast.', cooldown: '4 seconds' },
                 'battle-shout': { name: 'Battle Shout', short: 'Shout', kind: 'special', hint: 'Your attacks hit harder for 15 seconds.', cooldown: '45 seconds' },
                 rally: { name: 'Rally', short: 'Rally', kind: 'special', hint: 'Recover a large share of your health.', cooldown: '60 seconds' },
                 'frost-armor': { name: 'Frost Armor', short: 'Frost', kind: 'special', hint: 'A cold shell soaks damage for 20 seconds.', cooldown: '30 seconds' },
@@ -2837,6 +2838,7 @@
                 health: 144,
                 mana: 145,
                 bomb: 172,
+                lure: 184,
                 bag: 160,
                 character: 117,
                 wood: 272,
@@ -2895,6 +2897,7 @@
                 if (item.kind === 'health') push('Restores ' + (item.amount || 0) + ' health');
                 else if (item.kind === 'mana') push('Restores ' + (item.amount || 0) + ' mana');
                 else if (item.kind === 'bomb') push('Deals ' + (item.amount || 0) + ' damage');
+                else if (item.kind === 'lure') push('Throw on the ground. Explodes and draws nearby creatures');
                 else if (item.kind === 'armor') {
                     const style = STYLE_NAMES[item.style] || 'Armor';
                     const mine = CLASS_ARMOR[character.class];
@@ -3114,6 +3117,8 @@
                             ? 'Click to drink'
                             : (slot.kind === 'bomb')
                             ? 'Click to throw at your target'
+                            : (slot.kind === 'lure')
+                            ? 'Click to throw on the ground'
                             : (slot.kind === 'armor' || slot.kind === 'weapon')
                             ? 'Click to equip'
                             : (slot.kind === 'bag')
@@ -3160,7 +3165,7 @@
                             if (to == null || to === from || !gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
                             const next = inventory.slots.slice();
                             const target = next[to];
-                            const stackLimit = { health: 5, mana: 5, bomb: 5, armor: 5, junk: 10, gem: 10, recipe: 10, quest: 10 }[slot.kind] || 1;
+                            const stackLimit = { health: 5, mana: 5, bomb: 5, lure: 5, armor: 5, junk: 10, gem: 10, recipe: 10, quest: 10 }[slot.kind] || 1;
                             const same = target && target.kind === slot.kind && target.name === slot.name && (target.amount || 0) === (slot.amount || 0) && (target.armor || 0) === (slot.armor || 0) && !!target.worn === !!slot.worn && !!target.named === !!slot.named;
                             if (same && (target.qty || 1) < stackLimit) {
                                 const take = Math.min(stackLimit - target.qty, slot.qty || 1);
@@ -3272,6 +3277,10 @@
                     holdAction('bomb');
                     return;
                 }
+                if (slot.kind === 'lure') {
+                    throwDistraction(index);
+                    return;
+                }
                 if (slot.kind !== 'health' && slot.kind !== 'mana') return;
                 if (cooling(slot.kind)) {
                     showMessage('Not ready');
@@ -3329,7 +3338,7 @@
                 if (item.kind === 'weapon') return 'weapon';
                 if (item.kind === 'armor') return 'armor';
                 if (item.kind === 'health' || item.kind === 'mana') return 'potion';
-                if (item.kind === 'bomb') return 'bomb';
+                if (item.kind === 'bomb' || item.kind === 'lure') return 'bomb';
                 if (item.kind === 'bag') return 'bag';
                 if (item.kind === 'recipe') return 'recipe';
                 if (['wood', 'stone', 'herb', 'ore', 'cloth', 'leather', 'silk', 'powder', 'gem', 'junk', 'hide', 'bandit', 'wisp', 'plate', 'magic'].includes(item.kind)) return 'material';
@@ -6046,7 +6055,8 @@
                     return;
                 }
                 if (action.kind === 'explosive') {
-                    useBomb();
+                    if (action.item === 'lure') throwDistraction();
+                    else useBomb();
                     return;
                 }
                 if (action.kind === 'gather') {
@@ -7204,6 +7214,27 @@
                 holdAction(item);
             }
 
+            function throwDistraction(index) {
+                if (cooling('lure')) {
+                    showMessage('Not ready');
+                    return;
+                }
+                if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) return;
+                let slot = Number.isInteger(index) ? index : -1;
+                if (slot < 0 || !inventory.slots[slot] || inventory.slots[slot].kind !== 'lure') {
+                    slot = (inventory.slots || []).findIndex(row => row && row.kind === 'lure');
+                }
+                if (slot < 0) {
+                    showMessage('No distraction');
+                    return;
+                }
+                const yaw = characterGroup.rotation.y;
+                const x = characterGroup.position.x + Math.sin(yaw) * 6;
+                const z = characterGroup.position.z + Math.cos(yaw) * 6;
+                gameSocket.send(JSON.stringify({ type: 'use', slot, x, z }));
+                holdAction('lure');
+            }
+
             function useBomb() {
                 if (cooling('bomb')) {
                     showMessage('Not ready');
@@ -7292,7 +7323,7 @@
                 ['Specials', ['battle-shout', 'rally', 'frost-armor', 'blink', 'raise-dead', 'dread-guard', 'evasion', 'adrenaline', 'divine-shield', 'blessing']],
                 ['Field', ['gather']],
                 ['Potions', ['health', 'mana']],
-                ['Explosives', ['bomb']]
+                ['Explosives', ['bomb', 'lure']]
             ];
 
             function saveActionBar() {
@@ -7888,7 +7919,7 @@
                 gouge: 8000, eviscerate: 8000, rebuke: 8000, judgment: 8000, 'lay-hands': 8000,
                 fan: 10000, consecrate: 12000,
                 'arcane-bolt': 1800, 'arcane-surge': 8000, mend: 5000,
-                health: 12000, mana: 12000, potion: 12000, bomb: 4000,
+                health: 12000, mana: 12000, potion: 12000, bomb: 4000, lure: 4000,
                 'battle-shout': 45000, rally: 60000, 'frost-armor': 30000, blink: 20000,
                 'raise-dead': 40000, 'dread-guard': 60000, 'pet-bite': 8000, 'pet-call': 8000,
                 evasion: 30000, adrenaline: 45000, 'divine-shield': 45000, blessing: 60000
@@ -8535,6 +8566,7 @@
                 if (slot.kind === 'health' && slot.amount) name += ' · restores ' + slot.amount;
                 else if (slot.kind === 'mana' && slot.amount) name += ' · restores ' + slot.amount;
                 else if (slot.kind === 'bomb' && slot.amount && !/\d/.test(slot.name || '')) name += ' · ' + slot.amount + ' damage';
+                else if (slot.kind === 'lure') name += ' · draws creatures';
                 return name + ' x' + (slot.qty || 1) + ' · ' + formatMoney(sellPrice(slot)) + ' each';
             }
 
@@ -10607,6 +10639,22 @@
                         applyTrade(data.trade, data.reason || data.note || '');
                         if (data.ok === false) sfx('deny');
                         else if (data.note) sfx('bell');
+                    } else if (data.type === 'boom') {
+                        sfx('boom');
+                        const x = data.x || 0;
+                        const z = data.z || 0;
+                        const y = terrainHeight(x, z) + 0.35;
+                        for (let i = 0; i < 8; i++) {
+                            const ang = (i / 8) * Math.PI * 2;
+                            launchShot(
+                                { x, y: y + 0.5, z },
+                                { x: x + Math.sin(ang) * 2.4, y: y + 0.15, z: z + Math.cos(ang) * 2.4 },
+                                0xffb347,
+                                0,
+                                0.32
+                            );
+                        }
+                        floatText(x, y + 1.2, z, 'Boom', '#ffb347');
                     } else if (data.type === 'npcAttack') {
                         const entry = worldNpcs.get(data.id);
                         const body = entry && entry.group.userData.body;
@@ -10909,6 +10957,9 @@
                                 sfx('boom');
                                 const xp = data.killed && data.gained > 0 ? (data.leveled ? ' · Level ' + data.level + '! +' + data.gained + ' XP' : ' · +' + data.gained + ' XP') : '';
                                 showMessage((data.killed ? 'Bomb killed it' : 'Bomb hit ' + data.damage) + xp);
+                            } else if (data.item === 'lure') {
+                                const n = data.pulled || 0;
+                                showMessage(n ? 'Distraction draws ' + n : 'Nothing nearby notices');
                             } else {
                                 showMessage(data.item === 'health' ? 'Health restored' : 'Mana restored');
                                 sfx('drink');

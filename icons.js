@@ -13,6 +13,7 @@ export const ICON_INDEX = {
     health: 144,
     mana: 145,
     bomb: 172,
+    lure: 184,
     bag: 160,
     character: 117,
     wood: 272,
@@ -75,7 +76,7 @@ export function defaultIconName(item) {
         if (item.weapon === 'wand') return 'wand';
         return 'sword';
     }
-    if (item.kind === 'health' || item.kind === 'mana' || item.kind === 'bomb') return item.kind;
+    if (item.kind === 'health' || item.kind === 'mana' || item.kind === 'bomb' || item.kind === 'lure') return item.kind;
     if (item.kind === 'armor') {
         const key = (item.slot || 'chest') + '-' + (item.style || 'plate');
         if (ICON_INDEX[key] != null) return key;
@@ -96,6 +97,7 @@ const ICON_LABEL = {
     health: 'Health potion',
     mana: 'Mana potion',
     bomb: 'Bomb',
+    lure: 'Distraction',
     bag: 'Bag',
     character: 'Character',
     wood: 'Wood',
