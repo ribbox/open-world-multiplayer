@@ -205,7 +205,7 @@ function itemAbout(item) {
         }[item.slot] || 'armor';
         sentences.push((item.style ? cap(item.style) : 'Armor') + ' ' + where + (Number(item.armor) ? ', armor ' + item.armor : ''));
     } else if (kind === 'weapon') {
-        const weaponName = { sword: 'Sword', staff: 'Staff', bow: 'Bow', wand: 'Wand' }[item.weapon] || 'Weapon';
+        const weaponName = { sword: 'Sword', dagger: 'Dagger', staff: 'Staff', bow: 'Bow', wand: 'Wand' }[item.weapon] || 'Weapon';
         sentences.push((yesNo(item.magic) === 'yes' ? 'Magic ' : '') + weaponName);
     } else if (kind === 'health') {
         sentences.push('Health potion' + (Number(item.amount) ? ' that restores ' + item.amount + ' health' : ''));

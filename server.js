@@ -1401,6 +1401,20 @@ function applyElite(npc, elite, baseHp) {
     npc.hp = npc.maxHp;
 }
 
+function bladeKind(piece) {
+    if (!piece || piece.kind !== 'weapon') return '';
+    if (piece.weapon === 'dagger' || piece.weapon === 'sword') return piece.weapon;
+    return '';
+}
+
+function heldBlades(player) {
+    const gear = player && player.equipment;
+    return {
+        main: bladeKind(gear && gear.weapon),
+        off: bladeKind(gear && gear.offhand)
+    };
+}
+
 function publicGear(player) {
     const gear = {};
     const slots = ['head', 'shoulders', 'chest', 'legs', 'feet', 'cloak', 'offhand'];
@@ -1428,7 +1442,9 @@ function publicPlayer(id, p) {
         maxHp: p.maxHp,
         ghost: !!p.ghost,
         corpse: p.corpse || null,
-        gear: publicGear(p)
+        gear: publicGear(p),
+        blades: heldBlades(p),
+        stealth: !!(p.stealthUntil && p.stealthUntil > Date.now())
     };
 }
 
@@ -1776,6 +1792,7 @@ function restoreFoughtMobs(player) {
 
 function becomeGhost(player, now) {
     if (player.ghost) return;
+    dropStealth(player, null);
     restoreFoughtMobs(player);
     player.ghost = true;
     player.minion = null;
@@ -1812,6 +1829,43 @@ function becomeGhost(player, now) {
     savePlayer(player);
 }
 
+function stealthed(player, now) {
+    return !!(player && player.stealthUntil && player.stealthUntil > (now || Date.now()));
+}
+
+function stealthSight(npc, player) {
+    if (!stealthed(player)) return AGGRO_RANGE;
+    const gap = (npc.level || 1) - (player.level || 1);
+    if (gap <= 0) return 0;
+    return Math.min(AGGRO_RANGE, 1.5 + gap * 1.7);
+}
+
+function veilThreat(player) {
+    for (const npc of npcs.values()) {
+        if (!npc.threat || !npc.alive) continue;
+        const see = stealthSight(npc, player);
+        if (Math.hypot((player.x || 0) - npc.x, (player.z || 0) - npc.z) > see) npc.threat.delete(player.persistentId);
+    }
+}
+
+function dropStealth(player, why) {
+    if (!stealthed(player)) return;
+    player.stealthUntil = 0;
+    if (player.ws) send(player.ws, { type: 'stealth', on: false, text: why == null ? '' : (why || 'Stealth fades') });
+}
+
+function seenByStronger(player) {
+    for (const npc of npcs.values()) {
+        if (!npc.alive || (npc.level || 1) <= (player.level || 1)) continue;
+        if ((npc.mapId || '') !== (player.mapId || '')) continue;
+        if ((npc.instanceId || '') !== (player.instanceId || '')) continue;
+        if ((npc.dungeonId || '') !== (player.dungeonId || '')) continue;
+        const see = stealthSight(npc, player);
+        if (see > 0 && Math.hypot(player.x - npc.x, player.z - npc.z) <= see) return true;
+    }
+    return false;
+}
+
 function dungeonThreat(npc) {
     const cave = dungeonById(npc.dungeonId);
     if (!cave) return null;
@@ -1823,9 +1877,12 @@ function dungeonThreat(npc) {
         if (player.dungeonId !== npc.dungeonId) continue;
         if ((player.instanceId || '') !== (npc.instanceId || '')) continue;
         if (dungeonTravel(cave, player.x, player.z) < 5) continue;
+        const see = stealthSight(npc, player);
+        if (see <= 0) continue;
         const dx = player.x - npc.x;
         const dz = player.z - npc.z;
         const d = dx * dx + dz * dz;
+        if (d > see * see) continue;
         if (d < bestD) {
             bestD = d;
             best = player;
@@ -1841,9 +1898,12 @@ function nearestPlayer(npc, range) {
         if (player.hp <= 0 || player.ghost || player.dungeonId) continue;
         if ((player.mapId || '') !== (npc.mapId || '')) continue;
         if (inSettlement(player.x, player.z)) continue;
+        const see = Math.min(range, stealthSight(npc, player));
+        if (see <= 0) continue;
         const dx = player.x - npc.x;
         const dz = player.z - npc.z;
         const d = dx * dx + dz * dz;
+        if (d > see * see) continue;
         if (d < bestD) {
             bestD = d;
             best = player;
@@ -2165,6 +2225,7 @@ const ABILITIES = {
     gouge: { weapon: 'sword', mana: 4, range: 2.6, slow: 5000, damage: (level) => 2 + level },
     eviscerate: { weapon: 'sword', mana: 8, range: 2.6, execute: 2, damage: (level) => 7 + level * 2 },
     fan: { weapon: 'sword', mana: 8, range: 2.6, aoe: 2.4, aoeSelf: true, damage: (level) => 4 + level },
+    stealth: { weapon: 'sword', mana: 8, range: 0, stealth: true },
     strike: { weapon: 'sword', mana: 0, range: 2.6, damage: (level) => 4 + level },
     smite: { weapon: 'sword', mana: 6, range: 2.6, damage: (level) => 7 + level * 2 },
     rebuke: { weapon: 'sword', mana: 4, range: 2.6, slow: 5000, damage: (level) => 2 + level },
@@ -2202,6 +2263,7 @@ const ABILITY_COOLDOWN = {
     gouge: 8000,
     eviscerate: 8000,
     fan: 10000,
+    stealth: 20000,
     strike: 1000,
     smite: 6000,
     rebuke: 8000,
@@ -2234,7 +2296,7 @@ function startCooldown(player, key, ms, now) {
 
 const BAR_PAGES = 3;
 const BAR_SLOTS = 8;
-const ACTION_IDS = new Set(['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind', 'staff', 'arcane-bolt', 'frost-bolt', 'arcane-surge', 'mend', 'barrier', 'frost-nova', 'bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot', 'wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn', 'stab', 'backstab', 'gouge', 'eviscerate', 'fan', 'strike', 'smite', 'rebuke', 'judgment', 'consecrate', 'lay-hands', 'gather', 'health', 'mana', 'bomb', 'battle-shout', 'rally', 'frost-armor', 'blink', 'raise-dead', 'dread-guard', 'evasion', 'adrenaline', 'divine-shield', 'blessing']);
+const ACTION_IDS = new Set(['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind', 'staff', 'arcane-bolt', 'frost-bolt', 'arcane-surge', 'mend', 'barrier', 'frost-nova', 'bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot', 'wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn', 'stab', 'backstab', 'gouge', 'eviscerate', 'fan', 'stealth', 'strike', 'smite', 'rebuke', 'judgment', 'consecrate', 'lay-hands', 'gather', 'health', 'mana', 'bomb', 'battle-shout', 'rally', 'frost-armor', 'blink', 'raise-dead', 'dread-guard', 'evasion', 'adrenaline', 'divine-shield', 'blessing']);
 const BAR_UTILITY = new Set(['gather', 'health', 'mana', 'bomb']);
 
 function blankActionBar() {
@@ -2246,6 +2308,7 @@ function defaultActionBar(className) {
     const kit = CLASS_KITS[className];
     const attack = kit && kit.trained && kit.trained[0];
     if (attack) bar[0][0] = attack;
+    if (className === 'rogue') bar[0][1] = 'stealth';
     return bar;
 }
 
@@ -2296,8 +2359,8 @@ const CLASS_KITS = {
         trained: ['wand']
     },
     rogue: {
-        weapon: { kind: 'weapon', weapon: 'sword', name: 'Worn Dagger', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { strength: 1 }, reqLevel: 1 },
-        trained: ['stab']
+        weapon: { kind: 'weapon', weapon: 'dagger', name: 'Worn Dagger', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { strength: 1 }, reqLevel: 1 },
+        trained: ['stab', 'stealth']
     },
     paladin: {
         weapon: { kind: 'weapon', weapon: 'sword', name: 'Worn Blade', qty: 1, armor: 0, amount: 0, slot: 'weapon', stats: { strength: 1 }, reqLevel: 1 },
@@ -2334,6 +2397,7 @@ const SPELLS = {
     gouge: { class: 'rogue', name: 'Gouge', level: 2, cost: 12, maxRank: 5, rankCost: 10, mana: 4, manaRank: 2, power: 2, scale: 1 },
     eviscerate: { class: 'rogue', name: 'Eviscerate', level: 6, cost: 30, maxRank: 5, rankCost: 16, mana: 8, manaRank: 4, power: 7, scale: 2, execute: true },
     fan: { class: 'rogue', name: 'Fan of Knives', level: 4, cost: 20, maxRank: 5, rankCost: 16, mana: 8, manaRank: 3, power: 4, scale: 1 },
+    stealth: { class: 'rogue', name: 'Stealth', level: 1, cost: 0, maxRank: 1, rankCost: 0, mana: 8, manaRank: 0, effect: 'stealth' },
     strike: { class: 'paladin', name: 'Strike', level: 1, cost: 0, maxRank: 5, rankCost: 8, mana: 0, manaRank: 2, power: 4, scale: 1 },
     smite: { class: 'paladin', name: 'Smite', level: 1, cost: 0, maxRank: 5, rankCost: 12, mana: 6, manaRank: 3, power: 7, scale: 2 },
     rebuke: { class: 'paladin', name: 'Rebuke', level: 2, cost: 12, maxRank: 5, rankCost: 10, mana: 4, manaRank: 2, power: 2, scale: 1 },
@@ -2944,7 +3008,38 @@ function armorValue(player) {
     return total;
 }
 
+function ensureRogueKit(player) {
+    if (!player || player.class !== 'rogue') return;
+    if (!Array.isArray(player.trained)) player.trained = ['stab'];
+    if (!player.trained.includes('stab')) player.trained.unshift('stab');
+    if (!player.spellRanks) player.spellRanks = {};
+    const fresh = !player.trained.includes('stealth');
+    if (fresh) {
+        player.trained.push('stealth');
+        player.spellRanks.stealth = 1;
+    }
+    const worn = player.equipment && player.equipment.weapon;
+    if (worn && worn.name === 'Worn Dagger' && worn.weapon === 'sword') worn.weapon = 'dagger';
+    if (fresh && Array.isArray(player.actionbar)) {
+        const has = player.actionbar.some(row => Array.isArray(row) && row.includes('stealth'));
+        if (!has) {
+            let placed = false;
+            for (const row of player.actionbar) {
+                if (!Array.isArray(row)) continue;
+                const index = row.indexOf(null);
+                if (index >= 0) {
+                    row[index] = 'stealth';
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed && Array.isArray(player.actionbar[0])) player.actionbar[0][1] = 'stealth';
+        }
+    }
+}
+
 function refreshDerived(player) {
+    ensureRogueKit(player);
     player.stats = totalStats(player);
     player.armor = armorValue(player);
     const nextHp = maxHpFor(player.level) + player.stats.stamina * 4 + ranksIn(player, ['stalwart', 'last-stand', 'endure', 'soul-link']) * 4;
@@ -3440,10 +3535,15 @@ function equipItem(player, equipSlot, bagIndex) {
     if (!item) return 'Empty slot';
     const fits = item.kind === 'weapon' ? 'weapon' : (item.slot || 'chest');
     if (item.kind !== 'weapon' && item.kind !== 'armor') return 'Cannot equip that';
-    if (fits !== equipSlot) return 'Does not fit';
     if ((item.reqLevel || 1) > (player.level || 1)) return 'Requires level ' + (item.reqLevel || 1);
     if (!player.class) return 'Choose a class first';
-    if (item.kind === 'weapon' && item.weapon !== CLASS_KITS[player.class].weapon.weapon) return 'Wrong class';
+    const rogueBlade = player.class === 'rogue' && (item.weapon === 'dagger' || item.weapon === 'sword');
+    if (item.kind === 'weapon' && rogueBlade && (equipSlot === 'weapon' || equipSlot === 'offhand')) {
+        /* a rogue may wear a sword or a dagger in either hand */
+    } else {
+        if (fits !== equipSlot) return 'Does not fit';
+        if (item.kind === 'weapon' && item.weapon !== CLASS_KITS[player.class].weapon.weapon) return 'Wrong class';
+    }
     if (item.kind === 'armor' && item.slot !== 'neck' && item.slot !== 'cloak') {
         const need = classArmor(player.class);
         if (item.style && need && item.style !== need) {
@@ -5474,6 +5574,7 @@ function tickNpcs() {
                     damage -= absorbed;
                 }
                 if (damage > 0) owner.hp = Math.max(0, owner.hp - damage);
+                dropStealth(owner, 'You are seen');
                 enterCombat(owner, now);
                 if (owner.pet && owner.pet.alive) {
                     owner.pet.attackerId = npc.id;
@@ -5969,11 +6070,12 @@ wss.on('connection', (ws) => {
             if (typeof data.x === 'number') player.x = data.x;
             if (typeof data.z === 'number') player.z = data.z;
             if (typeof data.rotY === 'number') player.rotY = data.rotY;
-            player.tool = spec.weapon;
+            if (!spec.stealth) player.tool = spec.weapon;
             if (player.class) {
                 const worn = player.equipment.weapon && player.equipment.weapon.weapon;
-                if (weaponFamily(worn) !== spec.weapon) {
-                    send(ws, { type: 'attackResult', ok: false, reason: 'Equip a ' + spec.weapon });
+                if (!spec.stealth && weaponFamily(worn) !== spec.weapon) {
+                    const need = player.class === 'rogue' && spec.weapon === 'sword' ? 'sword or dagger' : spec.weapon;
+                    send(ws, { type: 'attackResult', ok: false, reason: 'Equip a ' + need });
                     return;
                 }
                 if (!knownSpells(player).includes(abilityId)) {
@@ -5981,7 +6083,7 @@ wss.on('connection', (ws) => {
                     return;
                 }
             }
-            if (!spec.heal && inSettlement(player.x, player.z)) {
+            if (!spec.heal && !spec.stealth && inSettlement(player.x, player.z)) {
                 send(ws, { type: 'attackResult', ok: false, reason: 'This camp is safe' });
                 return;
             }
@@ -5993,6 +6095,17 @@ wss.on('connection', (ws) => {
             }
             player.mana -= cost;
             if (cost > 0) noteMana(player);
+            if (spec.stealth) {
+                player.stealthUntil = now + 18000;
+                veilThreat(player);
+                startCooldown(player, abilityId, cdMax, now);
+                const watched = seenByStronger(player);
+                const note = watched ? 'You hide, but a stronger creature can still see you' : 'You are hidden';
+                broadcastSeen(player, { type: 'update', ...publicPlayer(player.persistentId, player) });
+                send(ws, { type: 'stealth', on: true, until: player.stealthUntil });
+                send(ws, { type: 'attackResult', ok: true, ability: abilityId, cd: cdMax, cdMax, spent: cost, note, ...statsOf(player) });
+                return;
+            }
             if (spec.heal) {
                 let subject = player;
                 if (data.targetId && data.targetId !== player.persistentId) {
@@ -6079,6 +6192,7 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'attackResult', ok: false, reason: 'Out of range', ...statsOf(player) });
                 return;
             }
+            dropStealth(player, 'You attack');
             startCooldown(player, abilityId, cdMax, now);
             enterCombat(player, now);
             const bolts = abilityId === 'arcane-bolt' ? Math.min(3, rank) : 1;
@@ -6634,6 +6748,7 @@ wss.on('connection', (ws) => {
                     return;
                 }
                 const damage = slot.amount || 10;
+                dropStealth(player, 'You attack');
                 enterCombat(player, now);
                 npc.hp -= damage;
                 noteThreat(npc, playerThreat(player), damage);

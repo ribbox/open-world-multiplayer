@@ -909,7 +909,7 @@
         Enter: Talk. The open tab is the channel. /p is the party, /w Name whispers, /t whispers your target<br>
         Sounds play for combat, gathering, loot, quests, travel, chat, and the other events<br>
         C: Character sheet. The person icon on the minimap returns to the select screen. Reset character is on the sheet and returns that one to level 1<br>
-        Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health. Warriors and paladins wear plate. Hunters and rogues wear leather. Mages and warlocks wear cloth<br>
+        Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health. Warriors and paladins wear plate. Hunters and rogues wear leather. Mages and warlocks wear cloth. Rogues can wield a sword or a dagger, and a second blade in the off hand. Stealth hides them from creatures of their level or lower. Stronger creatures can still see them, from farther away the higher they are<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
         Spells and talents share one tree. The sheet is only for looking. Talk to a trainer to spend points or to reset them and spend again. One point in a node opens the next. A branch does not wait on the other branch. Level 60 is not enough to fill every branch<br>
         At level 20 and 40 a trainer teaches a special skill. Specials are not talents. A hunter calls a wolf: Attack, Follow, Stay, and Heal. Bite comes at 40. Summon brings it back if it dies, or if it falls too far behind. The wolf fights your target. A warlock raises a corpse that fights your target for a short time<br>
@@ -2539,20 +2539,45 @@
                 group.add(limb, string);
                 return group;
             }, { x: 0.22, y: 1.05, z: 0.16, tilt: -0.15 });
+            function makeDagger() {
+                const group = new THREE.Group();
+                const metal = new THREE.MeshStandardMaterial({ color: 0xd8dee6, metalness: 0.72, roughness: 0.28 });
+                const wrap = new THREE.MeshStandardMaterial({ color: 0x5c3317, roughness: 0.75 });
+                const blade = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.46, 4), metal);
+                blade.position.y = 0.34;
+                const guard = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 0.028), metal);
+                guard.position.y = 0.1;
+                const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.018, 0.12, 6), wrap);
+                grip.position.y = 0.03;
+                group.add(blade, guard, grip);
+                return group;
+            }
+            const dagger = holdShape(makeDagger, { x: 0.22, y: 1.0, z: 0.16, tilt: -0.35 });
+            const offDagger = holdShape(makeDagger, { x: -0.22, y: 1.0, z: 0.16, tilt: 0.35 });
+            const offSword = holdTool('/models/stylized_emerald_sword.glb', { length: 1.05, x: -0.26, y: 0.95, z: 0.2, tilt: 0.2, spinZ: -(Math.PI / 2 - 0.802 + Math.PI) });
             function seatTools() {
                 if (!playerRig) return;
-                let hand = null;
-                playerRig.traverse(obj => { if (obj.name === 'hand.L') hand = obj; });
-                if (!hand || hand.userData.armed) return;
-                hand.userData.armed = true;
-                for (const tool of [axe, pickaxe, sword, staff, wand, bow]) {
-                    if (tool.parent) tool.parent.remove(tool);
-                    tool.position.set(0, -0.04, 0.1);
-                    tool.rotation.set(0.2, 0, -0.15);
-                    tool.userData.rest = tool.rotation.clone();
-                    tool.scale.setScalar(0.85);
-                    hand.add(tool);
-                }
+                let left = null;
+                let right = null;
+                playerRig.traverse(obj => {
+                    if (obj.name === 'hand.L') left = obj;
+                    if (obj.name === 'hand.R') right = obj;
+                });
+                if (!left || left.userData.armed) return;
+                left.userData.armed = true;
+                const seat = (hand, tools, rot) => {
+                    if (!hand) return;
+                    for (const tool of tools) {
+                        if (tool.parent) tool.parent.remove(tool);
+                        tool.position.set(0, -0.04, 0.1);
+                        tool.rotation.set(rot[0], rot[1], rot[2]);
+                        tool.userData.rest = tool.rotation.clone();
+                        tool.scale.setScalar(0.85);
+                        hand.add(tool);
+                    }
+                };
+                seat(left, [axe, pickaxe, sword, staff, wand, bow, dagger], [0.2, 0, -0.15]);
+                seat(right, [offSword, offDagger], [0.2, 0, 0.15]);
             }
 
             const ACTIONS = {
@@ -2591,6 +2616,7 @@
                 judgment: { name: 'Judgment', short: 'Judg', kind: 'spell', weapon: 'sword', hint: 'Double damage under 35% health.', cooldown: '8 seconds' },
                 consecrate: { name: 'Consecrate', short: 'Cons', kind: 'spell', weapon: 'sword', hint: 'Hits every hostile around you.', cooldown: '12 seconds' },
                 'lay-hands': { name: 'Lay on Hands', short: 'Lay', kind: 'spell', weapon: 'sword', hint: 'Restore health.', cooldown: '8 seconds' },
+                stealth: { name: 'Stealth', short: 'Hide', kind: 'spell', hint: 'Hide for 18 seconds. Creatures your level or lower cannot see you. Higher level creatures still can, from farther away the stronger they are.', cooldown: '20 seconds' },
                 gather: { name: 'Gather', short: 'Gath', kind: 'gather', hint: 'Axe or pickaxe is chosen for the target.', cooldown: '' },
                 health: { name: 'Health potion', short: 'HP', kind: 'potion', item: 'health', hint: 'Drink a health potion.', cooldown: '12 seconds' },
                 mana: { name: 'Mana potion', short: 'MP', kind: 'potion', item: 'mana', hint: 'Drink a mana potion.', cooldown: '12 seconds' },
@@ -2612,6 +2638,7 @@
                 const bar = Array.from({ length: BAR_PAGES }, () => Array(BAR_SLOTS).fill(null));
                 const attack = { warrior: 'sword', rogue: 'stab', paladin: 'strike', mage: 'staff', hunter: 'bow', warlock: 'wand' }[character && character.class];
                 if (attack) bar[0][0] = attack;
+                if (character && character.class === 'rogue') bar[0][1] = 'stealth';
                 return bar;
             }
             let equippedWeapon = 'sword';
@@ -2623,15 +2650,20 @@
             let restoreWeapon = false;
 
             function updateToolUI() {
-                const names = { axe: 'Axe', pickaxe: 'Pickaxe', sword: 'Sword', staff: 'Staff', bow: 'Bow', wand: 'Wand' };
+                const names = { axe: 'Axe', pickaxe: 'Pickaxe', sword: 'Sword', dagger: 'Dagger', staff: 'Staff', bow: 'Bow', wand: 'Wand' };
                 const toolLabel = document.getElementById('toolName');
                 if (toolLabel) toolLabel.textContent = names[currentTool] || currentTool;
                 axe.visible = currentTool === 'axe';
                 pickaxe.visible = currentTool === 'pickaxe';
                 sword.visible = currentTool === 'sword';
+                dagger.visible = currentTool === 'dagger';
                 staff.visible = currentTool === 'staff';
                 bow.visible = currentTool === 'bow';
                 wand.visible = currentTool === 'wand';
+                const off = character && character.class === 'rogue' && character.equipment && character.equipment.offhand;
+                const offKind = off && off.kind === 'weapon' ? off.weapon : '';
+                offSword.visible = offKind === 'sword';
+                offDagger.visible = offKind === 'dagger';
             }
             updateToolUI();
 
@@ -2641,7 +2673,12 @@
             const CLASS_ARMOR = { warrior: 'plate', paladin: 'plate', hunter: 'leather', rogue: 'leather', mage: 'cloth', warlock: 'cloth' };
             const CLASS_WEAPON = { warrior: 'sword', rogue: 'sword', paladin: 'sword', hunter: 'bow', mage: 'staff', warlock: 'wand' };
             const ARMOR_WHO = { plate: 'Warriors and paladins', leather: 'Hunters and rogues', cloth: 'Mages and warlocks' };
-            const WEAPON_WHO = { sword: 'Warriors, rogues, and paladins', bow: 'Hunters', staff: 'Mages', wand: 'Warlocks' };
+            const WEAPON_WHO = { sword: 'Warriors, rogues, and paladins', dagger: 'Rogues', bow: 'Hunters', staff: 'Mages', wand: 'Warlocks' };
+            function weaponAllowed(item) {
+                if (!item || !item.weapon || !character.class) return true;
+                if (character.class === 'rogue') return item.weapon === 'dagger' || item.weapon === 'sword';
+                return item.weapon === CLASS_WEAPON[character.class];
+            }
             const LOOKS = {
                 warrior: '/portraits/warrior.jpg',
                 paladin: '/portraits/paladin.jpg',
@@ -2785,6 +2822,7 @@
                 gouge: 50,
                 eviscerate: 58,
                 fan: 94,
+                stealth: ['stone', 0],
                 strike: 81,
                 smite: 48,
                 rebuke: 50,
@@ -2865,9 +2903,8 @@
                     if (SLOT_NAMES[item.slot]) push(SLOT_NAMES[item.slot]);
                     push('+' + (item.armor || 0) + ' Armor');
                 } else if (item.kind === 'weapon') {
-                    const names = { sword: 'Sword', staff: 'Staff', bow: 'Bow', wand: 'Wand' };
-                    const mine = CLASS_WEAPON[character.class];
-                    const wrongWeapon = !!(item.weapon && mine && item.weapon !== mine);
+                    const names = { sword: 'Sword', dagger: 'Dagger', staff: 'Staff', bow: 'Bow', wand: 'Wand' };
+                    const wrongWeapon = !!(item.weapon && !weaponAllowed(item));
                     push((item.magic ? 'Magic ' : '') + (names[item.weapon] || 'Weapon'), wrongWeapon);
                     if (SLOT_NAMES[item.slot]) push(SLOT_NAMES[item.slot]);
                     if (item.armor) push('+' + item.armor + ' Armor');
@@ -2887,8 +2924,7 @@
                     }
                     if (item.kind === 'weapon' && item.weapon) {
                         const who = WEAPON_WHO[item.weapon];
-                        const mine = CLASS_WEAPON[character.class];
-                        if (who) push(who + ' only', !!(mine && item.weapon !== mine));
+                        if (who) push(who + ' only', !weaponAllowed(item));
                     }
                     if ((item.reqLevel || 1) > 1) push('Requires level ' + item.reqLevel, (item.reqLevel || 1) > (stats.level || 1));
                 }
@@ -3213,7 +3249,13 @@
                     return;
                 }
                 if (slot.kind === 'armor' || slot.kind === 'weapon') {
-                    sendCharacter('equip', { slot: slot.kind === 'weapon' ? 'weapon' : (slot.slot || 'chest'), index });
+                    let equipSlot = slot.kind === 'weapon' ? 'weapon' : (slot.slot || 'chest');
+                    const blade = slot.weapon === 'dagger' || slot.weapon === 'sword';
+                    const gear = character.equipment || {};
+                    const off = gear.offhand;
+                    const offBlade = off && off.kind === 'weapon' && (off.weapon === 'dagger' || off.weapon === 'sword');
+                    if (character.class === 'rogue' && blade && gear.weapon && !offBlade) equipSlot = 'offhand';
+                    sendCharacter('equip', { slot: equipSlot, index });
                     return;
                 }
                 if (slot.kind === 'bomb') {
@@ -3756,14 +3798,16 @@
                 swingTime += delta;
                 const t = Math.min(swingTime / swingDuration, 1);
                 const swingT = Math.sin(t * Math.PI);
-                const tool = currentTool === 'axe' ? axe : currentTool === 'pickaxe' ? pickaxe : currentTool === 'staff' ? staff : currentTool === 'wand' ? wand : currentTool === 'bow' ? bow : sword;
+                const tool = currentTool === 'axe' ? axe : currentTool === 'pickaxe' ? pickaxe : currentTool === 'staff' ? staff : currentTool === 'wand' ? wand : currentTool === 'bow' ? bow : currentTool === 'dagger' ? dagger : sword;
                 const rest = tool.userData.rest;
                 if (currentTool === 'axe') {
                     tool.rotation.x = -1.2 * swingT;
                     tool.rotation.z = (rest ? rest.z : 0) - 0.6 * swingT;
-                } else if (currentTool === 'sword' || currentTool === 'bow') {
+                } else if (currentTool === 'sword' || currentTool === 'dagger' || currentTool === 'bow') {
                     tool.rotation.z = (rest ? rest.z : 0) - 1.3 * swingT;
                     tool.rotation.x = -0.35 * swingT;
+                    if (offDagger.visible) offDagger.rotation.z = (offDagger.userData.rest ? offDagger.userData.rest.z : 0) + 1.1 * swingT;
+                    if (offSword.visible) offSword.rotation.z = (offSword.userData.rest ? offSword.userData.rest.z : 0) + 1.1 * swingT;
                 } else if (currentTool === 'staff' || currentTool === 'wand') {
                     tool.rotation.x = -0.9 * swingT;
                     tool.rotation.z = rest ? rest.z : 0;
@@ -3775,6 +3819,8 @@
                     swinging = false;
                     if (rest) tool.rotation.copy(rest);
                     else tool.rotation.set(0, 0, 0);
+                    if (offDagger.userData.rest) offDagger.rotation.copy(offDagger.userData.rest);
+                    if (offSword.userData.rest) offSword.rotation.copy(offSword.userData.rest);
                     if (restoreWeapon) {
                         restoreWeapon = false;
                         currentTool = equippedWeapon;
@@ -5522,8 +5568,10 @@
                     const dz = aimed.group.position.z - characterGroup.position.z;
                     characterGroup.rotation.y = Math.atan2(dx, dz);
                 }
-                equippedWeapon = action.weapon;
-                currentTool = action.weapon;
+                const held = wornWeapon();
+                const visual = held === 'dagger' && action.weapon === 'sword' ? 'dagger' : action.weapon;
+                equippedWeapon = visual;
+                currentTool = visual;
                 updateToolUI();
                 renderBar();
                 if (swinging) {
@@ -5970,6 +6018,23 @@
                 if (!action) return;
                 if (action.kind === 'special') {
                     castSpecial(id);
+                    return;
+                }
+                if (id === 'stealth') {
+                    if (ghost) { showMessage('You are a ghost'); return; }
+                    if (cooling(id)) { showMessage('Not ready'); return; }
+                    if (!spellKnown(id)) { showMessage('Not trained'); return; }
+                    if (!gameSocket || gameSocket.readyState !== WebSocket.OPEN) { showMessage('Not connected'); return; }
+                    holdAction(id);
+                    gameSocket.send(JSON.stringify({
+                        type: 'attack',
+                        ability: 'stealth',
+                        targetId: null,
+                        x: characterGroup.position.x,
+                        z: characterGroup.position.z,
+                        rotY: characterGroup.rotation.y,
+                        tool: currentTool
+                    }));
                     return;
                 }
                 if (action.kind !== 'gather' && cooling(id)) {
@@ -7220,7 +7285,7 @@
             const PICKER_GROUPS = [
                 ['Warrior', ['sword', 'power-strike', 'hamstring', 'execute', 'cleave', 'whirlwind']],
                 ['Paladin', ['strike', 'smite', 'rebuke', 'judgment', 'consecrate', 'lay-hands']],
-                ['Rogue', ['stab', 'backstab', 'gouge', 'eviscerate', 'fan']],
+                ['Rogue', ['stab', 'stealth', 'backstab', 'gouge', 'eviscerate', 'fan']],
                 ['Mage', ['staff', 'arcane-bolt', 'frost-bolt', 'mend', 'barrier', 'frost-nova', 'arcane-surge']],
                 ['Hunter', ['bow', 'aimed-shot', 'wing-clip', 'multi-shot', 'kill-shot']],
                 ['Warlock', ['wand', 'shadow-bolt', 'drain-life', 'curse', 'hellfire', 'soul-burn']],
@@ -7818,7 +7883,7 @@
             }
 
             const CD_MS = {
-                sword: 1000, staff: 1000, bow: 1000, wand: 1000, stab: 1000, strike: 1000,
+                sword: 1000, staff: 1000, bow: 1000, wand: 1000, dagger: 1000, stab: 1000, strike: 1000, stealth: 20000,
                 'power-strike': 6000, cleave: 8000, backstab: 6000, smite: 6000,
                 gouge: 8000, eviscerate: 8000, rebuke: 8000, judgment: 8000, 'lay-hands': 8000,
                 fan: 10000, consecrate: 12000,
@@ -9913,6 +9978,48 @@
                 }
             }
 
+            function setStealthLook(root, on) {
+                if (!root) return;
+                root.traverse(obj => {
+                    if (!obj.isMesh || !obj.material) return;
+                    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+                    for (const mat of mats) {
+                        mat.transparent = true;
+                        mat.opacity = on ? 0.22 : 1;
+                        mat.depthWrite = !on;
+                    }
+                });
+            }
+            function handBone(model, name) {
+                let found = null;
+                if (model) model.traverse(obj => { if (obj.name === name) found = obj; });
+                return found;
+            }
+            function wearBlades(group, blades) {
+                const model = group && group.userData.body;
+                if (!model) return;
+                const main = blades && blades.main || '';
+                const off = blades && blades.off || '';
+                const key = main + '|' + off;
+                if (group.userData.bladeKey === key) return;
+                group.userData.bladeKey = key;
+                if (group.userData.bladeLeft && group.userData.bladeLeft.parent) group.userData.bladeLeft.parent.remove(group.userData.bladeLeft);
+                if (group.userData.bladeRight && group.userData.bladeRight.parent) group.userData.bladeRight.parent.remove(group.userData.bladeRight);
+                group.userData.bladeLeft = null;
+                group.userData.bladeRight = null;
+                const put = (bone, kind, side) => {
+                    if (!bone || (kind !== 'dagger' && kind !== 'sword')) return null;
+                    const mesh = makeDagger();
+                    if (kind === 'sword') mesh.scale.set(1.05, 1.65, 1.05);
+                    mesh.position.set(0, -0.02, 0.08);
+                    mesh.rotation.set(0.2, 0, side < 0 ? -0.4 : 0.4);
+                    mesh.scale.multiplyScalar(0.85);
+                    bone.add(mesh);
+                    return mesh;
+                };
+                group.userData.bladeLeft = put(handBone(model, 'hand.L'), main, -1);
+                group.userData.bladeRight = put(handBone(model, 'hand.R'), off, 1);
+            }
             function setGhostLook(root, on) {
                 if (!root) return;
                 root.traverse(obj => {
@@ -10008,7 +10115,9 @@
                 entry.data = p;
                 entry.mesh.userData.playerId = p.id;
                 wearArmor(entry.mesh, p.gear);
+                wearBlades(entry.mesh, p.blades);
                 setGhostLook(entry.mesh, !!p.ghost);
+                if (!p.ghost) setStealthLook(entry.mesh, !!p.stealth);
                 if (p.corpse) placeCorpse(p.id, p.corpse, p.name, p.color);
                 else if (p.id !== myId) removeCorpse(p.id);
                 return entry;
@@ -10674,6 +10783,9 @@
                         sfx('kill');
                     } else if (data.type === 'combatLog') {
                         addLogLine('activity', data.text, data.kind === 'heal' ? 'heal' : 'combat');
+                    } else if (data.type === 'stealth') {
+                        setStealthLook(playerModel, !!data.on && !ghost);
+                        if (data.text) showMessage(data.text);
                     } else if (data.type === 'attackResult') {
                         releaseAction(data.ability);
                         if (!data.ok) {
