@@ -65,8 +65,12 @@
         #settings h3 { margin: 12px 0 6px; font-size: 13px; color: #e2c48a; }
         #settings p { margin: 4px 0 8px; font-size: 12px; color: #c8b48a; }
         #settings label { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 14px; cursor: pointer; }
-        .bind-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 3px 0; font-size: 13px; }
-        .bind-row .bind-key { min-width: 92px; text-align: center; }
+        #bindList { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; align-items: start; }
+        .bind-group { min-width: 0; }
+        #settings .bind-group h3 { margin: 8px 0 4px; }
+        .bind-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 2px 0; font-size: 12px; }
+        .bind-row span { min-width: 0; }
+        .bind-row .bind-key { min-width: 52px; margin-top: 0; padding: 2px 6px; text-align: center; }
         .bind-row .bind-key.listening { color: #241c04; background: #f1c40f; border-color: #f1c40f; }
         #settings .text-btn { margin-top: 8px; }
         #inventory {
@@ -1564,9 +1568,11 @@
             if (!root) return;
             root.textContent = '';
             for (const [title, rows] of BIND_GROUPS) {
+                const group = document.createElement('div');
+                group.className = 'bind-group';
                 const head = document.createElement('h3');
                 head.textContent = title;
-                root.appendChild(head);
+                group.appendChild(head);
                 for (const [id, label] of rows) {
                     const row = document.createElement('div');
                     row.className = 'bind-row';
@@ -1582,8 +1588,9 @@
                         renderBinds();
                     });
                     row.append(name, button);
-                    root.appendChild(row);
+                    group.appendChild(row);
                 }
+                root.appendChild(group);
             }
         }
         function assignBind(action, code) {
