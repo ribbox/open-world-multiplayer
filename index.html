@@ -5921,9 +5921,24 @@
             function applyResourceState(id, hits) {
                 resourceHits.set(id, hits);
                 const c = colliderById.get(id);
-                if (!c || !c.gather) return;
-                if (hits <= 0) removeNode(c);
-                else c.hits = hits;
+                if (hits <= 0) {
+                    if (c && c.gather) removeNode(c);
+                    return;
+                }
+                if (c) {
+                    c.hits = hits;
+                    c.gather = c.type !== 'boulder' && c.type !== 'plain-tree' && c.type !== 'plain-rock';
+                    return;
+                }
+                const parts = String(id).split(',');
+                if (parts.length !== 3) return;
+                const cx = Number(parts[0]);
+                const cz = Number(parts[1]);
+                const chunk = loadedChunks.get(cx + ',' + cz);
+                if (!chunk) return;
+                if (!chunk.placed) chunk.placed = new Set(chunk.colliders.map(item => item.id));
+                chunk.placed.delete(id);
+                placeChunkProps(cx, cz, chunk.group, chunk.colliders, chunk.placed);
             }
 
             function tryGather() {

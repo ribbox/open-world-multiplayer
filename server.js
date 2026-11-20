@@ -95,6 +95,37 @@ function hitsFor(id) {
     return base ? base.hits : null;
 }
 
+const RESOURCE_RESPAWN_MS = { herb: 60000, tree: 180000, rock: 180000, sulfur: 180000 };
+const resourceRespawn = new Map();
+
+function scheduleResourceRespawn(node, now = Date.now()) {
+    if (!node || !(node.hits > 0)) return;
+    const delay = RESOURCE_RESPAWN_MS[node.type] || 180000;
+    resourceRespawn.set(node.id, now + delay);
+}
+
+function armDepletedResources() {
+    const now = Date.now();
+    for (const [id, hits] of Object.entries(save.resources)) {
+        if (hits > 0 || resourceRespawn.has(id)) continue;
+        scheduleResourceRespawn(resourceById(id), now);
+    }
+}
+
+function tickResourceRespawn(now) {
+    if (!resourceRespawn.size) return;
+    let changed = false;
+    for (const [id, at] of resourceRespawn) {
+        if (at > now) continue;
+        resourceRespawn.delete(id);
+        const base = resourceById(id);
+        delete save.resources[id];
+        changed = true;
+        if (base && base.hits > 0) broadcast({ type: 'resource', id, hits: base.hits });
+    }
+    if (changed) scheduleSave();
+}
+
 const players = new Map();
 const npcs = new Map();
 const AGGRO_RANGE = 9;
@@ -5793,6 +5824,7 @@ function tickNpcs() {
     tickEscorts(dt, now);
     tickFolk(dt, now);
     tickCrafting(now);
+    tickResourceRespawn(now);
     refreshNpcZones();
     for (const area of activeAreas.values()) tickAreaSpawns(area, now);
 
@@ -6039,6 +6071,7 @@ function tickNpcs() {
 }
 
 setInterval(tickNpcs, 50);
+armDepletedResources();
 
 function broadcast(data, excludeWs = null) {
     const msg = JSON.stringify(data);
@@ -6418,6 +6451,7 @@ wss.on('connection', (ws) => {
                 savePlayer(player);
             }
             save.resources[node.id] = next;
+            if (next <= 0) scheduleResourceRespawn(node, now);
             scheduleSave();
             broadcast({ type: 'resource', id: node.id, hits: next });
             send(ws, {
