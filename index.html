@@ -546,7 +546,8 @@
         .stat-line span:last-child { color: #f1c40f; }
         #sheet .row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
         #sheet .views { display: flex; gap: 6px; margin: 0 0 12px; flex-wrap: wrap; }
-        #sheet .craft-sets { margin: 10px 0 8px; }
+        #sheet .craft-sets { margin: 10px 0 4px; }
+        #sheet .craft-kinds { margin: 0 0 8px; }
         #doll {
             position: relative;
             display: grid;
@@ -3078,6 +3079,7 @@
             let character = { class: null, equipment: {}, trained: [], talents: {}, points: 0, known: null, spells: {}, talentsDef: {} };
             let sheetTab = 'character';
             let craftSetTab = '';
+            let craftKindTab = 'parts';
             let barPage = 0;
             let actionBar = defaultActionBar();
             let restoreWeapon = false;
@@ -9695,30 +9697,30 @@
                 const rows = groups[setId] || [];
                 const skill = skills[setId] || { level: 1, xp: 0, tiers: [0] };
                 body.appendChild(craftSkillBlock((craft.sets[setId] && craft.sets[setId].name) || setId, skill));
-                if (!rows.length) {
+                if (craftKindTab !== 'parts' && craftKindTab !== 'items') craftKindTab = 'parts';
+                const parts = rows.filter(([, recipe]) => recipe.part);
+                const items = rows.filter(([, recipe]) => !recipe.part);
+                const kinds = document.createElement('div');
+                kinds.className = 'views craft-kinds';
+                for (const [id, label] of [['parts', 'Parts'], ['items', 'Items']]) {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'sheet-tab' + (craftKindTab === id ? ' on' : '');
+                    button.textContent = label;
+                    button.addEventListener('click', () => { craftKindTab = id; renderSheet(); });
+                    kinds.appendChild(button);
+                }
+                body.appendChild(kinds);
+                const shown = (craftKindTab === 'parts' ? parts : items)
+                    .slice()
+                    .sort((a, b) => (a[1].craftLevel || 1) - (b[1].craftLevel || 1) || a[1].name.localeCompare(b[1].name));
+                if (!shown.length) {
                     const empty = document.createElement('p');
-                    empty.textContent = 'No patterns for this skill yet.';
+                    empty.textContent = craftKindTab === 'parts' ? 'No parts for this skill yet.' : 'No items for this skill yet.';
                     body.appendChild(empty);
                     return;
                 }
-                rows.sort((a, b) => (a[1].part ? 0 : 1) - (b[1].part ? 0 : 1) || (a[1].craftLevel || 1) - (b[1].craftLevel || 1) || a[1].name.localeCompare(b[1].name));
-                let sawPart = false;
-                let sawFinished = false;
-                for (const [id, recipe] of rows) {
-                        if (recipe.part && !sawPart) {
-                            sawPart = true;
-                            const head = document.createElement('div');
-                            head.className = 'supply-break';
-                            head.textContent = 'Parts';
-                            body.appendChild(head);
-                        }
-                        if (!recipe.part && !sawFinished && rows.some(([, row]) => row.part)) {
-                            sawFinished = true;
-                            const head = document.createElement('div');
-                            head.className = 'supply-break';
-                            head.textContent = 'Finished';
-                            body.appendChild(head);
-                        }
+                for (const [id, recipe] of shown) {
                         const line = document.createElement('div');
                         line.className = 'spell-row';
                         line.appendChild(itemCanvas(recipe));
