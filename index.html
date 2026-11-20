@@ -633,6 +633,7 @@
             background: linear-gradient(180deg, #ffe58a 0%, #e0b123 55%, #8a6a10 100%);
         }
         .craft-actions { display: flex; gap: 4px; flex: none; }
+        .craft-have { color: #3dcc78; }
         .craft-job { margin: 0 0 8px; }
         .craft-job .craft-actions { justify-content: space-between; margin-bottom: 4px; }
         .text-btn { padding: 3px 8px; }
@@ -9725,17 +9726,30 @@
                         line.className = 'spell-row';
                         line.appendChild(itemCanvas(recipe));
                         const label = document.createElement('div');
-                        const cost = costText(recipe.cost);
-                        const makes = !recipe.part && recipe.yield ? ' → ' + Object.entries(recipe.yield).map(([kind, qty]) => qty + ' ' + materialName(kind)).join(', ') : '';
                         const costs = Object.entries(recipe.cost || {});
                         const can = costs.length ? costs.reduce((n, [kind, qty]) => Math.min(n, qty > 0 ? Math.floor(haveKind(kind) / qty) : n), Infinity) : 0;
-                        const bits = statBits(recipe);
                         const gain = craftXpGain(recipe.craftLevel || 1, skill.level);
                         const tier = recipe.tier || 0;
                         const trained = (skill.tiers || [0]).includes(tier);
                         const need = Math.max(tier, (recipe.buy || recipe.part) ? (recipe.craftLevel || 1) : 0);
                         const open = trained && skill.level >= need;
-                        label.textContent = recipe.name + (open && can > 0 ? ' x' + can : '') + (recipe.buy ? ' · skill ' + (recipe.craftLevel || 1) : '') + (tier ? ' · tier ' + tier : '') + (bits.length ? ' · ' + bits.join(' ') : '') + (recipe.armor ? ' · armor ' + recipe.armor : '') + ' · ' + cost + makes + (gain ? ' · +' + gain + ' skill' : '');
+                        const ready = open && can > 0;
+                        const title = document.createElement('span');
+                        title.textContent = recipe.name + (ready ? ' x' + can : '') + (recipe.buy ? ' · skill ' + (recipe.craftLevel || 1) : '') + (tier ? ' · tier ' + tier : '');
+                        if (ready) title.className = 'craft-have';
+                        label.appendChild(title);
+                        if (costs.length) {
+                            label.appendChild(document.createTextNode(' · '));
+                            costs.forEach(([kind, qty], index) => {
+                                if (index) label.appendChild(document.createTextNode(', '));
+                                const bit = document.createElement('span');
+                                bit.textContent = qty + ' ' + materialName(kind);
+                                if (haveKind(kind) >= qty) bit.className = 'craft-have';
+                                label.appendChild(bit);
+                            });
+                        }
+                        const makes = !recipe.part && recipe.yield ? ' → ' + Object.entries(recipe.yield).map(([kind, qty]) => qty + ' ' + materialName(kind)).join(', ') : '';
+                        if (makes || gain) label.appendChild(document.createTextNode(makes + (gain ? ' · +' + gain + ' skill' : '')));
                         bindItemTip(line, recipe, ['Click Craft']);
                         line.appendChild(label);
                         if (!open) {
