@@ -1148,6 +1148,7 @@
             if (worldResponse.ok) bootWorld = await worldResponse.json();
         } catch (err) { bootWorld = null; }
         if (bootWorld) applyWorldConfig(bootWorld);
+        let worldGrips = (bootWorld && bootWorld.grips) || {};
         let grayLevels = (bootWorld && bootWorld.grayLevels) || 5;
         let travelMaps = (bootWorld && bootWorld.maps) || [];
         let hereMapId = (bootWorld && bootWorld.mapId) || '';
@@ -2941,6 +2942,7 @@
                         }
                     });
                     root.add(model);
+                    refreshHolds();
                 }, undefined, (err) => console.warn('Tool failed', url, err));
                 return root;
             }
@@ -2990,6 +2992,61 @@
             const dagger = holdShape(makeDagger, { x: 0.22, y: 1.0, z: 0.16, tilt: -0.35 });
             const offDagger = holdShape(makeDagger, { x: -0.22, y: 1.0, z: 0.16, tilt: 0.35 });
             const offSword = holdTool('/models/stylized_emerald_sword.glb', { length: 1.05, x: -0.26, y: 0.95, z: 0.2, tilt: 0.2, spinZ: -(Math.PI / 2 - 0.802 + Math.PI) });
+            function defaultHold(itemId) {
+                const right = itemId === 'offSword' || itemId === 'offDagger';
+                return { hand: right ? 'R' : 'L', x: 0, y: -0.04, z: 0.1, rx: 0.2, ry: 0, rz: right ? 0.15 : -0.15, scale: 0.85 };
+            }
+            function holdOf(modelId, itemId) {
+                const saved = worldGrips && worldGrips[modelId] && worldGrips[modelId][itemId];
+                const base = defaultHold(itemId);
+                if (!saved || typeof saved !== 'object') return base;
+                const num = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+                return {
+                    hand: saved.hand === 'R' ? 'R' : 'L',
+                    x: num(saved.x, base.x),
+                    y: num(saved.y, base.y),
+                    z: num(saved.z, base.z),
+                    rx: num(saved.rx, base.rx),
+                    ry: num(saved.ry, base.ry),
+                    rz: num(saved.rz, base.rz),
+                    scale: num(saved.scale, base.scale)
+                };
+            }
+            function poseHold(tool, grip, keepSwing) {
+                tool.position.set(grip.x, grip.y, grip.z);
+                tool.scale.setScalar(grip.scale || 0.85);
+                const rest = new THREE.Euler(grip.rx, grip.ry, grip.rz);
+                tool.userData.rest = rest;
+                if (!keepSwing) tool.rotation.copy(rest);
+            }
+            function holdSource(itemId) {
+                if (itemId === 'axe') return axe;
+                if (itemId === 'pickaxe') return pickaxe;
+                if (itemId === 'sword') return sword;
+                if (itemId === 'offSword') return offSword;
+                if (itemId === 'staff') return staff;
+                if (itemId === 'wand') return wand;
+                if (itemId === 'bow') return bow;
+                if (itemId === 'dagger') return dagger;
+                if (itemId === 'offDagger') return offDagger;
+                return null;
+            }
+            function holdMesh(itemId, kind) {
+                const source = holdSource(itemId);
+                if (source && source.children.length) {
+                    const copy = source.clone(true);
+                    copy.visible = true;
+                    copy.traverse(obj => {
+                        if (!obj.isMesh || !obj.material) return;
+                        obj.material = Array.isArray(obj.material) ? obj.material.map(mat => mat.clone()) : obj.material.clone();
+                        obj.castShadow = true;
+                    });
+                    return copy;
+                }
+                const mesh = makeDagger();
+                if (kind === 'sword' || itemId === 'sword' || itemId === 'offSword') mesh.scale.set(1.05, 1.65, 1.05);
+                return mesh;
+            }
             function seatTools() {
                 if (!playerRig) return;
                 let left = null;
@@ -2998,21 +3055,53 @@
                     if (obj.name === 'hand.L') left = obj;
                     if (obj.name === 'hand.R') right = obj;
                 });
-                if (!left || left.userData.armed) return;
-                left.userData.armed = true;
-                const seat = (hand, tools, rot) => {
-                    if (!hand) return;
-                    for (const tool of tools) {
+                if (!left && !right) return;
+                const pairs = [['axe', axe], ['pickaxe', pickaxe], ['sword', sword], ['staff', staff], ['wand', wand], ['bow', bow], ['dagger', dagger], ['offSword', offSword], ['offDagger', offDagger]];
+                for (const [id, tool] of pairs) {
+                    const grip = holdOf('player', id);
+                    const hand = grip.hand === 'R' ? (right || left) : (left || right);
+                    if (!hand || !tool) continue;
+                    if (tool.parent !== hand) {
                         if (tool.parent) tool.parent.remove(tool);
-                        tool.position.set(0, -0.04, 0.1);
-                        tool.rotation.set(rot[0], rot[1], rot[2]);
-                        tool.userData.rest = tool.rotation.clone();
-                        tool.scale.setScalar(0.85);
                         hand.add(tool);
                     }
+                    poseHold(tool, grip, swinging);
+                }
+            }
+            function armCarry(group, modelId) {
+                if (!group || !modelId || modelId === 'player') return;
+                const show = worldGrips && worldGrips[modelId] && worldGrips[modelId].show || '';
+                const key = show + '|' + (show ? JSON.stringify(worldGrips[modelId]) : '');
+                if (group.userData.carryKey === key) return;
+                group.userData.carryKey = key;
+                if (group.userData.carry && group.userData.carry.parent) group.userData.carry.parent.remove(group.userData.carry);
+                group.userData.carry = null;
+                if (!show) return;
+                const body = group.userData.body;
+                if (!body) return;
+                const grip = holdOf(modelId, show);
+                const bone = handBone(body, grip.hand === 'R' ? 'hand.R' : 'hand.L');
+                if (!bone) return;
+                const mesh = holdMesh(show, show);
+                poseHold(mesh, grip, false);
+                mesh.visible = true;
+                bone.add(mesh);
+                group.userData.carry = mesh;
+            }
+            function refreshHolds() {
+                seatTools();
+                const arm = (group, modelId) => {
+                    if (!group) return;
+                    group.userData.carryKey = '';
+                    armCarry(group, modelId);
                 };
-                seat(left, [axe, pickaxe, sword, staff, wand, bow, dagger], [0.2, 0, -0.15]);
-                seat(right, [offSword, offDagger], [0.2, 0, 0.15]);
+                for (const entry of worldNpcs.values()) arm(entry.group, entry.group.userData.modelKind);
+                for (const entry of worldCivs.values()) arm(entry.group, entry.group.userData.modelKind || entry.role);
+                for (const entry of worldCompanions.values()) arm(entry.group, entry.group.userData.modelKind);
+                for (const entry of remotePlayers.values()) {
+                    entry.mesh.userData.bladeKey = '';
+                    wearBlades(entry.mesh, entry.data && entry.data.blades);
+                }
             }
 
             const ACTIONS = {
@@ -5860,10 +5949,12 @@
                 if (data.world) {
                     applyWorldConfig(data.world);
                     bootWorld = data.world;
+                    worldGrips = data.world.grips || {};
                     if (data.world.grayLevels) grayLevels = data.world.grayLevels;
                     reloadChunks();
                     rebuildOverworldPortals();
                     addWorldEdge();
+                    refreshHolds();
                 }
                 if (data.mapId) hereMapId = data.mapId;
                 else if (data.world && data.world.mapId) hereMapId = data.world.mapId;
@@ -6880,6 +6971,7 @@
                 const bounds = new THREE.Box3().setFromObject(body);
                 group.add(body);
                 group.userData.body = body;
+                group.userData.modelKind = civ.role;
                 group.userData.labelY = bounds.max.y + 0.22;
                 group.userData.bobAmp = 0.03;
                 group.position.set(civ.x, civ.dungeonId ? 0.2 : terrainHeight(civ.x, civ.z), civ.z);
@@ -6892,6 +6984,7 @@
                 group.userData.label = label;
                 scene.add(group);
                 worldCivs.set(civ.id, { group, id: civ.id, name: civ.name, title: civ.title, role: civ.role, text: civ.text, quest: civ.quest || '', quests: civ.quests || (civ.quest ? [civ.quest] : []), tint: civ.tint, dungeonId: civ.dungeonId || '', travel: !!civ.travel, bob: Math.random() * Math.PI * 2, tx: civ.x, tz: civ.z });
+                armCarry(group, civ.role);
             }
 
             function spawnCivilians(list) {
@@ -7312,6 +7405,7 @@
                     const bounds = new THREE.Box3().setFromObject(body);
                     group.add(body);
                     group.userData.body = body;
+                    group.userData.modelKind = modelKind;
                     group.userData.labelY = bounds.max.y + 0.22;
                     group.userData.bobAmp = state.kind === 'wisp' ? 0.12 : 0;
                     group.position.set(state.x, state.dungeonId ? 0.2 : 0, state.z);
@@ -7328,6 +7422,7 @@
                     group.add(ring);
                     group.userData.ring = ring;
                     worldNpcs.set(state.id, entry);
+                    armCarry(group, modelKind);
                 }
                 entry.dungeonId = state.dungeonId || entry.dungeonId || '';
                 entry.tx = state.x;
@@ -7406,7 +7501,8 @@
                 let entry = worldCompanions.get(row.id);
                 if (!entry) {
                     if (!npcModelsReady) return;
-                    const body = cloneNpcModel(row.model || (row.kind === 'pet' ? 'wolf' : 'cultist'));
+                    const modelKind = row.model || (row.kind === 'pet' ? 'wolf' : 'cultist');
+                    const body = cloneNpcModel(modelKind);
                     if (!body) return;
                     const group = new THREE.Group();
                     body.scale.multiplyScalar(row.kind === 'pet' ? 0.92 : 0.78);
@@ -7416,12 +7512,14 @@
                     const bounds = new THREE.Box3().setFromObject(body);
                     group.add(body);
                     group.userData.body = body;
+                    group.userData.modelKind = modelKind;
                     group.userData.labelY = bounds.max.y + 0.18;
                     group.userData.companionId = row.id;
                     group.position.set(row.x, row.dungeonId ? 0.2 : terrainHeight(row.x, row.z), row.z);
                     scene.add(group);
                     entry = { group, tx: row.x, tz: row.z, rotY: row.rotY || 0, hp: -1, maxHp: 1, name: '', kind: row.kind, dungeonId: row.dungeonId || '', bob: Math.random() * Math.PI * 2 };
                     worldCompanions.set(row.id, entry);
+                    armCarry(group, modelKind);
                 }
                 entry.tx = row.x;
                 entry.tz = row.z;
@@ -10604,25 +10702,28 @@
                 if (!model) return;
                 const main = blades && blades.main || '';
                 const off = blades && blades.off || '';
-                const key = main + '|' + off;
+                const mainId = main === 'sword' ? 'sword' : main === 'dagger' ? 'dagger' : '';
+                const offId = off === 'sword' ? 'offSword' : off === 'dagger' ? 'offDagger' : '';
+                const key = mainId + '|' + offId + '|' + JSON.stringify((worldGrips && worldGrips.player) || {});
                 if (group.userData.bladeKey === key) return;
                 group.userData.bladeKey = key;
                 if (group.userData.bladeLeft && group.userData.bladeLeft.parent) group.userData.bladeLeft.parent.remove(group.userData.bladeLeft);
                 if (group.userData.bladeRight && group.userData.bladeRight.parent) group.userData.bladeRight.parent.remove(group.userData.bladeRight);
                 group.userData.bladeLeft = null;
                 group.userData.bladeRight = null;
-                const put = (bone, kind, side) => {
-                    if (!bone || (kind !== 'dagger' && kind !== 'sword')) return null;
-                    const mesh = makeDagger();
-                    if (kind === 'sword') mesh.scale.set(1.05, 1.65, 1.05);
-                    mesh.position.set(0, -0.02, 0.08);
-                    mesh.rotation.set(0.2, 0, side < 0 ? -0.4 : 0.4);
-                    mesh.scale.multiplyScalar(0.85);
+                const put = (itemId, kind) => {
+                    if (!itemId) return null;
+                    const grip = holdOf('player', itemId);
+                    const bone = handBone(model, grip.hand === 'R' ? 'hand.R' : 'hand.L');
+                    if (!bone) return null;
+                    const mesh = holdMesh(itemId, kind);
+                    poseHold(mesh, grip, false);
+                    mesh.visible = true;
                     bone.add(mesh);
                     return mesh;
                 };
-                group.userData.bladeLeft = put(handBone(model, 'hand.L'), main, -1);
-                group.userData.bladeRight = put(handBone(model, 'hand.R'), off, 1);
+                group.userData.bladeLeft = put(mainId, main);
+                group.userData.bladeRight = put(offId, off);
             }
             function setGhostLook(root, on) {
                 if (!root) return;

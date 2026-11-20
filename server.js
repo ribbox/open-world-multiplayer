@@ -8542,8 +8542,45 @@ function sanitizeWorld(input) {
         maps,
         quests: sanitizeQuests(src.quests),
         items: sanitizeItems(src.items),
-        sheetUrl: cleanSheetUrl(src.sheetUrl)
+        sheetUrl: cleanSheetUrl(src.sheetUrl),
+        grips: sanitizeGrips(src.grips)
     };
+}
+
+function sanitizeGrips(raw) {
+    const models = new Set(['player', 'bandit', 'knight', 'cultist', 'ogre', 'ogre-caster', 'shop', 'inn', 'bank', 'trainer', 'broker', 'quest']);
+    const items = new Set(['sword', 'offSword', 'dagger', 'offDagger', 'staff', 'wand', 'bow', 'axe', 'pickaxe']);
+    const gripNum = (value, fallback, min, max) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.round(Math.max(min, Math.min(max, n)) * 1000) / 1000;
+    };
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    for (const modelId of Object.keys(raw)) {
+        if (!models.has(modelId)) continue;
+        const holds = raw[modelId];
+        if (!holds || typeof holds !== 'object') continue;
+        const next = {};
+        if (modelId !== 'player' && items.has(holds.show)) next.show = holds.show;
+        for (const itemId of Object.keys(holds)) {
+            if (!items.has(itemId)) continue;
+            const grip = holds[itemId];
+            if (!grip || typeof grip !== 'object') continue;
+            next[itemId] = {
+                hand: grip.hand === 'R' ? 'R' : 'L',
+                x: gripNum(grip.x, 0, -2, 2),
+                y: gripNum(grip.y, -0.04, -2, 2),
+                z: gripNum(grip.z, 0.1, -2, 2),
+                rx: gripNum(grip.rx, 0.2, -6.3, 6.3),
+                ry: gripNum(grip.ry, 0, -6.3, 6.3),
+                rz: gripNum(grip.rz, 0, -6.3, 6.3),
+                scale: gripNum(grip.scale, 0.85, 0.05, 3)
+            };
+        }
+        if (Object.keys(next).length) out[modelId] = next;
+    }
+    return out;
 }
 
 function adminPassword() {
@@ -8597,7 +8634,8 @@ function publicWorld() {
         mapId: currentMapId(),
         mapName: brief ? brief.name : '',
         minLevel: brief ? brief.minLevel : 1,
-        maps: mapBriefs()
+        maps: mapBriefs(),
+        grips: (worldConfig && worldConfig.grips) || {}
     };
 }
 

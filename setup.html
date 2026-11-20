@@ -33,7 +33,22 @@
         #panelQuests input, #panelQuests select, #panelQuests textarea { width: 100%; box-sizing: border-box; }
         #panelQuests textarea { min-height: 72px; }
         #questPreview { font-size: 12px; color: #9cf; }
+        .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+        .tabs button { padding: 6px 8px; }
+        #stage.grips #map { display: none; }
+        #gripView { display: none; position: absolute; inset: 0; width: 100%; height: 100%; background: #141820; cursor: grab; }
+        #stage.grips #gripView { display: block; }
+        #panelGrips input[type="range"] { width: 100%; }
+        #panelGrips label input { width: auto; }
     </style>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
 </head>
 <body>
     <header>
@@ -57,6 +72,7 @@
                 <button type="button" id="tabLoot">Loot</button>
                 <button type="button" id="tabQuests">Quests</button>
                 <button type="button" id="tabDungeons">Dungeons</button>
+                <button type="button" id="tabGrips">Holds</button>
             </div>
             <div id="panelMap">
                 <p>Drag the map to move it, and scroll to zoom. Draw a zone or the world edge. A zone that crosses the coast is cut back to the shoreline. Chop tree and Mine rock can be gathered. Tree and Rock are scenery and cannot. Place a camp, then choose its buildings. Every camp has an innkeeper. Mark one camp as the travel inn. Only that inn can send players to another map. Shop, trainer, quest giver, and market broker are optional. A market broker opens the market board. The Road tool connects two camps. Click the first camp, add bends if you need them, click the next camp, then Finish outline. Straight or organic applies to each new stretch. Erase removes the single tree, rock, herb, or camp you click. Undo takes back the last change.</p>
@@ -143,8 +159,37 @@
                 <div id="dungeonList"></div>
                 <div id="dungeonForm"></div>
             </div>
+            <div id="panelGrips" hidden>
+                <p>Load a character, then a weapon or tool. Drag with the left mouse button to move it in that hand. Drag with the right button to turn the view. Sliders rotate and resize it. Save world stores the hold, and the game uses it. Other characters carry a weapon only if you tick the box.</p>
+                <label>Character</label>
+                <select id="gripModel"></select>
+                <label>Weapon or tool</label>
+                <select id="gripItem"></select>
+                <label>Hand</label>
+                <select id="gripHand">
+                    <option value="L">Left</option>
+                    <option value="R">Right</option>
+                </select>
+                <label id="gripCarryRow"><input id="gripCarry" type="checkbox"> This character carries it in the world</label>
+                <label>Side to side <span id="gripXOut"></span></label>
+                <input id="gripX" type="range" min="-1" max="1" step="0.005">
+                <label>Up <span id="gripYOut"></span></label>
+                <input id="gripY" type="range" min="-1" max="1" step="0.005">
+                <label>Forward <span id="gripZOut"></span></label>
+                <input id="gripZ" type="range" min="-1" max="1" step="0.005">
+                <label>Pitch <span id="gripRxOut"></span></label>
+                <input id="gripRx" type="range" min="-180" max="180" step="1">
+                <label>Yaw <span id="gripRyOut"></span></label>
+                <input id="gripRy" type="range" min="-180" max="180" step="1">
+                <label>Roll <span id="gripRzOut"></span></label>
+                <input id="gripRz" type="range" min="-180" max="180" step="1">
+                <label>Size <span id="gripScaleOut"></span></label>
+                <input id="gripScale" type="range" min="0.2" max="2.5" step="0.01">
+                <button type="button" id="gripReset">Reset this hold</button>
+                <p id="gripStatus"></p>
+            </div>
         </aside>
-        <div id="stage"><canvas id="map" width="900" height="900"></canvas></div>
+        <div id="stage"><canvas id="map" width="900" height="900"></canvas><canvas id="gripView"></canvas></div>
         <div id="side">
             <h2>Selected zone</h2>
             <div id="zoneFields">Select or draw a zone.</div>
@@ -161,6 +206,10 @@
     <script type="module">
         import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve, polygonIntersection, downsampleRing, DUNGEON_HALF, applyWorldConfig, zoneName, zoneNpc, zoneCamp, boundaryInset, waterAt } from './worldgen.js';
         import { applyQuestPlaces } from './sheets.js';
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
         const MOBS = ['boar', 'wolf', 'spider', 'bandit', 'ogre', 'wisp', 'knight', 'cultist'];
         const CAMP_LAYOUTS = ['hamlet', 'outpost', 'market', 'shrine', 'ruin', 'ashes', 'city'];
@@ -1309,18 +1358,23 @@
         document.getElementById('tabLoot').addEventListener('click', () => { showTab('Loot'); renderLoot(); });
         document.getElementById('tabQuests').addEventListener('click', () => { showTab('Quests'); renderQuests(); });
         document.getElementById('tabDungeons').addEventListener('click', () => { showTab('Dungeons'); renderDungeons(); });
+        document.getElementById('tabGrips').addEventListener('click', () => { showTab('Grips'); ensureGrips(); });
         function showTab(name) {
             document.getElementById('panelMap').hidden = name !== 'Map';
             document.getElementById('panelRules').hidden = name !== 'Rules';
             document.getElementById('panelLoot').hidden = name !== 'Loot';
             document.getElementById('panelQuests').hidden = name !== 'Quests';
             document.getElementById('panelDungeons').hidden = name !== 'Dungeons';
+            document.getElementById('panelGrips').hidden = name !== 'Grips';
             document.getElementById('tabMap').classList.toggle('on', name === 'Map');
             document.getElementById('tabRules').classList.toggle('on', name === 'Rules');
             document.getElementById('tabLoot').classList.toggle('on', name === 'Loot');
             document.getElementById('tabQuests').classList.toggle('on', name === 'Quests');
             document.getElementById('tabDungeons').classList.toggle('on', name === 'Dungeons');
+            document.getElementById('tabGrips').classList.toggle('on', name === 'Grips');
+            document.getElementById('stage').classList.toggle('grips', name === 'Grips');
             if (name !== 'Dungeons' && mapMode === 'route') showWorldMode();
+            if (name === 'Grips') sizeGrip();
         }
         function showWorldMode() {
             if (mapMode === 'route' && savedWorldView) {
@@ -2029,6 +2083,7 @@
                 showSheetLink();
                 note('Saved. Players already in the game receive it.');
                 mountMap(Math.min(mapPick, config.maps.length - 1));
+                gripRefresh();
             } catch (err) {
                 note(err.message);
             }
@@ -2051,7 +2106,8 @@
                 maps: config.maps || [],
                 loot: config.loot || {},
                 quests: config.quests || [],
-                items: config.items || []
+                items: config.items || [],
+                grips: config.grips || {}
             };
             const blob = new Blob([JSON.stringify(copy, null, 2)], { type: 'application/json' });
             const link = document.createElement('a');
@@ -2059,7 +2115,7 @@
             link.download = 'world.json';
             link.click();
             URL.revokeObjectURL(link.href);
-            note('World exported, including zones, camps, roads, dungeons, nodes, loot, quests, and items');
+            note('World exported, including zones, camps, roads, dungeons, nodes, loot, quests, items, and holds');
         });
         function googleSheetUrl() {
             const raw = (document.getElementById('sheetUrl').value || '').trim() || (config && config.sheetUrl) || '';
@@ -2097,6 +2153,7 @@
             questPick = -1;
             showSheetLink();
             mountMap(Math.min(mapPick, config.maps.length - 1));
+            gripRefresh();
             note('Imported ' + parts.join(' and '));
         }
         document.getElementById('sheetUrl').addEventListener('input', showSheetLink);
@@ -2152,6 +2209,7 @@
                 mapPick = 0;
                 mountMap(0);
                 renderLoot();
+                gripRefresh();
                 note('World imported');
             } catch (err) {
                 note(err.message);
@@ -2214,6 +2272,448 @@
             mountMap(Math.min(mapPick, config.maps.length - 1));
             note('Map removed. Save the world.');
         });
+        const GRIP_CHARACTERS = [
+            { id: 'player', name: 'Player', url: '/models/player.glb', height: 1.8, player: true },
+            { id: 'bandit', name: 'Bandit', url: '/models/bandit.glb', height: 1.7 },
+            { id: 'knight', name: 'Knight', url: '/models/knight.glb', height: 1.85 },
+            { id: 'cultist', name: 'Cultist', url: '/models/cultist.glb', height: 1.75 },
+            { id: 'ogre', name: 'Ogre', url: '/models/ogre.glb', height: 2.2 },
+            { id: 'ogre-caster', name: 'Ogre caster', url: '/models/ogre-caster.glb', height: 2.05 },
+            { id: 'shop', name: 'Merchant', url: '/models/merchant.glb', height: 1.7 },
+            { id: 'inn', name: 'Innkeeper', url: '/models/innkeeper.glb', height: 1.7 },
+            { id: 'bank', name: 'Banker', url: '/models/banker.glb', height: 1.72 },
+            { id: 'trainer', name: 'Trainer', url: '/models/trainer.glb', height: 1.7 },
+            { id: 'broker', name: 'Broker', url: '/models/broker.glb', height: 1.68 },
+            { id: 'quest', name: 'Quest giver', url: '/models/questgiver.glb', height: 1.7 }
+        ];
+        const GRIP_ITEMS = [
+            { id: 'sword', name: 'Sword', url: '/models/stylized_emerald_sword.glb', length: 1.05, spinZ: Math.PI / 2 - 0.802 + Math.PI },
+            { id: 'offSword', name: 'Off-hand sword', url: '/models/stylized_emerald_sword.glb', length: 1.05, spinZ: -(Math.PI / 2 - 0.802 + Math.PI) },
+            { id: 'dagger', name: 'Dagger', shape: 'dagger' },
+            { id: 'offDagger', name: 'Off-hand dagger', shape: 'dagger' },
+            { id: 'staff', name: 'Staff', url: '/models/wizards_staff.glb', length: 1.35 },
+            { id: 'wand', name: 'Wand', url: '/models/wizards_staff.glb', length: 0.85, tint: 0x6b3fa0 },
+            { id: 'bow', name: 'Bow', shape: 'bow' },
+            { id: 'axe', name: 'Axe', url: '/models/simple_axe.glb', length: 0.95 },
+            { id: 'pickaxe', name: 'Pickaxe', url: '/models/pick_axe.glb', length: 1.05 }
+        ];
+        const gripLoader = new GLTFLoader();
+        const gripGltf = new Map();
+        let gripStarted = false;
+        let gripRenderer = null;
+        let gripScene = null;
+        let gripCam = null;
+        let gripControls = null;
+        let gripRoot = null;
+        let weaponRoot = null;
+        let gripMixer = null;
+        let gripToken = 0;
+        let gripQuiet = false;
+        let gripDragging = false;
+        let gripModelId = 'player';
+        let gripItemId = 'sword';
+        function defaultGrip(itemId) {
+            const right = itemId === 'offSword' || itemId === 'offDagger';
+            return { hand: right ? 'R' : 'L', x: 0, y: -0.04, z: 0.1, rx: 0.2, ry: 0, rz: right ? 0.15 : -0.15, scale: 0.85 };
+        }
+        function round3(n) { return Math.round(Number(n) * 1000) / 1000; }
+        function gripChar(id) { return GRIP_CHARACTERS.find(row => row.id === id) || GRIP_CHARACTERS[0]; }
+        function gripItem(id) { return GRIP_ITEMS.find(row => row.id === id) || GRIP_ITEMS[0]; }
+        function savedGrip(modelId, itemId) {
+            const holds = config && config.grips && config.grips[modelId];
+            const grip = holds && holds[itemId];
+            if (!grip || typeof grip !== 'object') return null;
+            const base = defaultGrip(itemId);
+            const num = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+            return {
+                hand: grip.hand === 'R' ? 'R' : 'L',
+                x: num(grip.x, base.x), y: num(grip.y, base.y), z: num(grip.z, base.z),
+                rx: num(grip.rx, base.rx), ry: num(grip.ry, base.ry), rz: num(grip.rz, base.rz),
+                scale: num(grip.scale, base.scale)
+            };
+        }
+        function chosenGrip() { return savedGrip(gripModelId, gripItemId) || defaultGrip(gripItemId); }
+        function gripStatus(text) { document.getElementById('gripStatus').textContent = text; }
+        function paintGrip(grip) {
+            gripQuiet = true;
+            document.getElementById('gripHand').value = grip.hand === 'R' ? 'R' : 'L';
+            const set = (id, value, text) => {
+                const el = document.getElementById(id);
+                el.value = Math.max(Number(el.min), Math.min(Number(el.max), Number(value)));
+                document.getElementById(id + 'Out').textContent = text;
+            };
+            set('gripX', grip.x, Number(grip.x).toFixed(3));
+            set('gripY', grip.y, Number(grip.y).toFixed(3));
+            set('gripZ', grip.z, Number(grip.z).toFixed(3));
+            set('gripRx', grip.rx * 180 / Math.PI, Math.round(grip.rx * 180 / Math.PI) + '°');
+            set('gripRy', grip.ry * 180 / Math.PI, Math.round(grip.ry * 180 / Math.PI) + '°');
+            set('gripRz', grip.rz * 180 / Math.PI, Math.round(grip.rz * 180 / Math.PI) + '°');
+            set('gripScale', grip.scale, Number(grip.scale).toFixed(2));
+            const holds = config && config.grips && config.grips[gripModelId];
+            document.getElementById('gripCarry').checked = !!(holds && holds.show === gripItemId);
+            document.getElementById('gripCarryRow').hidden = gripModelId === 'player';
+            gripQuiet = false;
+        }
+        function readSliders() {
+            const rad = Math.PI / 180;
+            return {
+                hand: document.getElementById('gripHand').value === 'R' ? 'R' : 'L',
+                x: Number(document.getElementById('gripX').value),
+                y: Number(document.getElementById('gripY').value),
+                z: Number(document.getElementById('gripZ').value),
+                rx: Number(document.getElementById('gripRx').value) * rad,
+                ry: Number(document.getElementById('gripRy').value) * rad,
+                rz: Number(document.getElementById('gripRz').value) * rad,
+                scale: Number(document.getElementById('gripScale').value)
+            };
+        }
+        function storeGrip(grip) {
+            if (!config || gripQuiet) return;
+            if (!config.grips || typeof config.grips !== 'object') config.grips = {};
+            const holds = config.grips[gripModelId] && typeof config.grips[gripModelId] === 'object' ? config.grips[gripModelId] : {};
+            holds[gripItemId] = {
+                hand: grip.hand === 'R' ? 'R' : 'L',
+                x: round3(grip.x), y: round3(grip.y), z: round3(grip.z),
+                rx: round3(grip.rx), ry: round3(grip.ry), rz: round3(grip.rz),
+                scale: round3(grip.scale)
+            };
+            if (gripModelId !== 'player') {
+                if (document.getElementById('gripCarry').checked) holds.show = gripItemId;
+                else if (holds.show === gripItemId) delete holds.show;
+            }
+            config.grips[gripModelId] = holds;
+            gripStatus('Hold changed. Save world to use it in the game.');
+        }
+        function storeCarry() {
+            if (!config || gripQuiet || gripModelId === 'player') return;
+            if (!config.grips || typeof config.grips !== 'object') config.grips = {};
+            const holds = config.grips[gripModelId] && typeof config.grips[gripModelId] === 'object' ? config.grips[gripModelId] : {};
+            if (document.getElementById('gripCarry').checked) holds.show = gripItemId;
+            else if (holds.show === gripItemId) delete holds.show;
+            if (Object.keys(holds).length) config.grips[gripModelId] = holds;
+            else delete config.grips[gripModelId];
+            gripStatus('Hold changed. Save world to use it in the game.');
+        }
+        function resetGrip() {
+            const holds = config && config.grips && config.grips[gripModelId];
+            if (holds) {
+                delete holds[gripItemId];
+                if (holds.show === gripItemId) delete holds.show;
+                if (!Object.keys(holds).length) delete config.grips[gripModelId];
+            }
+            const grip = defaultGrip(gripItemId);
+            paintGrip(grip);
+            poseWeapon(grip);
+            gripStatus('Built-in hold restored. Save world to use it in the game.');
+        }
+        function loadGltf(url) {
+            if (!gripGltf.has(url)) {
+                gripGltf.set(url, new Promise((resolve, reject) => gripLoader.load(url, resolve, undefined, reject)));
+            }
+            return gripGltf.get(url);
+        }
+        function fitCharacter(model, spec) {
+            model.updateWorldMatrix(true, true);
+            let box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            if (spec.player) {
+                model.scale.setScalar(spec.height / (size.y || 1));
+                model.updateWorldMatrix(true, true);
+                box = new THREE.Box3().setFromObject(model);
+                model.position.y = -box.min.y;
+            } else {
+                const h = Math.max(0.001, box.max.y - box.min.y);
+                model.scale.multiplyScalar(spec.height / h);
+                model.updateWorldMatrix(true, true);
+                const grounded = new THREE.Box3().setFromObject(model);
+                model.position.y -= grounded.min.y;
+                model.position.x -= (grounded.min.x + grounded.max.x) / 2;
+                model.position.z -= (grounded.min.z + grounded.max.z) / 2;
+            }
+            model.traverse(obj => {
+                if (!obj.isMesh) return;
+                obj.castShadow = true;
+                obj.receiveShadow = true;
+            });
+        }
+        function fitWeapon(model, options) {
+            model.updateWorldMatrix(true, true);
+            let box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            if (size.z > size.y && size.z >= size.x) model.rotation.x = -Math.PI / 2;
+            else if (size.x > size.y && size.x >= size.z) model.rotation.z = Math.PI / 2;
+            if (options.spinZ) model.rotation.z += options.spinZ;
+            model.updateWorldMatrix(true, true);
+            box = new THREE.Box3().setFromObject(model);
+            const fitted = box.getSize(new THREE.Vector3());
+            const long = Math.max(fitted.x, fitted.y, fitted.z, 0.001);
+            model.scale.multiplyScalar((options.length || 1) / long);
+            model.updateWorldMatrix(true, true);
+            box = new THREE.Box3().setFromObject(model);
+            model.position.x -= (box.min.x + box.max.x) / 2;
+            model.position.z -= (box.min.z + box.max.z) / 2;
+            model.position.y -= box.min.y;
+            model.traverse(obj => {
+                if (!obj.isMesh) return;
+                obj.castShadow = true;
+                if (options.tint != null && obj.material) {
+                    const mat = obj.material.clone();
+                    if (mat.color) mat.color.set(options.tint);
+                    obj.material = mat;
+                }
+            });
+        }
+        function makeEditorDagger() {
+            const group = new THREE.Group();
+            const metal = new THREE.MeshStandardMaterial({ color: 0xd8dee6, metalness: 0.72, roughness: 0.28 });
+            const wrap = new THREE.MeshStandardMaterial({ color: 0x5c3317, roughness: 0.75 });
+            const blade = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.46, 4), metal);
+            blade.position.y = 0.34;
+            const guard = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 0.028), metal);
+            guard.position.y = 0.1;
+            const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.018, 0.12, 6), wrap);
+            handle.position.y = 0.03;
+            group.add(blade, guard, handle);
+            return group;
+        }
+        function makeEditorBow() {
+            const group = new THREE.Group();
+            const limb = new THREE.Mesh(
+                new THREE.TorusGeometry(0.46, 0.028, 6, 18, Math.PI * 1.2),
+                new THREE.MeshStandardMaterial({ color: 0x8a5a32, roughness: 0.55 })
+            );
+            limb.rotation.z = Math.PI / 2;
+            const string = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.008, 0.008, 0.86, 4),
+                new THREE.MeshStandardMaterial({ color: 0xead8b0 })
+            );
+            string.position.x = 0.16;
+            group.add(limb, string);
+            return group;
+        }
+        function findBone(root, side) {
+            const name = side === 'R' ? 'hand.R' : 'hand.L';
+            let found = null;
+            root.traverse(obj => { if (obj.name === name) found = obj; });
+            return found;
+        }
+        function poseWeapon(grip) {
+            if (!weaponRoot || !gripRoot) return;
+            const hand = findBone(gripRoot, grip.hand) || findBone(gripRoot, grip.hand === 'R' ? 'L' : 'R');
+            if (!hand) {
+                weaponRoot.visible = false;
+                return;
+            }
+            if (weaponRoot.parent !== hand) hand.add(weaponRoot);
+            weaponRoot.visible = true;
+            weaponRoot.position.set(grip.x, grip.y, grip.z);
+            weaponRoot.rotation.set(grip.rx, grip.ry, grip.rz);
+            weaponRoot.scale.setScalar(grip.scale || 0.85);
+        }
+        function frameCharacter(spec) {
+            const y = spec.height * 0.55;
+            gripControls.target.set(0, y, 0);
+            gripCam.position.set(spec.height * 0.85, spec.height * 0.72, spec.height * 1.15);
+            gripControls.update();
+        }
+        function clearWeapon() {
+            while (weaponRoot.children.length) weaponRoot.remove(weaponRoot.children[0]);
+        }
+        async function showCharacter(spec, token) {
+            const gltf = await loadGltf(spec.url);
+            if (token !== gripToken) return false;
+            if (weaponRoot.parent) weaponRoot.parent.remove(weaponRoot);
+            while (gripRoot.children.length) gripRoot.remove(gripRoot.children[0]);
+            const model = cloneSkinned(gltf.scene);
+            fitCharacter(model, spec);
+            gripRoot.add(model);
+            gripMixer = null;
+            const clips = gltf.animations || [];
+            if (clips.length) {
+                gripMixer = new THREE.AnimationMixer(model);
+                const idle = clips.find(clip => clip.name === 'idle') || clips[0];
+                gripMixer.clipAction(idle).play();
+            }
+            frameCharacter(spec);
+            if (!findBone(model, 'L') && !findBone(model, 'R')) {
+                weaponRoot.visible = false;
+                gripStatus('This model has no hands to hold a weapon.');
+                return false;
+            }
+            return true;
+        }
+        async function showItem(spec, token) {
+            clearWeapon();
+            if (spec.shape === 'dagger') {
+                weaponRoot.add(makeEditorDagger());
+                return;
+            }
+            if (spec.shape === 'bow') {
+                weaponRoot.add(makeEditorBow());
+                return;
+            }
+            const gltf = await loadGltf(spec.url);
+            if (token !== gripToken) return;
+            const model = cloneSkinned(gltf.scene);
+            fitWeapon(model, spec);
+            if (token !== gripToken) return;
+            clearWeapon();
+            weaponRoot.add(model);
+        }
+        async function loadGripSelection() {
+            const token = ++gripToken;
+            gripModelId = document.getElementById('gripModel').value || 'player';
+            gripItemId = document.getElementById('gripItem').value || 'sword';
+            const grip = chosenGrip();
+            paintGrip(grip);
+            gripStatus(savedGrip(gripModelId, gripItemId) ? 'Saved hold. Change it, then Save world.' : 'Built-in hold. Move it, then Save world.');
+            try {
+                const ok = await showCharacter(gripChar(gripModelId), token);
+                if (token !== gripToken) return;
+                await showItem(gripItem(gripItemId), token);
+                if (token !== gripToken || ok === false) return;
+                poseWeapon(chosenGrip());
+            } catch (err) {
+                if (token !== gripToken) return;
+                gripStatus('Could not load that model.');
+                console.warn(err);
+            }
+        }
+        function sizeGrip() {
+            if (!gripRenderer) return;
+            const stage = document.getElementById('stage');
+            const width = stage.clientWidth || 800;
+            const height = stage.clientHeight || 600;
+            gripRenderer.setSize(width, height, false);
+            gripCam.aspect = width / Math.max(1, height);
+            gripCam.updateProjectionMatrix();
+        }
+        function nudgeGrip(dx, dy) {
+            if (!weaponRoot || !weaponRoot.parent || (!dx && !dy)) return;
+            const hand = weaponRoot.parent;
+            hand.updateWorldMatrix(true, true);
+            gripCam.updateMatrixWorld();
+            const dist = Math.max(0.2, gripCam.position.distanceTo(gripControls.target));
+            const per = 2 * Math.tan((gripCam.fov * Math.PI / 180) / 2) * dist / Math.max(1, document.getElementById('gripView').clientHeight);
+            const right = new THREE.Vector3().setFromMatrixColumn(gripCam.matrixWorld, 0);
+            const up = new THREE.Vector3().setFromMatrixColumn(gripCam.matrixWorld, 1);
+            const world = new THREE.Vector3().addScaledVector(right, dx * per).addScaledVector(up, -dy * per);
+            const inv = new THREE.Matrix4().copy(hand.matrixWorld).invert();
+            const origin = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
+            const end = origin.clone().add(world);
+            origin.applyMatrix4(inv);
+            end.applyMatrix4(inv);
+            const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+            const grip = readSliders();
+            grip.x = clamp(grip.x + (end.x - origin.x), -1, 1);
+            grip.y = clamp(grip.y + (end.y - origin.y), -1, 1);
+            grip.z = clamp(grip.z + (end.z - origin.z), -1, 1);
+            paintGrip(grip);
+            poseWeapon(grip);
+            storeGrip(grip);
+        }
+        function gripRefresh() {
+            if (!gripStarted || !document.getElementById('stage').classList.contains('grips')) return;
+            const grip = chosenGrip();
+            paintGrip(grip);
+            poseWeapon(grip);
+        }
+        function ensureGrips() {
+            if (!gripStarted) {
+                gripStarted = true;
+                const canvas = document.getElementById('gripView');
+                gripRenderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+                gripRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+                gripScene = new THREE.Scene();
+                gripScene.background = new THREE.Color(0x141820);
+                gripScene.add(new THREE.HemisphereLight(0xdde7ff, 0x6a5030, 1.15));
+                const sun = new THREE.DirectionalLight(0xfff4e0, 1.2);
+                sun.position.set(3, 5, 2);
+                gripScene.add(sun);
+                const disc = new THREE.Mesh(new THREE.CircleGeometry(1.6, 40), new THREE.MeshStandardMaterial({ color: 0x241c16, roughness: 1 }));
+                disc.rotation.x = -Math.PI / 2;
+                gripScene.add(disc);
+                gripRoot = new THREE.Group();
+                gripScene.add(gripRoot);
+                weaponRoot = new THREE.Group();
+                gripCam = new THREE.PerspectiveCamera(40, 1, 0.05, 40);
+                gripControls = new OrbitControls(gripCam, canvas);
+                gripControls.enablePan = false;
+                gripControls.mouseButtons = { LEFT: -1, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+                gripControls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+                const modelPick = document.getElementById('gripModel');
+                const itemPick = document.getElementById('gripItem');
+                for (const row of GRIP_CHARACTERS) {
+                    const opt = document.createElement('option');
+                    opt.value = row.id;
+                    opt.textContent = row.name;
+                    modelPick.appendChild(opt);
+                }
+                for (const row of GRIP_ITEMS) {
+                    const opt = document.createElement('option');
+                    opt.value = row.id;
+                    opt.textContent = row.name;
+                    itemPick.appendChild(opt);
+                }
+                modelPick.addEventListener('change', () => loadGripSelection());
+                itemPick.addEventListener('change', () => loadGripSelection());
+                const live = () => {
+                    if (gripQuiet) return;
+                    const grip = readSliders();
+                    paintGrip(grip);
+                    poseWeapon(grip);
+                    storeGrip(grip);
+                };
+                for (const id of ['gripHand', 'gripX', 'gripY', 'gripZ', 'gripRx', 'gripRy', 'gripRz', 'gripScale']) {
+                    document.getElementById(id).addEventListener('input', live);
+                }
+                document.getElementById('gripCarry').addEventListener('change', () => { if (!gripQuiet) storeCarry(); });
+                document.getElementById('gripReset').addEventListener('click', resetGrip);
+                let dragX = 0;
+                let dragY = 0;
+                canvas.addEventListener('pointerdown', (event) => {
+                    if (event.button !== 0 || event.pointerType !== 'mouse') return;
+                    gripDragging = true;
+                    dragX = event.clientX;
+                    dragY = event.clientY;
+                    canvas.setPointerCapture(event.pointerId);
+                    canvas.style.cursor = 'grabbing';
+                });
+                canvas.addEventListener('pointermove', (event) => {
+                    if (!gripDragging) return;
+                    const dx = event.clientX - dragX;
+                    const dy = event.clientY - dragY;
+                    dragX = event.clientX;
+                    dragY = event.clientY;
+                    nudgeGrip(dx, dy);
+                });
+                const endDrag = () => {
+                    gripDragging = false;
+                    canvas.style.cursor = 'grab';
+                };
+                canvas.addEventListener('pointerup', endDrag);
+                canvas.addEventListener('pointercancel', endDrag);
+                let then = 0;
+                const loop = (now) => {
+                    requestAnimationFrame(loop);
+                    if (!document.getElementById('stage').classList.contains('grips')) return;
+                    const dt = Math.min(0.05, then ? (now - then) / 1000 : 0);
+                    then = now;
+                    if (gripMixer) gripMixer.update(dt);
+                    gripControls.update();
+                    gripRenderer.render(gripScene, gripCam);
+                };
+                requestAnimationFrame(loop);
+                window.addEventListener('resize', sizeGrip);
+            }
+            sizeGrip();
+            if (!gripRoot.children.length) loadGripSelection();
+            else {
+                const grip = chosenGrip();
+                paintGrip(grip);
+                poseWeapon(grip);
+            }
+        }
         async function boot() {
             if (!token) return showLogin('');
             try {
@@ -2224,6 +2724,7 @@
                 fillRules();
                 mountMap(0);
                 renderLoot();
+                gripRefresh();
             } catch (err) {
                 showLogin(err.message);
             }
