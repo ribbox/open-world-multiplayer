@@ -1827,6 +1827,8 @@
             storeRoster();
             let playerName = localStorage.getItem('ow-name') || 'Player';
             let gameSocket = null;
+            let joinedServer = false;
+            let connectTries = 0;
             const nameInput = document.getElementById('playerName');
             nameInput.value = playerName;
 
@@ -11014,15 +11016,25 @@
 
             function connectMultiplayer() {
                 if (!persistentId) return;
+                if (gameSocket && (gameSocket.readyState === WebSocket.CONNECTING || gameSocket.readyState === WebSocket.OPEN)) return;
                 if (freshEnter) {
                     freshEnter = false;
                     wipeView();
                 }
+                connectTries += 1;
                 const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const ws = new WebSocket(`${protocol}//${location.host}`);
                 gameSocket = ws;
+                const failTimer = setTimeout(() => {
+                    if (ws.readyState !== WebSocket.OPEN) {
+                        try { ws.close(); } catch { /* already closed */ }
+                    }
+                }, 8000);
 
                 ws.onopen = () => {
+                    clearTimeout(failTimer);
+                    joinedServer = true;
+                    connectTries = 0;
                     console.log('Connected to multiplayer server');
                     showMessage('Connected to server');
                     const mine = roster.find(row => row.id === persistentId) || {};
@@ -11635,9 +11647,24 @@
                 }, 100);
 
                 ws.onclose = () => {
+                    clearTimeout(failTimer);
                     clearInterval(sendTimer);
                     if (gameSocket === ws) gameSocket = null;
                     if (switching || gameSocket) return;
+                    if (!joinedServer) {
+                        if (connectTries < 3 && document.getElementById('pick').hidden) {
+                            setTimeout(() => {
+                                if (!switching && !gameSocket && persistentId && document.getElementById('pick').hidden) connectMultiplayer();
+                            }, 1500);
+                            return;
+                        }
+                        showMessage('No game server on this host');
+                        if (!loadWorldReady) {
+                            loadWorldReady = true;
+                            paintLoading();
+                        }
+                        return;
+                    }
                     showMessage('Disconnected from server');
                     setTimeout(() => {
                         if (!switching && !gameSocket && persistentId && document.getElementById('pick').hidden) connectMultiplayer();
