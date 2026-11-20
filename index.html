@@ -31,20 +31,44 @@
             cursor: pointer; pointer-events: auto;
         }
         #changeChar[hidden] { display: none; }
-        #showInfo, #changeChar, #threatButton, #mapLayersButton { box-shadow: 0 1px 3px rgba(0,0,0,0.45); }
+        #showInfo, #changeChar, #threatButton, #mapLayersButton, #settingsButton { box-shadow: 0 1px 3px rgba(0,0,0,0.45); }
         #showInfo { width: 28px; height: 28px; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: 15px; font-weight: bold; }
         #showInfo[hidden] { display: none; }
-        #threatButton, #mapLayersButton {
-            position: absolute; right: 182px; z-index: 12;
+        #threatButton, #mapLayersButton, #settingsButton {
+            position: absolute; z-index: 13;
             display: grid; place-items: center;
             width: 28px; height: 28px; padding: 0; margin: 0;
             color: #f4efe4; background: rgba(8, 10, 14, 0.82);
             border: 1px solid rgba(214, 176, 96, 0.7); border-radius: 50%;
             cursor: pointer;
         }
-        #threatButton { top: 64px; }
-        #mapLayersButton { top: 100px; }
-        #threatButton.on { border-color: #f1c40f; color: #f1c40f; }
+        #threatButton { top: 64px; right: 182px; }
+        #mapLayersButton { top: 100px; right: 182px; }
+        #settingsButton { top: 18px; right: 182px; z-index: 30; }
+        #threatButton.on, #settingsButton.on { border-color: #f1c40f; color: #f1c40f; }
+        #settings {
+            position: fixed; inset: 0; z-index: 45;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.5);
+        }
+        #settings[hidden] { display: none; }
+        #settingsPanel {
+            width: min(440px, calc(100vw - 20px));
+            max-height: calc(100vh - 20px);
+            overflow: auto; box-sizing: border-box;
+            color: #f4efe4; background: rgba(12, 14, 18, 0.96);
+            border: 1px solid rgba(214, 176, 96, 0.7); border-radius: 8px;
+            padding: 12px 14px 16px; pointer-events: auto;
+        }
+        #settingsHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        #settingsHead h2 { margin: 0; font-size: 16px; color: #f1c40f; }
+        #settings h3 { margin: 12px 0 6px; font-size: 13px; color: #e2c48a; }
+        #settings p { margin: 4px 0 8px; font-size: 12px; color: #c8b48a; }
+        #settings label { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 14px; cursor: pointer; }
+        .bind-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 3px 0; font-size: 13px; }
+        .bind-row .bind-key { min-width: 92px; text-align: center; }
+        .bind-row .bind-key.listening { color: #241c04; background: #f1c40f; border-color: #f1c40f; }
+        #settings .text-btn { margin-top: 8px; }
         #inventory {
             display: none;
             position: absolute; right: 16px; bottom: 118px; color: white;
@@ -923,9 +947,10 @@
         100 coins make 1 silver, and 100 silver make 1 gold. Drag an item in the bag to move it. Bags go in the bag slots and add room. Nessa's bank is only in the main settlement<br>
         Trade, on the bag, sends a bag item to a nearby player, by mail, or on the market. The price can be 0. Gear that was worn, and anything from a named foe, cannot be traded<br>
         The Drowned Chapel is east of the river. Wren's quests lead there. A party of four can enter. Move out of the black water<br>
-        You can learn 2 crafting skills from a shop assistant. The shop sells patterns once your crafting skill, and for the better ones your character level, is high enough. Making items raises the skill. A trainer teaches the next tier at 75, 150, and 225. Higher recipes need silk and a specific ore. Split a rock from the craft tab. Wolves and boars sometimes leave leather. Spiders sometimes leave silk<br>
+        You can learn 2 crafting skills from a shop assistant. The shop sells patterns once your crafting skill, and for the better ones your character level, is high enough. Finished goods are built from parts, and making a part raises the skill too. A bomb needs a case, powder, and a trigger: the case is copper, the trigger a gem and iron, and higher bombs ask for ore and gems that are harder to find. Clothes need buttons, thread, and a bolt. A trainer teaches the next tier at 75, 150, and 225. Split a rock from the craft tab. Wolves and boars sometimes leave leather. Spiders sometimes leave silk<br>
         Gather herbs by hand and sulfur with a pickaxe<br>
         M: World map. Scroll or +/− to zoom. Right-click a spot to mark it. The minimap points the way<br>
+        The gear on the minimap opens settings. Help is in that window, with sounds, music for the region you are in, key bindings, and full screen<br>
         Active quests stay on the right, with progress<br>
         A gold ? is a quest you can take. Blue means one is underway, green means turn it in. The minimap shows the same ?<br>
         As a ghost, the minimap arrow points back to your body<br>
@@ -940,7 +965,7 @@
         Minimap: zone name and 0–100 coordinates. Map chooses what is shown<br>
         <small>Player: human model &nbsp;|&nbsp; Each NPC type has its own shape &nbsp;|&nbsp; Icons by Matt Firth (shikashipx) and game-icons.net</small>
     </div>
-    <button type="button" id="showInfo" hidden title="Help" aria-label="Help">?</button>
+    <button type="button" id="settingsButton" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 3.2v2.2M12 18.6v2.2M4.9 6.3l1.6 1.6M17.5 16.1l1.6 1.6M3.2 12h2.2M18.6 12h2.2M4.9 17.7l1.6-1.6M17.5 7.9l1.6-1.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
     <div id="inventory">
         <div id="bagHead">
             <span id="bagLabel">Bag 0/16</span>
@@ -1045,6 +1070,25 @@
         <label><input type="checkbox" data-layer="players" checked> <i style="background:#5dade2;border-radius:50%"></i> Players</label>
     </div>
     <div id="questTracker" hidden></div>
+    <div id="settings" hidden>
+        <div id="settingsPanel" role="dialog" aria-labelledby="settingsTitle">
+            <div id="settingsHead">
+                <h2 id="settingsTitle">Settings</h2>
+                <button type="button" class="text-btn" id="settingsClose">Close</button>
+            </div>
+            <button type="button" class="text-btn" id="setHelpOpen">Help</button>
+            <h3>Audio</h3>
+            <label><input type="checkbox" id="setSound" checked> Sounds</label>
+            <label><input type="checkbox" id="setMusic" checked> Music</label>
+            <p id="musicNow">This region: Wilds</p>
+            <h3>Display</h3>
+            <button type="button" class="text-btn" id="setFullscreen">Full screen</button>
+            <h3>Keys</h3>
+            <p>Click a key, then press the new one. Escape cancels. Arrow keys still move.</p>
+            <div id="bindList"></div>
+            <button type="button" class="text-btn" id="bindReset">Reset keys</button>
+        </div>
+    </div>
     <div id="threatWindow" hidden>
         <div id="threatHead">
             <h2>Threat</h2>
@@ -1108,14 +1152,11 @@
         let hereMapId = (bootWorld && bootWorld.mapId) || '';
 
         const infoBox = document.getElementById('info');
-        const showInfo = document.getElementById('showInfo');
         function setHelp(open) {
             infoBox.classList.toggle('hidden', !open);
-            showInfo.hidden = open;
             localStorage.setItem('ow-help', open ? '1' : '0');
         }
         document.getElementById('hideInfo').addEventListener('click', () => setHelp(false));
-        showInfo.addEventListener('click', () => setHelp(true));
         if (localStorage.getItem('ow-help') === '0') setHelp(false);
 
         function showError(msg) {
@@ -1199,7 +1240,24 @@
         const sfx = (() => {
             let ctx = null;
             let out = null;
-            const wake = () => { if (ctx && ctx.state === 'suspended') ctx.resume(); };
+            let soundOn = true;
+            let musicOn = true;
+            let musicArmed = false;
+            let musicTheme = 'wild';
+            let musicPlaying = false;
+            let musicTimer = 0;
+            let musicStep = 0;
+            let musicBus = null;
+            let padNode = null;
+            let padGain = null;
+            const wake = () => {
+                ac();
+                if (ctx && ctx.state === 'suspended') ctx.resume();
+                if (!musicArmed) {
+                    musicArmed = true;
+                    if (musicOn) beginMusic();
+                }
+            };
             window.addEventListener('pointerdown', wake);
             window.addEventListener('keydown', wake);
             function ac() {
@@ -1208,8 +1266,15 @@
                     if (!AC) return null;
                     ctx = new AC();
                     out = ctx.createGain();
-                    out.gain.value = 0.26;
+                    out.gain.value = soundOn ? 0.26 : 0;
                     out.connect(ctx.destination);
+                    musicBus = ctx.createGain();
+                    musicBus.gain.value = musicOn ? 0.8 : 0;
+                    const musicFilter = ctx.createBiquadFilter();
+                    musicFilter.type = 'lowpass';
+                    musicFilter.frequency.value = 1600;
+                    musicBus.connect(musicFilter);
+                    musicFilter.connect(ctx.destination);
                 }
                 if (ctx.state === 'suspended') ctx.resume();
                 return ctx;
@@ -1288,8 +1353,315 @@
                 portal() { tone(180, 0.26, 'sine', 0.07, 0, 360); noise(0.18, 0.05, 640); },
                 drop() { tone(180, 0.07, 'triangle', 0.045, 0, -70); }
             };
-            return (name) => { try { if (bank[name]) bank[name](); } catch (err) { /* ignore a blocked audio device */ } };
+            const MUSIC = {
+                forest: { root: 293.66, scale: [0, 2, 4, 7, 9], tempo: 1.42, wave: 'triangle', motif: [0, 2, 4, 2, 3, 1, 0, 4] },
+                hills: { root: 196, scale: [0, 2, 4, 7, 9], tempo: 1.18, wave: 'triangle', motif: [0, 4, 2, 4, 3, 1, 0, 2] },
+                shore: { root: 220, scale: [0, 3, 5, 7, 10], tempo: 1.85, wave: 'sine', motif: [0, 1, 0, 3, 2, 4, 1, 0] },
+                tavern: { root: 261.63, scale: [0, 2, 4, 5, 7, 9], tempo: 0.78, wave: 'triangle', motif: [0, 2, 4, 2, 5, 4, 2, 0] },
+                crypt: { root: 73.42, scale: [0, 1, 5, 6, 10], tempo: 2.15, wave: 'sine', motif: [0, 0, 2, 1, 3, 0, 4, 1] },
+                wild: { root: 164.81, scale: [0, 2, 3, 7, 8], tempo: 1.36, wave: 'triangle', motif: [0, 3, 1, 4, 2, 0, 3, 1] }
+            };
+            function musicNote(freq, dur, type, peak) {
+                const c = ac();
+                if (!c || !musicBus || !musicOn) return;
+                const g = c.createGain();
+                const t = c.currentTime;
+                g.connect(musicBus);
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(Math.max(0.001, peak), t + 0.03);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.08, dur));
+                const o = c.createOscillator();
+                o.type = type || 'sine';
+                o.frequency.value = freq;
+                o.connect(g);
+                o.start(t);
+                o.stop(t + dur + 0.05);
+            }
+            function startPad(spec) {
+                const c = ac();
+                if (!c || !musicBus) return;
+                const old = padNode;
+                const oldGain = padGain;
+                const now = c.currentTime;
+                if (old && oldGain) {
+                    try {
+                        oldGain.gain.cancelScheduledValues(now);
+                        oldGain.gain.setValueAtTime(Math.max(0.0001, oldGain.gain.value), now);
+                        oldGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
+                        old.stop(now + 0.75);
+                    } catch (err) { /* pad already ending */ }
+                }
+                padGain = c.createGain();
+                padGain.gain.setValueAtTime(0.0001, now);
+                padGain.gain.exponentialRampToValueAtTime(0.04, now + 1.1);
+                padGain.connect(musicBus);
+                padNode = c.createOscillator();
+                padNode.type = 'sine';
+                padNode.frequency.value = spec.root / 2;
+                const over = c.createOscillator();
+                over.type = 'triangle';
+                over.frequency.value = spec.root;
+                const overGain = c.createGain();
+                overGain.gain.value = 0.45;
+                over.connect(overGain);
+                overGain.connect(padGain);
+                over.start(now);
+                padNode.connect(padGain);
+                padNode.start(now);
+                padNode.onended = () => { try { over.stop(); } catch (err) { /* already stopped */ } };
+            }
+            function musicTick() {
+                if (!musicOn || !musicPlaying) return;
+                const spec = MUSIC[musicTheme] || MUSIC.wild;
+                const degree = spec.motif[musicStep % spec.motif.length];
+                const semi = spec.scale[degree % spec.scale.length];
+                const freq = spec.root * Math.pow(2, semi / 12);
+                musicNote(freq, spec.tempo * 0.9, spec.wave, musicStep % 4 === 0 ? 0.05 : 0.032);
+                if (musicStep % 4 === 0) musicNote(spec.root / 2, spec.tempo * 1.5, 'sine', 0.028);
+                musicStep += 1;
+                musicTimer = window.setTimeout(musicTick, spec.tempo * 1000);
+            }
+            function beginMusic() {
+                if (!musicOn || musicPlaying) return;
+                musicPlaying = true;
+                startPad(MUSIC[musicTheme] || MUSIC.wild);
+                musicTick();
+            }
+            function stopMusic() {
+                musicPlaying = false;
+                window.clearTimeout(musicTimer);
+                const c = ctx;
+                if (padNode && padGain && c) {
+                    const now = c.currentTime;
+                    try {
+                        padGain.gain.cancelScheduledValues(now);
+                        padGain.gain.setValueAtTime(Math.max(0.0001, padGain.gain.value), now);
+                        padGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
+                        padNode.stop(now + 0.45);
+                    } catch (err) { /* ignore a stopped pad */ }
+                }
+                padNode = null;
+                padGain = null;
+            }
+            function play(name) {
+                if (!soundOn) return;
+                try { if (bank[name]) bank[name](); } catch (err) { /* ignore a blocked audio device */ }
+            }
+            play.sound = (on) => {
+                soundOn = !!on;
+                if (out) out.gain.value = soundOn ? 0.26 : 0;
+            };
+            play.music = (on) => {
+                musicOn = !!on;
+                if (musicBus) musicBus.gain.value = musicOn ? 0.8 : 0;
+                if (!musicOn) stopMusic();
+                else if (musicArmed) beginMusic();
+            };
+            play.theme = (id) => {
+                if (!MUSIC[id]) id = 'wild';
+                if (id === musicTheme) return;
+                musicTheme = id;
+                musicStep = 0;
+                if (!musicOn || !musicArmed) return;
+                if (musicPlaying) startPad(MUSIC[id]);
+                else beginMusic();
+            };
+            play.themeId = () => musicTheme;
+            return play;
         })();
+
+        const THEME_LABEL = { forest: 'Forest', hills: 'Hills', shore: 'Shore', tavern: 'Camp', crypt: 'Dungeon', wild: 'Wilds' };
+        const DEFAULT_BINDS = {
+            forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', sprint: 'ShiftLeft', jump: 'Space',
+            action: 'KeyE', loot: 'KeyF', talk: 'KeyT', hearth: 'KeyH', target: 'Tab', party: 'KeyP', body: 'KeyR',
+            bag: 'KeyB', character: 'KeyC', quests: 'KeyL', map: 'KeyM', chat: 'Enter',
+            pagePrev: 'BracketLeft', pageNext: 'BracketRight',
+            bar1: 'Digit1', bar2: 'Digit2', bar3: 'Digit3', bar4: 'Digit4',
+            bar5: 'Digit5', bar6: 'Digit6', bar7: 'Digit7', bar8: 'Digit8'
+        };
+        const BIND_GROUPS = [
+            ['Move', [['forward', 'Forward'], ['back', 'Back'], ['left', 'Turn left'], ['right', 'Turn right'], ['sprint', 'Sprint'], ['jump', 'Jump']]],
+            ['Actions', [['action', 'Gather / attack'], ['loot', 'Loot / portal'], ['talk', 'Talk'], ['hearth', 'Hearth'], ['target', 'Target'], ['party', 'Invite'], ['body', 'Return to body']]],
+            ['Windows', [['bag', 'Bag'], ['character', 'Character'], ['quests', 'Quest log'], ['map', 'World map'], ['chat', 'Chat'], ['pagePrev', 'Previous page'], ['pageNext', 'Next page']]],
+            ['Action bar', [['bar1', 'Slot 1'], ['bar2', 'Slot 2'], ['bar3', 'Slot 3'], ['bar4', 'Slot 4'], ['bar5', 'Slot 5'], ['bar6', 'Slot 6'], ['bar7', 'Slot 7'], ['bar8', 'Slot 8']]]
+        ];
+        const held = {};
+        let binds = Object.assign({}, DEFAULT_BINDS);
+        let listenAction = '';
+        let currentMusicTheme = '';
+        let onBindsChanged = () => {};
+        let whenSettings = () => {};
+        function keyName(code) {
+            if (!code) return 'None';
+            const named = {
+                Space: 'Space', Enter: 'Enter', Tab: 'Tab', ShiftLeft: 'Shift', ShiftRight: 'Shift',
+                BracketLeft: '[', BracketRight: ']', Minus: '-', Equal: '=',
+                ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+                Backquote: '`', Backslash: '\\', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/'
+            };
+            if (named[code]) return named[code];
+            if (code.startsWith('Key')) return code.slice(3);
+            if (code.startsWith('Digit')) return code.slice(5);
+            if (code.startsWith('Numpad')) return 'Num ' + code.slice(6);
+            return code;
+        }
+        function musicThemeFor(name, cave) {
+            if (cave) return 'crypt';
+            const text = String(name || '').toLowerCase();
+            if (/\b(camp|city|town|inn|market|haven|hold)\b/.test(text)) return 'tavern';
+            if (/\b(shore|coast|sea|bay|lake|river)\b/.test(text)) return 'shore';
+            if (/\b(crypt|tomb|grave|dungeon|chapel|ruin|barrow|cave|depths|hollow|mire|swamp|bog)\b/.test(text)) return 'crypt';
+            if (/\b(wood|forest|grove|weald|thicket|glade)\b/.test(text)) return 'forest';
+            if (/\b(ridge|hill|hills|watch|reach|march|vale|field|fields|heath|peak|cliff)\b/.test(text)) return 'hills';
+            return 'wild';
+        }
+        function sameCode(bound, code) {
+            if (!bound || !code) return false;
+            if (bound === code) return true;
+            if (bound.startsWith('Digit') && code === 'Numpad' + bound.slice(5)) return true;
+            if (bound === 'Enter' && code === 'NumpadEnter') return true;
+            if ((bound === 'ShiftLeft' || bound === 'ShiftRight') && (code === 'ShiftLeft' || code === 'ShiftRight')) return true;
+            return false;
+        }
+        function codeHeld(code) {
+            if (!code) return false;
+            if (held[code]) return true;
+            if ((code === 'ShiftLeft' || code === 'ShiftRight') && (held.ShiftLeft || held.ShiftRight)) return true;
+            if (code.startsWith('Digit') && held['Numpad' + code.slice(5)]) return true;
+            return false;
+        }
+        function actionByCode(code) {
+            for (const id of Object.keys(binds)) if (sameCode(binds[id], code)) return id;
+            return '';
+        }
+        function saveSettings() {
+            const sound = document.getElementById('setSound');
+            const music = document.getElementById('setMusic');
+            localStorage.setItem('ow-settings', JSON.stringify({
+                sound: !sound || sound.checked,
+                music: !music || music.checked,
+                binds
+            }));
+        }
+        function loadSettings() {
+            let saved = {};
+            try { saved = JSON.parse(localStorage.getItem('ow-settings') || '{}') || {}; } catch (err) { saved = {}; }
+            binds = Object.assign({}, DEFAULT_BINDS);
+            if (saved.binds && typeof saved.binds === 'object') {
+                for (const id of Object.keys(DEFAULT_BINDS)) {
+                    if (typeof saved.binds[id] === 'string') binds[id] = saved.binds[id];
+                }
+            }
+            const sound = document.getElementById('setSound');
+            const music = document.getElementById('setMusic');
+            if (sound) sound.checked = saved.sound !== false;
+            if (music) music.checked = saved.music !== false;
+            sfx.sound(saved.sound !== false);
+            sfx.music(saved.music !== false);
+        }
+        function renderBinds() {
+            const root = document.getElementById('bindList');
+            if (!root) return;
+            root.textContent = '';
+            for (const [title, rows] of BIND_GROUPS) {
+                const head = document.createElement('h3');
+                head.textContent = title;
+                root.appendChild(head);
+                for (const [id, label] of rows) {
+                    const row = document.createElement('div');
+                    row.className = 'bind-row';
+                    const name = document.createElement('span');
+                    name.textContent = label;
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn bind-key' + (listenAction === id ? ' listening' : '');
+                    button.textContent = listenAction === id ? 'Press a key' : keyName(binds[id]);
+                    button.addEventListener('click', () => {
+                        listenAction = id;
+                        button.blur();
+                        renderBinds();
+                    });
+                    row.append(name, button);
+                    root.appendChild(row);
+                }
+            }
+        }
+        function assignBind(action, code) {
+            if (!action || !code || code === 'Escape') return;
+            for (const id of Object.keys(binds)) if (id !== action && binds[id] === code) binds[id] = '';
+            binds[action] = code;
+            saveSettings();
+            onBindsChanged();
+        }
+        function settingsOpen() {
+            const panel = document.getElementById('settings');
+            return !!(panel && !panel.hidden);
+        }
+        function setSettingsOpen(open) {
+            const panel = document.getElementById('settings');
+            const button = document.getElementById('settingsButton');
+            if (!panel) return;
+            panel.hidden = !open;
+            if (button) button.classList.toggle('on', !!open);
+            if (open) {
+                listenAction = '';
+                renderBinds();
+                whenSettings();
+            }
+        }
+        function syncFullscreenLabel() {
+            const button = document.getElementById('setFullscreen');
+            if (!button) return;
+            const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+            button.textContent = on ? 'Leave full screen' : 'Full screen';
+        }
+        loadSettings();
+        renderBinds();
+        document.getElementById('settingsButton').addEventListener('click', () => setSettingsOpen(document.getElementById('settings').hidden));
+        document.getElementById('settingsClose').addEventListener('click', () => setSettingsOpen(false));
+        document.getElementById('setHelpOpen').addEventListener('click', () => {
+            setSettingsOpen(false);
+            setHelp(true);
+        });
+        document.getElementById('settings').addEventListener('click', (event) => {
+            if (event.target.id === 'settings') setSettingsOpen(false);
+        });
+        document.getElementById('setSound').addEventListener('change', (event) => {
+            sfx.sound(event.target.checked);
+            saveSettings();
+            if (event.target.checked) sfx('click');
+        });
+        document.getElementById('setMusic').addEventListener('change', (event) => {
+            sfx.music(event.target.checked);
+            saveSettings();
+        });
+        document.getElementById('bindReset').addEventListener('click', () => {
+            binds = Object.assign({}, DEFAULT_BINDS);
+            listenAction = '';
+            saveSettings();
+            renderBinds();
+            onBindsChanged();
+        });
+        document.getElementById('setFullscreen').addEventListener('click', async () => {
+            try {
+                if (document.fullscreenElement || document.webkitFullscreenElement) {
+                    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+                    if (exit) await exit.call(document);
+                    return;
+                }
+                const root = document.documentElement;
+                const request = root.requestFullscreen || root.webkitRequestFullscreen;
+                if (!request) {
+                    showMessage('Full screen is not available on this device');
+                    return;
+                }
+                await request.call(root);
+            } catch (err) {
+                showMessage('Full screen was blocked');
+            }
+        });
+        document.addEventListener('fullscreenchange', syncFullscreenLabel);
+        document.addEventListener('webkitfullscreenchange', syncFullscreenLabel);
 
         let pendingTalents = 0;
         function showLevel(level) {
@@ -1458,11 +1830,12 @@
             let loadAssetsReady = false;
             let loadWorldReady = false;
             let playReady = false;
-            let loadDone = 0;
-            let loadTotal = 1;
+            let loadCaption = 'assets';
             function loadFileName(url) {
-                const name = String(url || '').split('/').pop().split('?')[0];
-                return name.replace(/\.glb$/i, '').replace(/[-_]/g, ' ') || 'assets';
+                const text = String(url || '');
+                if (!text || text.startsWith('blob:') || text.startsWith('data:')) return '';
+                const name = text.split('/').pop().split('?')[0];
+                return name.replace(/\.(glb|png|jpe?g)$/i, '').replace(/[-_]/g, ' ') || '';
             }
             function paintLoading(url) {
                 const cover = document.getElementById('loading');
@@ -1475,37 +1848,91 @@
                     if (label) label.textContent = 'Ready';
                     if (!playReady) {
                         playReady = true;
-                        const cover = document.getElementById('loading');
-                        setTimeout(() => { if (cover) cover.classList.add('done'); }, 240);
+                        const doneCover = document.getElementById('loading');
+                        setTimeout(() => { if (doneCover) doneCover.classList.add('done'); }, 240);
                     }
                     return;
                 }
-                const count = Math.max(1, loadTotal);
-                const pct = Math.min(96, Math.round((loadDone / count) * 92) + (loadAssetsReady ? 4 : 0));
+                const count = bumpLoadingTotal();
+                const done = Math.min(loadFinished, count);
+                const pct = Math.min(96, Math.round((done / count) * 92) + (loadAssetsReady ? 4 : 0));
                 bar.style.width = pct + '%';
                 if (!label) return;
                 if (loadAssetsReady) label.textContent = 'Entering the world';
-                else label.textContent = 'Loading ' + loadFileName(url) + '   ' + Math.min(loadDone, count) + ' / ' + count;
+                else {
+                    const nice = loadFileName(url);
+                    if (nice) loadCaption = nice;
+                    label.textContent = 'Loading ' + loadCaption + '   ' + done + ' / ' + count;
+                }
+            }
+            // Images stored inside a model are not separate files. Three only
+            // notices them while unpacking, which used to raise the total near the end.
+            const PACKED_IMAGES = {
+                '/models/bandit.glb': 1,
+                '/models/banker.glb': 1,
+                '/models/broker.glb': 1,
+                '/models/cabin.glb': 1,
+                '/models/camp.glb': 1,
+                '/models/chest.glb': 1,
+                '/models/gather-tree.glb': 6,
+                '/models/inn.glb': 1,
+                '/models/innkeeper.glb': 1,
+                '/models/merchant.glb': 1,
+                '/models/mine-rock.glb': 2,
+                '/models/ogre.glb': 1,
+                '/models/ogre-caster.glb': 1,
+                '/models/pick_axe.glb': 6,
+                '/models/questgiver.glb': 1,
+                '/models/rock.glb': 3,
+                '/models/simple_axe.glb': 3,
+                '/models/stylized_emerald_sword.glb': 4,
+                '/models/terrain-grass.glb': 3,
+                '/models/terrain-sand.glb': 3,
+                '/models/trainer.glb': 1,
+                '/models/tree.glb': 6,
+                '/models/wild_pigboar_meshy.glb': 1,
+                '/models/wizards_staff.glb': 2
+            };
+            let loadSeen = 0;
+            let loadFinished = 0;
+            let packedWaiting = 0;
+            let shownTotal = 0;
+            function notePacked(url) {
+                const path = String(url || '').split('?')[0];
+                const count = PACKED_IMAGES[path] || 0;
+                if (count) packedWaiting += count;
+            }
+            function bumpLoadingTotal() {
+                const count = loadSeen + packedWaiting;
+                if (count > shownTotal) shownTotal = count;
+                return Math.max(1, shownTotal);
             }
             const loadManager = new THREE.LoadingManager();
+            const rawItemStart = loadManager.itemStart.bind(loadManager);
+            loadManager.itemStart = (url) => {
+                const text = String(url || '');
+                if (packedWaiting > 0 && (text.startsWith('blob:') || text.startsWith('data:'))) packedWaiting -= 1;
+                loadSeen += 1;
+                bumpLoadingTotal();
+                rawItemStart(url);
+            };
             loadManager.itemStart('/icons/fantasy-icons.png');
             loadManager.itemStart('/icons/sheet-wood.png');
             loadManager.itemStart('/icons/sheet-stone.png');
             loadManager.itemStart('/icons/sheet-plate.png');
-            loadManager.onStart = (_url, loaded, total) => {
-                loadDone = loaded;
-                loadTotal = total;
+            loadManager.onStart = (_url, loaded) => {
+                loadFinished = loaded;
                 paintLoading(_url);
             };
-            loadManager.onProgress = (url, loaded, total) => {
-                loadDone = loaded;
-                loadTotal = total;
+            loadManager.onProgress = (url, loaded) => {
+                loadFinished = loaded;
                 paintLoading(url);
             };
             loadManager.onLoad = () => {
                 if (!assetsStarted) return;
                 loadAssetsReady = true;
-                loadDone = loadTotal;
+                loadFinished = bumpLoadingTotal();
+                packedWaiting = 0;
                 paintLoading();
             };
             loadManager.onError = (url) => {
@@ -1769,6 +2196,7 @@
                     queuedLoads.push(args);
                     return;
                 }
+                notePacked(args[0]);
                 startLoad(...args);
             };
             function startAssetLoads() {
@@ -1784,7 +2212,8 @@
                 const label = document.getElementById('loadingLabel');
                 if (label) label.textContent = 'Loading the world';
                 const batch = queuedLoads.splice(0);
-                for (const args of batch) startLoad(...args);
+                for (const args of batch) loader.load(...args);
+                paintLoading();
             }
             loader.load(
                 '/models/player.glb',
@@ -2789,6 +3218,16 @@
             const ORE_KINDS = [['copper', 'Copper'], ['tin', 'Tin'], ['iron', 'Iron'], ['silver', 'Silver'], ['mithril', 'Mithril'], ['thorium', 'Thorium']];
             const GEM_KINDS = [['malachite', 'Malachite'], ['quartz', 'Quartz'], ['jade', 'Jade'], ['ruby', 'Ruby'], ['sapphire', 'Sapphire'], ['diamond', 'Diamond']];
             const SUPPLY_KINDS = STAPLE_KINDS.concat(ORE_KINDS, GEM_KINDS);
+            const BASE_MAT_NAMES = Object.fromEntries(SUPPLY_KINDS);
+            function materialName(kind) {
+                if (BASE_MAT_NAMES[kind]) return BASE_MAT_NAMES[kind];
+                const recipe = character.craft && character.craft.recipes && character.craft.recipes[kind];
+                if (recipe && recipe.name) return recipe.name;
+                return String(kind || '').replace(/-/g, ' ');
+            }
+            function costText(cost) {
+                return Object.entries(cost || {}).map(([kind, qty]) => qty + ' ' + materialName(kind)).join(', ');
+            }
             const NUGGET_COLOR = { copper: '#c4783a', tin: '#d5dde6', iron: '#7d8794', silver: '#f4f7fb', mithril: '#7fd0ea', thorium: '#e0a23a', malachite: '#1f9d55', quartz: '#f7f3ea', jade: '#3dcca0', ruby: '#d64545', sapphire: '#3d7dcc', diamond: '#f4fbff' };
             const iconSheets = {};
             let iconSheetReady = false;
@@ -3193,11 +3632,11 @@
                 const supplies = document.getElementById('supplySlots');
                 supplies.textContent = '';
                 const mats = inventory.materials || {};
-                const addSupply = (kind, name, qty) => {
+                const addSupply = (kind, name, qty, icon) => {
                     const cell = document.createElement('button');
                     cell.type = 'button';
                     cell.className = 'slot ' + kind;
-                    paintItem(cell, { kind, name, qty });
+                    paintItem(cell, { kind, name, qty, icon: icon || '' });
                     const mark = document.createElement('div');
                     mark.className = 'qty';
                     mark.textContent = String(qty);
@@ -3228,6 +3667,16 @@
                 if (heldGems.length) {
                     addBreak('Gems');
                     for (const [kind, name] of heldGems) addSupply(kind, name, mats[kind]);
+                }
+                const knownSupply = new Set(SUPPLY_KINDS.map(([kind]) => kind));
+                const heldParts = Object.entries(mats).filter(([kind, qty]) => qty > 0 && !knownSupply.has(kind) && kind !== 'ore');
+                if (heldParts.length) {
+                    heldParts.sort((a, b) => materialName(a[0]).localeCompare(materialName(b[0])));
+                    addBreak('Parts');
+                    for (const [kind, qty] of heldParts) {
+                        const recipe = character.craft && character.craft.recipes && character.craft.recipes[kind];
+                        addSupply(kind, materialName(kind), qty, recipe && recipe.icon);
+                    }
                 }
             }
             function applyInventory(data) {
@@ -4059,6 +4508,14 @@
                     const bodyDist = ghost && myCorpse ? Math.round(Math.hypot(myCorpse.x - px, myCorpse.z - pz)) : null;
                     zoneCoordsEl.textContent = here.x.toFixed(1) + ',  ' + here.z.toFixed(1) + (bodyDist != null ? '   ·   ' + bodyDist + ' to body' : '') + (markerDist != null ? '   ·   ' + markerDist + ' to marker' : '');
                 }
+                const themeName = activeCave ? activeCave.name : here.name;
+                const theme = musicThemeFor(themeName, !!activeCave);
+                if (theme !== currentMusicTheme) {
+                    currentMusicTheme = theme;
+                    sfx.theme(theme);
+                    const line = document.getElementById('musicNow');
+                    if (line) line.textContent = 'This region: ' + (THEME_LABEL[theme] || 'Wilds');
+                }
 
                 ctx.save();
                 ctx.beginPath();
@@ -4655,6 +5112,14 @@
             // Movement
             const keys = { w: false, a: false, s: false, d: false, shift: false, space: false, e: false };
             const arrows = { up: false, down: false, left: false, right: false };
+            function syncMoveKeys() {
+                keys.w = codeHeld(binds.forward);
+                keys.s = codeHeld(binds.back);
+                keys.a = codeHeld(binds.left);
+                keys.d = codeHeld(binds.right);
+                keys.shift = codeHeld(binds.sprint);
+                keys.space = codeHeld(binds.jump);
+            }
             const baseSpeed = 10;
             const sprintMultiplier = 2;
             const jumpSpeed = 8;
@@ -7995,7 +8460,7 @@
                     button.title = action ? actionTitle(id, action) : 'Empty. Right-click to assign.';
                     const key = document.createElement('span');
                     key.className = 'key';
-                    key.textContent = String(i + 1);
+                    key.textContent = keyName(binds['bar' + (i + 1)]);
                     button.appendChild(key);
                     if (action) paintIcon(button, id, spellBolts(id));
                     button.addEventListener('mousedown', (e) => e.preventDefault());
@@ -8501,7 +8966,8 @@
                     const line = document.createElement('div');
                     line.className = 'spell-row';
                     const label = document.createElement('div');
-                    label.textContent = set.name + ' — ' + ids.map(([, recipe]) => recipe.name).join(', ');
+                    const shown = ids.filter(([, recipe]) => !recipe.part);
+                    label.textContent = set.name + ' — ' + (shown.length ? shown : ids).map(([, recipe]) => recipe.name).join(', ');
                     line.appendChild(label);
                     const button = document.createElement('button');
                     button.type = 'button';
@@ -8531,8 +8997,8 @@
                         const row = document.createElement('div');
                         row.className = 'spell-row';
                         const text = document.createElement('div');
-                        const mats = Object.entries(recipe.cost || {}).map(([kind, qty]) => qty + ' ' + kind).join(', ');
-                        const makes = recipe.yield ? ' → ' + Object.entries(recipe.yield).map(([kind, qty]) => qty + ' ' + kind).join(', ') : '';
+                        const mats = costText(recipe.cost);
+                        const makes = !recipe.part && recipe.yield ? ' → ' + Object.entries(recipe.yield).map(([kind, qty]) => qty + ' ' + materialName(kind)).join(', ') : '';
                         const needLevel = recipe.buyLevel || 1;
                         text.textContent = recipe.name + ' · skill ' + (recipe.craftLevel || 1) + (needLevel > 1 ? ' · level ' + needLevel : '') + ((recipe.reqLevel || 1) > 1 ? ' · equips at ' + recipe.reqLevel : '') + ' · ' + mats + makes;
                         row.appendChild(text);
@@ -8587,6 +9053,13 @@
                 for (const [kind, name] of SUPPLY_KINDS) {
                     const qty = (inventory.materials && inventory.materials[kind]) || 0;
                     if (!qty) continue;
+                    const group = itemRarity({ kind });
+                    offers.push({ group, name: name + ' x' + qty + ' · ' + formatMoney(sellPrice({ kind })) + ' each', item: { kind, name, qty }, send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
+                }
+                const knownSupply = new Set(SUPPLY_KINDS.map(([id]) => id));
+                for (const [kind, qty] of Object.entries(inventory.materials || {})) {
+                    if (!qty || knownSupply.has(kind) || kind === 'ore') continue;
+                    const name = materialName(kind);
                     const group = itemRarity({ kind });
                     offers.push({ group, name: name + ' x' + qty + ' · ' + formatMoney(sellPrice({ kind })) + ' each', item: { kind, name, qty }, send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
                 }
@@ -9172,7 +9645,7 @@
                     body.appendChild(job);
                 }
                 const note = document.createElement('div');
-                note.textContent = 'Each item takes 3 seconds. x1, x10, or all you have materials for.';
+                note.textContent = 'Each item takes 3 seconds. Make the parts first. Making a part raises the skill too. x1, x10, or all you have materials for.';
                 body.appendChild(note);
                 const split = document.createElement('div');
                 split.className = 'spell-row';
@@ -9197,21 +9670,37 @@
                 for (const [setId, rows] of Object.entries(groups)) {
                     const skill = skills[setId] || { level: 1, xp: 0, tiers: [0] };
                     body.appendChild(craftSkillBlock((craft.sets[setId] && craft.sets[setId].name) || setId, skill));
-                    rows.sort((a, b) => (a[1].craftLevel || 1) - (b[1].craftLevel || 1));
+                    rows.sort((a, b) => (a[1].part ? 0 : 1) - (b[1].part ? 0 : 1) || (a[1].craftLevel || 1) - (b[1].craftLevel || 1) || a[1].name.localeCompare(b[1].name));
+                    let sawPart = false;
+                    let sawFinished = false;
                     for (const [id, recipe] of rows) {
+                        if (recipe.part && !sawPart) {
+                            sawPart = true;
+                            const head = document.createElement('div');
+                            head.className = 'supply-break';
+                            head.textContent = 'Parts';
+                            body.appendChild(head);
+                        }
+                        if (!recipe.part && !sawFinished && rows.some(([, row]) => row.part)) {
+                            sawFinished = true;
+                            const head = document.createElement('div');
+                            head.className = 'supply-break';
+                            head.textContent = 'Finished';
+                            body.appendChild(head);
+                        }
                         const line = document.createElement('div');
                         line.className = 'spell-row';
                         line.appendChild(itemCanvas(recipe));
                         const label = document.createElement('div');
-                        const cost = Object.entries(recipe.cost || {}).map(([kind, qty]) => qty + ' ' + kind).join(', ');
-                        const makes = recipe.yield ? ' → ' + Object.entries(recipe.yield).map(([kind, qty]) => qty + ' ' + kind).join(', ') : '';
+                        const cost = costText(recipe.cost);
+                        const makes = !recipe.part && recipe.yield ? ' → ' + Object.entries(recipe.yield).map(([kind, qty]) => qty + ' ' + materialName(kind)).join(', ') : '';
                         const costs = Object.entries(recipe.cost || {});
                         const can = costs.length ? costs.reduce((n, [kind, qty]) => Math.min(n, qty > 0 ? Math.floor(haveKind(kind) / qty) : n), Infinity) : 0;
                         const bits = statBits(recipe);
                         const gain = craftXpGain(recipe.craftLevel || 1, skill.level);
                         const tier = recipe.tier || 0;
                         const trained = (skill.tiers || [0]).includes(tier);
-                        const need = Math.max(tier, recipe.buy ? (recipe.craftLevel || 1) : 0);
+                        const need = Math.max(tier, (recipe.buy || recipe.part) ? (recipe.craftLevel || 1) : 0);
                         const open = trained && skill.level >= need;
                         label.textContent = recipe.name + (open && can > 0 ? ' x' + can : '') + (recipe.buy ? ' · skill ' + (recipe.craftLevel || 1) : '') + (tier ? ' · tier ' + tier : '') + (bits.length ? ' · ' + bits.join(' ') : '') + (recipe.armor ? ' · armor ' + recipe.armor : '') + ' · ' + cost + makes + (gain ? ' · +' + gain + ' skill' : '');
                         bindItemTip(line, recipe, ['Click Craft']);
@@ -9319,6 +9808,12 @@
                 if (picker.hidden || picker.contains(e.target)) return;
                 picker.hidden = true;
             });
+            onBindsChanged = () => renderBar();
+            whenSettings = () => {
+                for (const code of Object.keys(held)) delete held[code];
+                arrows.up = arrows.down = arrows.left = arrows.right = false;
+                syncMoveKeys();
+            };
             renderBar();
             document.querySelectorAll('#petBar [data-pet]').forEach(button => {
                 button.addEventListener('click', () => commandPet(button.dataset.pet));
@@ -9348,6 +9843,18 @@
 
             // Input
             document.addEventListener('keydown', (e) => {
+                if (listenAction) {
+                    e.preventDefault();
+                    if (e.repeat) return;
+                    if (e.key !== 'Escape') assignBind(listenAction, e.code);
+                    listenAction = '';
+                    renderBinds();
+                    return;
+                }
+                if (settingsOpen()) {
+                    if (e.key === 'Escape') setSettingsOpen(false);
+                    return;
+                }
                 if (!document.getElementById('pick').hidden) return;
                 if (!playReady) return;
                 if (e.key === 'Escape' && document.getElementById('questlog').classList.contains('open')) {
@@ -9362,34 +9869,33 @@
                     if (e.key === 'Escape') e.target.blur();
                     return;
                 }
-                if (e.key === 'Enter') {
+                if (e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') e.preventDefault();
+                if (e.code === 'ArrowUp') arrows.up = true;
+                if (e.code === 'ArrowDown') arrows.down = true;
+                if (e.code === 'ArrowLeft') arrows.left = true;
+                if (e.code === 'ArrowRight') arrows.right = true;
+                held[e.code] = true;
+                syncMoveKeys();
+                if (e.code === 'Space' || binds.jump === e.code) e.preventDefault();
+                if (e.repeat) return;
+                const act = actionByCode(e.code);
+                if (act === 'chat') {
                     e.preventDefault();
                     document.getElementById('chatInput').focus();
                     return;
                 }
-                const k = e.key.toLowerCase();
-                if (k === 'arrowup' || k === 'arrowdown' || k === 'arrowleft' || k === 'arrowright') e.preventDefault();
-                if (k === 'arrowup') arrows.up = true;
-                if (k === 'arrowdown') arrows.down = true;
-                if (k === 'arrowleft') arrows.left = true;
-                if (k === 'arrowright') arrows.right = true;
-                if (k in keys) keys[k] = true;
-                if (e.key === 'Shift') keys.shift = true;
-                if (e.key === ' ') {
-                    keys.space = true;
-                    e.preventDefault();
-                }
-                if (k >= '1' && k <= '8') {
-                    const id = actionBar[barPage][Number(k) - 1];
-                    if (id) useAction(id);
-                }
-                if (k === '[' || k === '-') changePage(-1);
-                if (k === ']' || k === '=') changePage(1);
-                if (e.key === 'Tab') {
+                if (act === 'target') {
                     e.preventDefault();
                     cycleTarget(e.shiftKey ? -1 : 1);
+                    return;
                 }
-                if (k === 'e') {
+                if (act === 'hearth') {
+                    beginHearth();
+                    return;
+                }
+                if (act === 'pagePrev') changePage(-1);
+                else if (act === 'pageNext') changePage(1);
+                else if (act === 'action') {
                     const px = characterGroup.position.x;
                     const pz = characterGroup.position.z;
                     let near = false;
@@ -9400,30 +9906,33 @@
                     if (near) tryGather();
                     else if (basic) tryAttack(basic);
                     else showMessage('Select a spell');
-                }
-                if (k === 'l') toggleQuestLog();
-                if (k === 'b' || k === 'i') toggleBag();
-                if (k === 'c') toggleSheet();
-                if (k === 'f') tryLoot();
-                if (k === 't') tryTalk();
-                if (k === 'p') inviteTarget();
-                if (k === 'r') tryReclaim();
-                if (k === 'm') toggleWorldMap();
-                if (k === 'h') {
-                    if (!e.repeat) beginHearth();
-                    return;
+                } else if (act === 'loot') tryLoot();
+                else if (act === 'talk') tryTalk();
+                else if (act === 'bag') toggleBag();
+                else if (act === 'character') toggleSheet();
+                else if (act === 'quests') toggleQuestLog();
+                else if (act === 'party') inviteTarget();
+                else if (act === 'body') tryReclaim();
+                else if (act === 'map') toggleWorldMap();
+                else if (act && act.indexOf('bar') === 0) {
+                    const index = Number(act.slice(3)) - 1;
+                    const id = actionBar[barPage] && actionBar[barPage][index];
+                    if (id) useAction(id);
                 }
                 if (hearth) cancelHearth('Hearth interrupted');
             });
             document.addEventListener('keyup', (e) => {
-                const k = e.key.toLowerCase();
-                if (k === 'arrowup') arrows.up = false;
-                if (k === 'arrowdown') arrows.down = false;
-                if (k === 'arrowleft') arrows.left = false;
-                if (k === 'arrowright') arrows.right = false;
-                if (k in keys) keys[k] = false;
-                if (e.key === 'Shift') keys.shift = false;
-                if (e.key === ' ') keys.space = false;
+                if (e.code === 'ArrowUp') arrows.up = false;
+                if (e.code === 'ArrowDown') arrows.down = false;
+                if (e.code === 'ArrowLeft') arrows.left = false;
+                if (e.code === 'ArrowRight') arrows.right = false;
+                delete held[e.code];
+                syncMoveKeys();
+            });
+            window.addEventListener('blur', () => {
+                for (const code of Object.keys(held)) delete held[code];
+                arrows.up = arrows.down = arrows.left = arrows.right = false;
+                syncMoveKeys();
             });
 
             renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());

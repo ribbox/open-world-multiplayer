@@ -2726,13 +2726,13 @@ const RECIPES = {
 };
 
 const CRAFT_SETS = {
-    cloth: { name: 'Clothworking', cost: 12, rarity: 1, text: 'Cloth armor for mages and warlocks.' },
-    leather: { name: 'Leatherworking', cost: 20, rarity: 2, text: 'Leather armor for hunters.' },
-    plate: { name: 'Armorsmithing', cost: 30, rarity: 3, text: 'Helm, breastplate, gauntlets, greaves, and sabatons.' },
-    weapon: { name: 'Weaponsmithing', cost: 16, rarity: 1, text: 'Swords, staves, bows, and wands.' },
-    magic: { name: 'Spellforging', cost: 28, rarity: 4, text: 'Enchanted blades, staves, bows, and wands.' },
-    alchemy: { name: 'Alchemy', cost: 18, rarity: 2, text: 'Potions, and refining powder into gems.' },
-    explosive: { name: 'Explosives', cost: 22, rarity: 2, text: 'Charges, flasks, and distractions from powder, stone, and ore.' }
+    cloth: { name: 'Clothworking', cost: 12, rarity: 1, text: 'Buttons, thread, and bolts, then cloth armor. Higher patterns need rarer metal and silk.' },
+    leather: { name: 'Leatherworking', cost: 20, rarity: 2, text: 'Strips, buckles, and laces, then leather armor. Higher patterns need rarer metal.' },
+    plate: { name: 'Armorsmithing', cost: 30, rarity: 3, text: 'Sheets, rivets, and straps, then plate. Higher patterns need rarer ore.' },
+    weapon: { name: 'Weaponsmithing', cost: 16, rarity: 1, text: 'Blades, hafts, and fittings. Higher patterns need rarer ore and wood.' },
+    magic: { name: 'Spellforging', cost: 28, rarity: 4, text: 'Focuses and bindings, then enchanted gear. Higher patterns need rarer gems.' },
+    alchemy: { name: 'Alchemy', cost: 18, rarity: 2, text: 'Vials and extracts, then potions. Higher recipes need rarer gems.' },
+    explosive: { name: 'Explosives', cost: 22, rarity: 2, text: 'A bomb needs a case, powder, and a trigger. Cases start from copper. Triggers start from a gem and iron. Higher bombs need rarer ore and gems.' }
 };
 
 const SHOP_GOODS = [
@@ -2899,6 +2899,7 @@ function publicCraft() {
             buy: !!recipe.buy,
             price: recipe.price || 0,
             yield: recipe.yield || null,
+            part: !!recipe.part,
             tier: recipe.tier || 0,
             craftLevel: recipe.craftLevel || 1,
             buyLevel: recipe.buyLevel || 0,
@@ -3136,8 +3137,366 @@ function publicCharacter(player) {
 const MATERIAL_KINDS = ['wood', 'stone', 'cloth', 'leather', 'ore', 'copper', 'tin', 'iron', 'silver', 'mithril', 'thorium', 'gem', 'malachite', 'quartz', 'jade', 'ruby', 'sapphire', 'diamond', 'herb', 'powder', 'silk'];
 
 function blankMaterials() {
-    return { wood: 0, stone: 0, cloth: 0, leather: 0, ore: 0, copper: 0, tin: 0, iron: 0, silver: 0, mithril: 0, thorium: 0, gem: 0, malachite: 0, quartz: 0, jade: 0, ruby: 0, sapphire: 0, diamond: 0, herb: 0, powder: 0, silk: 0 };
+    const mats = { wood: 0, stone: 0, cloth: 0, leather: 0, ore: 0, copper: 0, tin: 0, iron: 0, silver: 0, mithril: 0, thorium: 0, gem: 0, malachite: 0, quartz: 0, jade: 0, ruby: 0, sapphire: 0, diamond: 0, herb: 0, powder: 0, silk: 0 };
+    for (const kind of MATERIAL_KINDS) if (mats[kind] == null) mats[kind] = 0;
+    return mats;
 }
+
+const ORE_GRADE = [
+    { level: 225, ore: 'thorium', gem: 'diamond' },
+    { level: 200, ore: 'mithril', gem: 'sapphire' },
+    { level: 140, ore: 'silver', gem: 'ruby' },
+    { level: 50, ore: 'iron', gem: 'jade' },
+    { level: 25, ore: 'tin', gem: 'quartz' },
+    { level: 0, ore: 'copper', gem: 'gem' }
+];
+const ORE_NAME = { copper: 'Copper', tin: 'Tin', iron: 'Iron', silver: 'Silver', mithril: 'Mithril', thorium: 'Thorium' };
+const GEM_NAME = { gem: 'Gem', malachite: 'Malachite', quartz: 'Quartz', jade: 'Jade', ruby: 'Ruby', sapphire: 'Sapphire', diamond: 'Diamond' };
+const ORE_QTY = { copper: 1, tin: 2, iron: 2, silver: 3, mithril: 3, thorium: 4 };
+const GEM_QTY = { gem: 1, malachite: 1, quartz: 1, jade: 1, ruby: 1, sapphire: 2, diamond: 2 };
+
+function gradeLevel(recipe) {
+    const skill = recipe.craftLevel || 1;
+    const tier = recipe.tier || 0;
+    return Math.max(skill, tier >= 225 ? 225 : tier >= 150 ? 140 : tier >= 75 ? 75 : 0);
+}
+
+function oreGemGrade(recipe) {
+    const level = gradeLevel(recipe);
+    return ORE_GRADE.find(row => level >= row.level) || ORE_GRADE[ORE_GRADE.length - 1];
+}
+
+function clothGrade(recipe) {
+    const level = gradeLevel(recipe);
+    if (level >= 220) return 'arcane';
+    if (level >= 140) return 'rune';
+    if (level >= 40) return 'silk';
+    return 'linen';
+}
+
+function hideGrade(recipe) {
+    const level = gradeLevel(recipe);
+    if (level >= 200) return 'hardened';
+    if (level >= 140) return 'thick';
+    if (level >= 50) return 'cured';
+    return 'raw';
+}
+
+function woodGrade(recipe) {
+    const level = gradeLevel(recipe);
+    if (level >= 160) return 'ironwood';
+    if (level >= 40) return 'yew';
+    return 'ash';
+}
+
+function partTier(level) {
+    if (level >= 225) return 225;
+    if (level >= 150) return 150;
+    if (level >= 75) return 75;
+    return 0;
+}
+
+function definePart(id, spec) {
+    if (RECIPES[id] && RECIPES[id].part) return id;
+    const level = spec.craftLevel || 1;
+    RECIPES[id] = {
+        name: spec.name,
+        set: spec.set,
+        kind: 'part',
+        part: true,
+        yield: { [id]: 1 },
+        cost: spec.cost,
+        tier: spec.tier != null ? spec.tier : partTier(level),
+        craftLevel: level,
+        icon: spec.icon || 'ore'
+    };
+    return id;
+}
+
+function installCraftParts() {
+    for (const [id, recipe] of Object.entries(RECIPES)) {
+        if (!recipe || recipe.part) continue;
+        if (recipe.tier == null) recipe.tier = 0;
+        if (!recipe.craftLevel) {
+            if (recipe.loot) {
+                const greater = /greater|heavy/i.test(recipe.name || '');
+                recipe.tier = recipe.tier || (greater ? 150 : 75);
+                recipe.craftLevel = greater ? 160 : 85;
+            } else recipe.craftLevel = APPRENTICE_LEVEL[id] || 1;
+        }
+    }
+    const partIds = [];
+    const track = (id) => {
+        if (!partIds.includes(id)) partIds.push(id);
+        return id;
+    };
+    const gradeOf = (recipe) => oreGemGrade(recipe);
+    const triggerMetal = (gem) => {
+        if (gem === 'diamond') return ['thorium', 2];
+        if (gem === 'sapphire') return ['mithril', 2];
+        if (gem === 'ruby') return ['silver', 1];
+        return ['iron', 1];
+    };
+
+    for (const row of ORE_GRADE) {
+        const ore = row.ore;
+        const qty = ORE_QTY[ore];
+        const level = row.level || 1;
+        track(definePart('part-explosive-case-' + ore, {
+            name: ORE_NAME[ore] + ' Case', set: 'explosive', icon: 'bomb', craftLevel: level,
+            cost: { [ore]: qty }
+        }));
+        track(definePart('part-cloth-buttons-' + ore, {
+            name: ORE_NAME[ore] + ' Buttons', set: 'cloth', icon: 'ore', craftLevel: level,
+            cost: { [ore]: Math.max(1, qty - (ore === 'copper' ? 0 : 1)) }
+        }));
+        track(definePart('part-leather-buckle-' + ore, {
+            name: ORE_NAME[ore] + ' Buckle', set: 'leather', icon: 'ore', craftLevel: level,
+            cost: { [ore]: Math.max(1, qty - 1) }
+        }));
+        track(definePart('part-plate-sheet-' + ore, {
+            name: ORE_NAME[ore] + ' Sheet', set: 'plate', icon: 'ore', craftLevel: level,
+            cost: { [ore]: qty + 1, stone: ore === 'copper' || ore === 'tin' ? 1 : 2 }
+        }));
+        track(definePart('part-plate-rivets-' + ore, {
+            name: ORE_NAME[ore] + ' Rivets', set: 'plate', icon: 'ore', craftLevel: level,
+            cost: { [ore]: Math.max(1, Math.ceil(qty / 2)) }
+        }));
+        track(definePart('part-weapon-blade-' + ore, {
+            name: ORE_NAME[ore] + ' Blade', set: 'weapon', icon: 'sword', craftLevel: level,
+            cost: { [ore]: qty + 1 }
+        }));
+        track(definePart('part-weapon-fitting-' + ore, {
+            name: ORE_NAME[ore] + ' Fitting', set: 'weapon', icon: 'ore', craftLevel: level,
+            cost: { [ore]: Math.max(1, Math.ceil(qty / 2)) }
+        }));
+        track(definePart('part-magic-core-' + ore, {
+            name: ORE_NAME[ore] + ' Core', set: 'magic', icon: 'ore', craftLevel: level,
+            cost: { [ore]: qty }
+        }));
+    }
+
+    const triggerGems = ['gem', 'quartz', 'jade', 'ruby', 'sapphire', 'diamond'];
+    const triggerLevel = { gem: 1, quartz: 25, jade: 75, ruby: 140, sapphire: 200, diamond: 225 };
+    for (const gem of triggerGems) {
+        const [metal, metalQty] = triggerMetal(gem);
+        const level = triggerLevel[gem];
+        track(definePart('part-explosive-trigger-' + gem, {
+            name: (gem === 'gem' ? 'Iron' : GEM_NAME[gem]) + ' Trigger',
+            set: 'explosive', icon: 'gem', craftLevel: level,
+            cost: { [gem]: GEM_QTY[gem] || 1, [metal]: metalQty }
+        }));
+        const vialCost = { stone: level >= 200 ? 3 : level >= 75 ? 2 : 1 };
+        if (gem !== 'gem') vialCost[gem] = GEM_QTY[gem] || 1;
+        if (level < 75) vialCost.herb = 1;
+        track(definePart('part-explosive-vial-' + gem, {
+            name: (gem === 'gem' ? 'Stone' : GEM_NAME[gem]) + ' Vial',
+            set: 'explosive', icon: 'stone', craftLevel: level, cost: vialCost
+        }));
+        track(definePart('part-magic-focus-' + gem, {
+            name: GEM_NAME[gem] + ' Focus', set: 'magic', icon: 'gem', craftLevel: level,
+            cost: { [gem]: (GEM_QTY[gem] || 1) + (level >= 200 ? 1 : 0) }
+        }));
+        if (gem !== 'gem') {
+            track(definePart('part-alchemy-catalyst-' + gem, {
+                name: GEM_NAME[gem] + ' Catalyst', set: 'alchemy', icon: 'gem', craftLevel: level,
+                cost: { [gem]: GEM_QTY[gem] || 1, powder: level >= 200 ? 2 : 1 }
+            }));
+        }
+    }
+
+    const clothParts = {
+        linen: { level: 1, bolt: { cloth: 2 }, thread: { cloth: 1 } },
+        silk: { level: 40, bolt: { silk: 2, cloth: 1 }, thread: { silk: 1 } },
+        rune: { level: 140, bolt: { silk: 4, cloth: 2 }, thread: { silk: 2 } },
+        arcane: { level: 220, bolt: { silk: 6, sapphire: 1 }, thread: { silk: 3, sapphire: 1 } }
+    };
+    const clothLabel = { linen: 'Linen', silk: 'Silk', rune: 'Rune', arcane: 'Arcane' };
+    for (const [grade, spec] of Object.entries(clothParts)) {
+        track(definePart('part-cloth-bolt-' + grade, {
+            name: clothLabel[grade] + ' Bolt', set: 'cloth', icon: 'cloth', craftLevel: spec.level, cost: spec.bolt
+        }));
+        track(definePart('part-cloth-thread-' + grade, {
+            name: clothLabel[grade] + ' Thread', set: 'cloth', icon: 'cloth', craftLevel: spec.level, cost: spec.thread
+        }));
+        track(definePart('part-weapon-string-' + grade, {
+            name: clothLabel[grade] + ' String', set: 'weapon', icon: 'cloth', craftLevel: spec.level, cost: spec.thread
+        }));
+        track(definePart('part-magic-binding-' + grade, {
+            name: clothLabel[grade] + ' Binding', set: 'magic', icon: 'cloth', craftLevel: spec.level, cost: spec.thread
+        }));
+    }
+
+    const hides = {
+        raw: { level: 1, cost: { leather: 2 } },
+        cured: { level: 50, cost: { leather: 3 } },
+        thick: { level: 140, cost: { leather: 5 } },
+        hardened: { level: 200, cost: { leather: 6, ruby: 1 } }
+    };
+    const hideLabel = { raw: 'Raw', cured: 'Cured', thick: 'Thick', hardened: 'Hardened' };
+    for (const [grade, spec] of Object.entries(hides)) {
+        track(definePart('part-leather-strip-' + grade, {
+            name: hideLabel[grade] + ' Strip', set: 'leather', icon: 'leather', craftLevel: spec.level, cost: spec.cost
+        }));
+    }
+    track(definePart('part-leather-laces-raw', { name: 'Raw Laces', set: 'leather', icon: 'leather', craftLevel: 1, cost: { leather: 1 } }));
+    track(definePart('part-leather-laces-silk', { name: 'Silk Laces', set: 'leather', icon: 'leather', craftLevel: 75, cost: { leather: 1, silk: 1 } }));
+    track(definePart('part-leather-laces-rune', { name: 'Rune Laces', set: 'leather', icon: 'leather', craftLevel: 160, cost: { silk: 2, ruby: 1 } }));
+    track(definePart('part-plate-straps-leather', { name: 'Leather Straps', set: 'plate', icon: 'leather', craftLevel: 1, cost: { leather: 1 } }));
+    track(definePart('part-plate-straps-silk', { name: 'Silk Straps', set: 'plate', icon: 'leather', craftLevel: 140, cost: { leather: 2, silk: 1 } }));
+    track(definePart('part-plate-straps-rune', { name: 'Rune Straps', set: 'plate', icon: 'leather', craftLevel: 220, cost: { leather: 2, silk: 2, ruby: 1 } }));
+
+    const woods = {
+        ash: { level: 1, haft: { wood: 1 }, stave: { wood: 2 }, shaft: { wood: 2 } },
+        yew: { level: 40, haft: { wood: 2 }, stave: { wood: 4 }, shaft: { wood: 3, silk: 1 } },
+        ironwood: { level: 160, haft: { wood: 4, silk: 1 }, stave: { wood: 6, silk: 2 }, shaft: { wood: 5, silk: 2 } }
+    };
+    const woodLabel = { ash: 'Ash', yew: 'Yew', ironwood: 'Ironwood' };
+    for (const [grade, spec] of Object.entries(woods)) {
+        track(definePart('part-weapon-haft-' + grade, { name: woodLabel[grade] + ' Haft', set: 'weapon', icon: 'wood', craftLevel: spec.level, cost: spec.haft }));
+        track(definePart('part-weapon-stave-' + grade, { name: woodLabel[grade] + ' Stave', set: 'weapon', icon: 'wood', craftLevel: spec.level, cost: spec.stave }));
+        track(definePart('part-weapon-shaft-' + grade, { name: woodLabel[grade] + ' Shaft', set: 'weapon', icon: 'wood', craftLevel: spec.level, cost: spec.shaft }));
+        track(definePart('part-magic-shaft-' + grade, { name: woodLabel[grade] + ' Shaft', set: 'magic', icon: 'wood', craftLevel: spec.level, cost: spec.shaft }));
+    }
+
+    const extracts = {
+        minor: { level: 1, cost: { herb: 2 } },
+        lesser: { level: 20, cost: { herb: 3 } },
+        strong: { level: 75, cost: { herb: 4, powder: 1 } },
+        ruby: { level: 140, cost: { herb: 6, powder: 2 } },
+        sapphire: { level: 200, cost: { herb: 8, powder: 2, sapphire: 1 } },
+        diamond: { level: 225, cost: { herb: 10, powder: 3, diamond: 1 } }
+    };
+    const extractName = { minor: 'Minor Extract', lesser: 'Lesser Extract', strong: 'Strong Extract', ruby: 'Ruby Extract', sapphire: 'Sapphire Extract', diamond: 'Diamond Extract' };
+    for (const [grade, spec] of Object.entries(extracts)) {
+        track(definePart('part-alchemy-extract-' + grade, {
+            name: extractName[grade], set: 'alchemy', icon: 'herb', craftLevel: spec.level, cost: spec.cost
+        }));
+        const vialCost = { stone: spec.level >= 200 ? 2 : 1 };
+        if (grade === 'ruby' || grade === 'sapphire' || grade === 'diamond') vialCost[grade] = 1;
+        else if (grade === 'strong') vialCost.jade = 1;
+        else if (grade === 'lesser') vialCost.quartz = 1;
+        track(definePart('part-alchemy-vial-' + grade, {
+            name: (grade === 'minor' ? 'Stone' : grade === 'lesser' ? 'Quartz' : grade === 'strong' ? 'Jade' : GEM_NAME[grade]) + ' Vial',
+            set: 'alchemy', icon: 'stone', craftLevel: spec.level, cost: vialCost
+        }));
+    }
+
+    const sumRaw = (raw, keys) => keys.reduce((sum, key) => sum + (Number(raw[key]) || 0), 0);
+
+    for (const recipe of Object.values(RECIPES)) {
+        if (!recipe || recipe.part || recipe.usesParts) continue;
+        if (recipe.kind === 'gem' && recipe.yield) continue;
+        const raw = recipe.rawCost || { ...(recipe.cost || {}) };
+        recipe.rawCost = raw;
+        const grade = gradeOf(recipe);
+        const cloth = clothGrade(recipe);
+        const hide = hideGrade(recipe);
+        const wood = woodGrade(recipe);
+        const set = recipe.set;
+        let cost = null;
+        if (set === 'explosive') {
+            const powder = Math.max(1, Number(raw.powder) || 1);
+            const gem = grade.gem === 'gem' ? 'gem' : grade.gem;
+            if (recipe.kind === 'lure') {
+                cost = { ['part-explosive-case-' + grade.ore]: 1, powder };
+            } else if (/flask/i.test(recipe.name || '')) {
+                cost = { ['part-explosive-vial-' + gem]: 1, powder, ['part-explosive-trigger-' + gem]: 1 };
+            } else {
+                cost = { ['part-explosive-case-' + grade.ore]: 1, powder, ['part-explosive-trigger-' + gem]: 1 };
+            }
+        } else if (set === 'cloth') {
+            const bulk = sumRaw(raw, ['cloth', 'silk']) >= 10 ? 2 : 1;
+            cost = {
+                ['part-cloth-bolt-' + cloth]: bulk,
+                ['part-cloth-buttons-' + grade.ore]: 1,
+                ['part-cloth-thread-' + cloth]: 1
+            };
+        } else if (set === 'leather') {
+            const bulk = (Number(raw.leather) || 0) >= 8 ? 2 : 1;
+            const laces = gradeLevel(recipe) >= 160 ? 'rune' : gradeLevel(recipe) >= 75 ? 'silk' : 'raw';
+            cost = {
+                ['part-leather-strip-' + hide]: bulk,
+                ['part-leather-buckle-' + grade.ore]: 1,
+                ['part-leather-laces-' + laces]: 1
+            };
+        } else if (set === 'plate') {
+            const bulk = sumRaw(raw, ['copper', 'tin', 'iron', 'silver', 'mithril', 'thorium', 'ore']) >= 8 ? 2 : 1;
+            const straps = gradeLevel(recipe) >= 220 ? 'rune' : gradeLevel(recipe) >= 140 ? 'silk' : 'leather';
+            cost = {
+                ['part-plate-sheet-' + grade.ore]: bulk,
+                ['part-plate-rivets-' + grade.ore]: 1,
+                ['part-plate-straps-' + straps]: 1
+            };
+        } else if (set === 'weapon' || set === 'magic') {
+            const family = weaponFamily(recipe.weapon);
+            const caster = family === 'staff' || family === 'wand' || recipe.slot === 'offhand' || recipe.slot === 'neck' || !recipe.weapon;
+            const bow = family === 'bow';
+            const gem = grade.gem === 'gem' ? 'gem' : grade.gem;
+            if (set === 'magic') {
+                const gemCount = gradeLevel(recipe) >= 200 ? 2 : 1;
+                if (bow || caster) {
+                    cost = {
+                        ['part-magic-shaft-' + wood]: 1,
+                        ['part-magic-focus-' + gem]: gemCount,
+                        ['part-magic-binding-' + cloth]: 1
+                    };
+                } else {
+                    cost = {
+                        ['part-magic-core-' + grade.ore]: 1,
+                        ['part-magic-focus-' + gem]: 1,
+                        ['part-magic-binding-' + cloth]: 1
+                    };
+                }
+            } else if (bow) {
+                cost = {
+                    ['part-weapon-stave-' + wood]: 1,
+                    ['part-weapon-string-' + cloth]: 1,
+                    ['part-weapon-fitting-' + grade.ore]: 1
+                };
+            } else if (caster) {
+                cost = {
+                    ['part-weapon-shaft-' + wood]: 1,
+                    ['part-magic-focus-' + gem]: 1,
+                    ['part-weapon-fitting-' + grade.ore]: 1
+                };
+                const focus = definePart('part-weapon-focus-' + gem, {
+                    name: GEM_NAME[gem] + ' Focus', set: 'weapon', icon: 'gem', craftLevel: triggerLevel[gem] || 1,
+                    cost: { [gem]: GEM_QTY[gem] || 1 }
+                });
+                track(focus);
+                delete cost['part-magic-focus-' + gem];
+                cost[focus] = gradeLevel(recipe) >= 200 ? 2 : 1;
+            } else {
+                cost = {
+                    ['part-weapon-blade-' + grade.ore]: 1,
+                    ['part-weapon-haft-' + wood]: 1,
+                    ['part-weapon-fitting-' + grade.ore]: 1
+                };
+            }
+        } else if (set === 'alchemy') {
+            const level = gradeLevel(recipe);
+            const extract = level >= 225 ? 'diamond' : level >= 200 ? 'sapphire' : level >= 140 ? 'ruby' : level >= 75 ? 'strong' : level >= 20 ? 'lesser' : 'minor';
+            cost = {
+                ['part-alchemy-vial-' + extract]: 1,
+                ['part-alchemy-extract-' + extract]: (Number(raw.herb) || 0) >= 10 ? 2 : 1
+            };
+            if (level >= 140) cost['part-alchemy-catalyst-' + (extract === 'strong' ? 'jade' : extract)] = 1;
+        }
+        if (!cost) continue;
+        recipe.cost = cost;
+        recipe.usesParts = true;
+    }
+
+    for (const id of partIds) {
+        const recipe = RECIPES[id];
+        if (!recipe) continue;
+        MATERIAL_NAMES[id] = recipe.name;
+        if (!MATERIAL_KINDS.includes(id)) MATERIAL_KINDS.push(id);
+    }
+}
+
+installCraftParts();
 
 function coinCount(player) {
     return player.coins || 0;
@@ -3350,7 +3709,7 @@ function startCraft(player, id, count) {
     const skill = ensureCraftSkill(player, recipe.set) || { level: 1, xp: 0, tiers: [0] };
     const tier = recipe.tier || 0;
     if (!(skill.tiers || [0]).includes(tier)) return 'Train tier ' + tier + ' at a trainer';
-    if (skill.level < Math.max(tier, recipe.buy ? (recipe.craftLevel || 1) : 0)) return 'Requires crafting level ' + Math.max(tier, recipe.buy ? recipe.craftLevel : tier);
+    if (skill.level < Math.max(tier, (recipe.buy || recipe.part) ? (recipe.craftLevel || 1) : 0)) return 'Requires crafting level ' + Math.max(tier, (recipe.buy || recipe.part) ? (recipe.craftLevel || 1) : tier);
     const can = craftCount(player, recipe);
     if (can < 1) {
         const [kind, qty] = Object.entries(recipe.cost || {})[0] || ['materials', 1];
@@ -3423,7 +3782,7 @@ function craftItem(player, id) {
     const skill = ensureCraftSkill(player, recipe.set) || { level: 1, xp: 0, tiers: [0] };
     const tier = recipe.tier || 0;
     if (!(skill.tiers || [0]).includes(tier)) return 'Train tier ' + tier + ' at a trainer';
-    if (skill.level < Math.max(tier, recipe.buy ? (recipe.craftLevel || 1) : 0)) return 'Requires crafting level ' + Math.max(tier, recipe.buy ? recipe.craftLevel : tier);
+    if (skill.level < Math.max(tier, (recipe.buy || recipe.part) ? (recipe.craftLevel || 1) : 0)) return 'Requires crafting level ' + Math.max(tier, (recipe.buy || recipe.part) ? (recipe.craftLevel || 1) : tier);
     for (const [kind, qty] of Object.entries(recipe.cost)) {
         if (countKind(player, kind) < qty) return 'Need ' + qty + ' ' + (MATERIAL_NAMES[kind] || kind);
     }
@@ -8061,6 +8420,7 @@ function installItems(list) {
             };
         }
     }
+    installCraftParts();
 }
 
 function costText(cost) {
@@ -8069,7 +8429,7 @@ function costText(cost) {
 }
 
 function itemRecords() {
-    return Object.entries(RECIPES).map(([id, recipe]) => {
+    return Object.entries(RECIPES).filter(([, recipe]) => recipe && !recipe.part).map(([id, recipe]) => {
         const made = statsForRecipe(recipe);
         return {
             id,

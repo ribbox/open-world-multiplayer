@@ -730,6 +730,14 @@ const SELL_RARITY = {
 
 export function itemRarity(item) {
     if (!item) return 1;
+    if (item.kind && SELL_RARITY[item.kind] == null && String(item.kind).indexOf('part-') === 0) {
+        const id = String(item.kind);
+        if (/thorium|diamond/.test(id)) return 5;
+        if (/mithril|sapphire|arcane/.test(id)) return 5;
+        if (/silver|ruby|rune|hardened/.test(id)) return 4;
+        if (/iron|jade|silk|thick|yew|ironwood/.test(id)) return 3;
+        return 2;
+    }
     return SELL_RARITY[item.kind] || 1;
 }
 
