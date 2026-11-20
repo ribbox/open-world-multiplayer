@@ -545,7 +545,8 @@
         }
         .stat-line span:last-child { color: #f1c40f; }
         #sheet .row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
-        #sheet .views { display: flex; gap: 6px; margin: 0 0 12px; }
+        #sheet .views { display: flex; gap: 6px; margin: 0 0 12px; flex-wrap: wrap; }
+        #sheet .craft-sets { margin: 10px 0 8px; }
         #doll {
             position: relative;
             display: grid;
@@ -3076,6 +3077,7 @@
             let currentTool = 'sword';
             let character = { class: null, equipment: {}, trained: [], talents: {}, points: 0, known: null, spells: {}, talentsDef: {} };
             let sheetTab = 'character';
+            let craftSetTab = '';
             let barPage = 0;
             let actionBar = defaultActionBar();
             let restoreWeapon = false;
@@ -9668,13 +9670,41 @@
                     if (!groups[recipe.set]) groups[recipe.set] = [];
                     groups[recipe.set].push([id, recipe]);
                 }
-                for (const [setId, rows] of Object.entries(groups)) {
-                    const skill = skills[setId] || { level: 1, xp: 0, tiers: [0] };
-                    body.appendChild(craftSkillBlock((craft.sets[setId] && craft.sets[setId].name) || setId, skill));
-                    rows.sort((a, b) => (a[1].part ? 0 : 1) - (b[1].part ? 0 : 1) || (a[1].craftLevel || 1) - (b[1].craftLevel || 1) || a[1].name.localeCompare(b[1].name));
-                    let sawPart = false;
-                    let sawFinished = false;
-                    for (const [id, recipe] of rows) {
+                const setIds = Object.keys(skills);
+                for (const id of Object.keys(groups)) if (!setIds.includes(id)) setIds.push(id);
+                if (!setIds.length) {
+                    const none = document.createElement('p');
+                    none.textContent = 'Learn a crafting skill from a shop assistant. You can learn 2.';
+                    body.appendChild(none);
+                    return;
+                }
+                if (!skills[craftSetTab]) craftSetTab = setIds[0];
+                const subs = document.createElement('div');
+                subs.className = 'views craft-sets';
+                for (const id of setIds) {
+                    const set = (craft.sets && craft.sets[id]) || {};
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'sheet-tab' + (craftSetTab === id ? ' on' : '');
+                    button.textContent = set.name || id;
+                    button.addEventListener('click', () => { craftSetTab = id; renderSheet(); });
+                    subs.appendChild(button);
+                }
+                body.appendChild(subs);
+                const setId = craftSetTab;
+                const rows = groups[setId] || [];
+                const skill = skills[setId] || { level: 1, xp: 0, tiers: [0] };
+                body.appendChild(craftSkillBlock((craft.sets[setId] && craft.sets[setId].name) || setId, skill));
+                if (!rows.length) {
+                    const empty = document.createElement('p');
+                    empty.textContent = 'No patterns for this skill yet.';
+                    body.appendChild(empty);
+                    return;
+                }
+                rows.sort((a, b) => (a[1].part ? 0 : 1) - (b[1].part ? 0 : 1) || (a[1].craftLevel || 1) - (b[1].craftLevel || 1) || a[1].name.localeCompare(b[1].name));
+                let sawPart = false;
+                let sawFinished = false;
+                for (const [id, recipe] of rows) {
                         if (recipe.part && !sawPart) {
                             sawPart = true;
                             const head = document.createElement('div');
@@ -9729,7 +9759,6 @@
                             line.appendChild(actions);
                         }
                         body.appendChild(line);
-                    }
                 }
             }
 
