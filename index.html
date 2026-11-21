@@ -9017,7 +9017,7 @@
                     const block = document.createElement('div');
                     block.className = 'quest-offer';
                     const line = document.createElement('p');
-                    const progress = row && row.state === 'active' ? '  ' + Math.min(row.count, def.count) + '/' + def.count : '';
+                    const progress = row && row.state === 'active' ? (row.failed ? '  Failed' : '  ' + Math.min(row.count, def.count) + '/' + def.count) : '';
                     line.textContent = def.name + ' — ' + (def.text || '') + progress;
                     block.appendChild(line);
                     const reward = document.createElement('p');

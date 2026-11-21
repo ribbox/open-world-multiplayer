@@ -1162,6 +1162,61 @@ function failProtect(questId) {
     }
 }
 
+function namedMobPresent(questId) {
+    const now = Date.now();
+    for (const npc of npcs.values()) {
+        if (!npc || npc.questId !== questId) continue;
+        if (npc.alive || (npc.respawnAt || 0) > now) return true;
+    }
+    return false;
+}
+
+function namedLostOnReload(quest) {
+    if (!quest || quest.type !== 'named') return false;
+    if (quest.dungeonId && dungeonIsInstanced(quest.dungeonId)) return false;
+    return !namedMobPresent(quest.id);
+}
+
+function dungeonIsInstanced(dungeonId) {
+    const maps = worldConfig && Array.isArray(worldConfig.maps) ? worldConfig.maps : [];
+    for (const map of maps) {
+        const cave = (map.dungeons || []).find(entry => entry && entry.id === dungeonId);
+        if (cave) return !!cave.instanced;
+    }
+    const cave = dungeonById(dungeonId);
+    return !!(cave && cave.instanced);
+}
+
+function failNamedRow(row, quest) {
+    if (!namedLostOnReload(quest)) return false;
+    if (!row || row.state !== 'active' || row.failed) return false;
+    if ((row.count || 0) >= (quest.count || 1)) return false;
+    row.failed = true;
+    row.count = 0;
+    return true;
+}
+
+function failMissingNamedQuests() {
+    for (const player of players.values()) {
+        const gone = [];
+        for (const [id, row] of Object.entries(player.quests || {})) {
+            if (failNamedRow(row, QUESTS[id])) gone.push(QUESTS[id].named || QUESTS[id].name || 'The quarry');
+        }
+        if (!gone.length) continue;
+        savePlayer(player);
+        const who = gone.length === 1 ? gone[0] : 'Named foes';
+        send(player.ws, { type: 'quests', ok: false, reason: who + ' is gone. Speak to the giver.', quests: player.quests });
+    }
+    let dirty = false;
+    for (const prof of Object.values(save.players)) {
+        if (!prof || !prof.quests || typeof prof.quests !== 'object') continue;
+        for (const [id, row] of Object.entries(prof.quests)) {
+            if (failNamedRow(row, QUESTS[id])) dirty = true;
+        }
+    }
+    if (dirty) scheduleSave();
+}
+
 function playerOnObjective(player, quest) {
     if (!player || player.ghost) return false;
     if (quest.zoneId) {
@@ -7067,7 +7122,8 @@ wss.on('connection', (ws) => {
                 return;
             }
             if (row.failed) {
-                send(ws, { type: 'quests', ok: false, reason: 'The defense failed', quests: player.quests });
+                const why = quest.type === 'protect' ? 'The defense failed' : 'This quest failed. Speak to the giver.';
+                send(ws, { type: 'quests', ok: false, reason: why, quests: player.quests });
                 return;
             }
             if (row.count < quest.count) {
@@ -8745,6 +8801,7 @@ function applyLoaded(config) {
     chests.clear();
     refreshNpcZones();
     spawnDungeonMobs();
+    failMissingNamedQuests();
 }
 
 function loadWorldFile() {
