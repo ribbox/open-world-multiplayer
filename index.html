@@ -190,6 +190,13 @@
             border-radius: 8px; padding: 10px 12px; pointer-events: auto;
         }
         #threatWindow[hidden] { display: none; }
+        #fps {
+            position: absolute; top: 8px; left: 12px; z-index: 20;
+            color: #f4efe2; font-size: 13px; font-weight: bold;
+            font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
+            text-shadow: 0 1px 2px #000; pointer-events: none;
+        }
+        #fps[hidden] { display: none; }
         #threatHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
         #threatHead h2 { margin: 0; font-size: 15px; }
         #threatWindow h3 { margin: 10px 0 4px; font-size: 13px; color: #f1c40f; }
@@ -1083,6 +1090,7 @@
             <label><input type="checkbox" id="setMusic" checked> Music</label>
             <p id="musicNow">This region: Wilds</p>
             <h3>Display</h3>
+            <label><input type="checkbox" id="setFps"> Frames per second</label>
             <button type="button" class="text-btn" id="setFullscreen">Full screen</button>
             <h3>Keys</h3>
             <p>Click a key, then press the new one. Escape cancels. Arrow keys still move.</p>
@@ -1090,6 +1098,7 @@
             <button type="button" class="text-btn" id="bindReset">Reset keys</button>
         </div>
     </div>
+    <div id="fps" hidden>0 FPS</div>
     <div id="threatWindow" hidden>
         <div id="threatHead">
             <h2>Threat</h2>
@@ -1536,12 +1545,22 @@
             for (const id of Object.keys(binds)) if (sameCode(binds[id], code)) return id;
             return '';
         }
+        let fpsFrames = 0;
+        let fpsStamp = 0;
+        function applyFpsVisible(on) {
+            const readout = document.getElementById('fps');
+            if (readout) readout.hidden = !on;
+            fpsFrames = 0;
+            fpsStamp = 0;
+        }
         function saveSettings() {
             const sound = document.getElementById('setSound');
             const music = document.getElementById('setMusic');
+            const fps = document.getElementById('setFps');
             localStorage.setItem('ow-settings', JSON.stringify({
                 sound: !sound || sound.checked,
                 music: !music || music.checked,
+                fps: !!(fps && fps.checked),
                 binds
             }));
         }
@@ -1556,8 +1575,11 @@
             }
             const sound = document.getElementById('setSound');
             const music = document.getElementById('setMusic');
+            const fps = document.getElementById('setFps');
             if (sound) sound.checked = saved.sound !== false;
             if (music) music.checked = saved.music !== false;
+            if (fps) fps.checked = saved.fps === true;
+            applyFpsVisible(!!(fps && fps.checked));
             sfx.sound(saved.sound !== false);
             sfx.music(saved.music !== false);
         }
@@ -1638,6 +1660,10 @@
         });
         document.getElementById('setMusic').addEventListener('change', (event) => {
             sfx.music(event.target.checked);
+            saveSettings();
+        });
+        document.getElementById('setFps').addEventListener('change', (event) => {
+            applyFpsVisible(event.target.checked);
             saveSettings();
         });
         document.getElementById('bindReset').addEventListener('click', () => {
@@ -10653,6 +10679,18 @@
                 if (!activeCave) {
                     updateChunks();
                     pumpDress();
+                }
+                const fpsReadout = document.getElementById('fps');
+                if (fpsReadout && !fpsReadout.hidden) {
+                    const now = performance.now();
+                    if (!fpsStamp) fpsStamp = now;
+                    fpsFrames += 1;
+                    const span = now - fpsStamp;
+                    if (span >= 500) {
+                        fpsReadout.textContent = Math.round(fpsFrames * 1000 / span) + ' FPS';
+                        fpsFrames = 0;
+                        fpsStamp = now;
+                    }
                 }
                 renderer.render(scene, camera);
             }
