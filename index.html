@@ -184,7 +184,7 @@
         }
         #zoneName { font-weight: bold; }
         #threatWindow {
-            position: absolute; left: 12px; top: 64px; z-index: 22; width: 280px;
+            position: absolute; left: 12px; top: 64px; z-index: 22; width: 340px;
             max-height: calc(100vh - 190px); overflow: auto; color: white;
             background: rgba(12, 14, 18, 0.94); border: 1px solid rgba(241,196,15,0.7);
             border-radius: 8px; padding: 10px 12px; pointer-events: auto;
@@ -1095,7 +1095,7 @@
             <h2>Threat</h2>
             <button type="button" class="text-btn" id="threatClose">Close</button>
         </div>
-        <div id="threatBody"><p class="muted">Open during a fight. The number is threat. The bar is that fighter's share of the damage.</p></div>
+        <div id="threatBody"><p class="muted">Open during a fight. The number is threat. The bar is that fighter's share of the damage. DPS and HPS are the last 5 seconds, including a pet.</p></div>
     </div>
     <div id="party" hidden></div>
     <div id="partyPrompt" hidden>
@@ -10014,7 +10014,8 @@
                 }
                 for (const person of people) {
                     const line = document.createElement('p');
-                    line.textContent = person.name + ' · ' + (person.class || 'no class') + ' · ' + person.level;
+                    const rate = (n) => (Math.round((Number(n) || 0) * 10) / 10).toFixed(1);
+                    line.textContent = person.name + ' · ' + (person.class || 'no class') + ' · ' + person.level + ' · ' + rate(person.dps) + ' DPS · ' + rate(person.hps) + ' HPS';
                     body.appendChild(line);
                 }
                 const mobs = data.mobs || [];

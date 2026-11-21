@@ -5455,6 +5455,33 @@ function noteThreat(npc, actor, damage) {
     row.ownerId = actor.ownerId || row.ownerId;
     row.damage += damage;
     row.threat += damage * (actor.factor || 1);
+    if (actor.kind === 'player') noteOutput(players.get(actor.id), 'damage', damage);
+    else if (actor.ownerId) noteOutput(players.get(actor.ownerId), 'damage', damage);
+}
+
+const METER_MS = 5000;
+
+function noteOutput(player, kind, amount) {
+    const n = Math.round(Number(amount) || 0);
+    if (!player || n <= 0) return;
+    if (!player.meter) player.meter = { damage: [], heal: [] };
+    const list = player.meter[kind === 'heal' ? 'heal' : 'damage'];
+    const now = Date.now();
+    list.push({ t: now, n });
+    const cut = now - METER_MS;
+    while (list.length && list[0].t < cut) list.shift();
+}
+
+function outputRate(player, kind) {
+    if (!player || !player.meter) return 0;
+    const list = player.meter[kind === 'heal' ? 'heal' : 'damage'];
+    if (!list) return 0;
+    const now = Date.now();
+    const cut = now - METER_MS;
+    while (list.length && list[0].t < cut) list.shift();
+    let sum = 0;
+    for (const row of list) sum += row.n;
+    return Math.round((sum / (METER_MS / 1000)) * 10) / 10;
 }
 
 function playerThreat(player) {
@@ -5506,7 +5533,13 @@ function publishThreat(now) {
             if ((other.mapId || '') !== (player.mapId || '')) continue;
             if ((other.instanceId || '') !== (player.instanceId || '')) continue;
             if (Math.hypot(other.x - player.x, other.z - player.z) > 48) continue;
-            people.push({ name: other.name || 'Player', class: other.class || '', level: other.level || 1 });
+            people.push({
+                name: other.name || 'Player',
+                class: other.class || '',
+                level: other.level || 1,
+                dps: outputRate(other, 'damage'),
+                hps: outputRate(other, 'heal')
+            });
         }
         const mobs = [];
         for (const npc of npcs.values()) {
@@ -5790,8 +5823,10 @@ function castSpecial(player, id) {
         return { note: 'Your attacks hit harder', cd: cdMax, cdMax };
     }
     if (id === 'rally') {
+        const before = player.hp;
         const healed = Math.max(1, Math.round(player.maxHp * 0.4));
         player.hp = Math.min(player.maxHp, player.hp + healed);
+        noteOutput(player, 'heal', player.hp - before);
         startCooldown(player, id, cdMax, now);
         tellParty(player, (player.name || 'Ally') + ' heals themself for ' + healed, 'heal');
         return { heal: healed, cd: cdMax, cdMax };
@@ -5851,8 +5886,10 @@ function castSpecial(player, id) {
         return { note: 'Your attacks hit harder', cd: cdMax, cdMax };
     }
     if (id === 'blessing') {
+        const before = player.hp;
         const healed = Math.max(1, Math.round(player.maxHp * 0.35));
         player.hp = Math.min(player.maxHp, player.hp + healed);
+        noteOutput(player, 'heal', player.hp - before);
         startCooldown(player, id, cdMax, now);
         tellParty(player, (player.name || 'Ally') + ' heals themself for ' + healed, 'heal');
         return { heal: healed, cd: cdMax, cdMax };
@@ -5908,6 +5945,7 @@ function commandPet(player, command) {
         const before = player.pet.hp;
         player.pet.hp = Math.min(player.pet.maxHp, before + amount);
         player.pet.healed = Math.round(player.pet.hp - before);
+        noteOutput(player, 'heal', player.pet.healed);
         tellParty(player, (player.name || 'Ally') + ' heals ' + (player.pet.name || 'Wolf') + ' for ' + player.pet.healed, 'heal');
     } else if (command === 'bite') {
         if (!hasSpecial(player, 'pet-bite')) return 'A trainer teaches Bite at level 40';
@@ -6648,8 +6686,10 @@ wss.on('connection', (ws) => {
                     }
                     subject = ally;
                 }
+                const beforeHp = subject.hp;
                 const healed = Math.round((spellAmount(abilityId, player.level) + ((player.stats && player.stats.intellect) || 0)) * rankPower(rank));
                 subject.hp = Math.min(subject.maxHp, subject.hp + healed);
+                noteOutput(player, 'heal', subject.hp - beforeHp);
                 startCooldown(player, abilityId, cdMax, now);
                 broadcast({
                     type: 'cast',
@@ -6754,7 +6794,9 @@ wss.on('connection', (ws) => {
                 let drained = 0;
                 if (spec.leech && dealt > 0) {
                     drained = Math.max(1, Math.round(dealt * spec.leech));
+                    const beforeHp = player.hp;
                     player.hp = Math.min(player.maxHp, player.hp + drained);
+                    noteOutput(player, 'heal', player.hp - beforeHp);
                 }
                 const note = executed ? 'Execute' : spec.leech ? 'Drained' : spec.slow ? 'Slowed' : 'Hit';
                 send(ws, {
@@ -7250,7 +7292,9 @@ wss.on('connection', (ws) => {
                 }
             }
             if (slot.kind === 'health') {
+                const beforeHp = player.hp;
                 player.hp = Math.min(player.maxHp, player.hp + (slot.amount || 10));
+                noteOutput(player, 'heal', player.hp - beforeHp);
             } else if (slot.kind === 'mana') {
                 player.mana = Math.min(player.maxMana, player.mana + (slot.amount || 8));
             } else if (slot.kind === 'bomb') {
