@@ -2291,6 +2291,7 @@
             { id: 'offSword', name: 'Off-hand sword', url: '/models/stylized_emerald_sword.glb', length: 1.05, spinZ: -(Math.PI / 2 - 0.802 + Math.PI) },
             { id: 'dagger', name: 'Dagger', shape: 'dagger' },
             { id: 'offDagger', name: 'Off-hand dagger', shape: 'dagger' },
+            { id: 'shield', name: 'Shield', shape: 'shield' },
             { id: 'staff', name: 'Staff', url: '/models/wizards_staff.glb', length: 1.35 },
             { id: 'wand', name: 'Wand', url: '/models/wizards_staff.glb', length: 0.85, tint: 0x6b3fa0 },
             { id: 'bow', name: 'Bow', shape: 'bow' },
@@ -2313,6 +2314,7 @@
         let gripModelId = 'player';
         let gripItemId = 'sword';
         function defaultGrip(itemId) {
+            if (itemId === 'shield') return { hand: 'R', x: 0.01, y: 0.24, z: -0.02, rx: 0, ry: 0, rz: 0, scale: 1 };
             const right = itemId === 'offSword' || itemId === 'offDagger';
             // Bone +Y runs back up the arm, so the blade is pitched forward out of the hand.
             return { hand: right ? 'R' : 'L', x: 0, y: -0.04, z: 0.1, rx: Math.PI / 2, ry: 0, rz: right ? 0.15 : -0.15, scale: 0.85 };
@@ -2479,6 +2481,30 @@
             group.add(blade, guard, handle);
             return group;
         }
+        function makeEditorShield(root) {
+            let found = null;
+            if (root) root.traverse(obj => {
+                if (found || !obj.isMesh) return;
+                const name = (obj.userData && obj.userData.name) || obj.name || '';
+                if (name === 'shield' || name === 'gear-offhand-plate') found = obj;
+            });
+            if (found) {
+                const copy = found.clone();
+                copy.visible = true;
+                copy.position.set(0, 0, 0);
+                copy.rotation.set(0, 0, 0);
+                copy.scale.set(1, 1, 1);
+                copy.traverse(obj => { obj.visible = true; obj.frustumCulled = false; });
+                return copy;
+            }
+            const group = new THREE.Group();
+            const metal = new THREE.MeshStandardMaterial({ color: 0x8d949c, metalness: 0.62, roughness: 0.38 });
+            const board = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.46, 0.34), metal);
+            const boss = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.09, 10), metal);
+            boss.rotation.z = Math.PI / 2;
+            group.add(board, boss);
+            return group;
+        }
         function makeEditorBow() {
             const group = new THREE.Group();
             const radius = 0.46;
@@ -2565,6 +2591,10 @@
             }
             if (spec.shape === 'bow') {
                 weaponRoot.add(makeEditorBow());
+                return;
+            }
+            if (spec.shape === 'shield') {
+                weaponRoot.add(makeEditorShield(gripRoot));
                 return;
             }
             const gltf = await loadGltf(spec.url);

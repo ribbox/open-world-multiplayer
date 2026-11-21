@@ -2095,6 +2095,7 @@
                     mat.metalness = look.style === 'plate' ? 0.62 : 0.04;
                     mat.roughness = look.style === 'plate' ? 0.36 : look.style === 'leather' ? 0.7 : 0.82;
                 });
+                poseShield(model, 'player', !!(gear.offhand && gear.offhand.style === 'plate'));
                 return true;
             }
             function wearArmor(group, source) {
@@ -2999,6 +3000,7 @@
             const offDagger = holdShape(makeDagger, { x: -0.22, y: 1.0, z: 0.16, tilt: 0.35 });
             const offSword = holdTool('/models/stylized_emerald_sword.glb', { length: 1.05, x: -0.26, y: 0.95, z: 0.2, tilt: 0.2, spinZ: -(Math.PI / 2 - 0.802 + Math.PI) });
             function defaultHold(itemId) {
+                if (itemId === 'shield') return { hand: 'R', x: 0.01, y: 0.24, z: -0.02, rx: 0, ry: 0, rz: 0, scale: 1 };
                 const right = itemId === 'offSword' || itemId === 'offDagger';
                 return { hand: right ? 'R' : 'L', x: 0, y: -0.04, z: 0.1, rx: Math.PI / 2, ry: 0, rz: right ? 0.15 : -0.15, scale: 0.85 };
             }
@@ -3038,7 +3040,21 @@
                 if (itemId === 'offDagger') return offDagger;
                 return null;
             }
+            function makeShieldMesh() {
+                const group = new THREE.Group();
+                const metal = new THREE.MeshStandardMaterial({ color: 0x8d949c, metalness: 0.62, roughness: 0.38 });
+                const board = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.46, 0.34), metal);
+                const boss = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.09, 10), metal);
+                boss.rotation.z = Math.PI / 2;
+                group.add(board, boss);
+                return group;
+            }
             function holdMesh(itemId, kind) {
+                if (itemId === 'shield') {
+                    const mesh = makeShieldMesh();
+                    mesh.traverse(obj => { obj.frustumCulled = false; obj.castShadow = true; });
+                    return mesh;
+                }
                 const source = holdSource(itemId);
                 if (source && source.children.length) {
                     const copy = source.clone(true);
@@ -3072,6 +3088,49 @@
                 }
                 fitSwordScale();
             }
+            function shieldMeshOf(model) {
+                let found = null;
+                if (model) model.traverse(obj => {
+                    if (found || !obj.isMesh) return;
+                    const name = (obj.userData && obj.userData.name) || obj.name || '';
+                    if (name === 'shield' || name === 'gear-offhand-plate') found = obj;
+                });
+                return found;
+            }
+            function poseShield(model, modelId, equippedPlate) {
+                const mesh = shieldMeshOf(model);
+                if (!mesh) return false;
+                const name = (mesh.userData && mesh.userData.name) || mesh.name || '';
+                const inherent = name === 'shield';
+                if (!inherent && !equippedPlate) {
+                    mesh.visible = false;
+                    return false;
+                }
+                mesh.visible = true;
+                if (!mesh.userData.shieldHome) {
+                    mesh.userData.shieldHome = {
+                        parent: mesh.parent,
+                        position: mesh.position.clone(),
+                        rotation: mesh.rotation.clone(),
+                        scale: mesh.scale.clone()
+                    };
+                }
+                const saved = worldGrips && worldGrips[modelId] && worldGrips[modelId].shield;
+                const home = mesh.userData.shieldHome;
+                if (!saved) {
+                    if (home.parent && mesh.parent !== home.parent) home.parent.add(mesh);
+                    mesh.position.copy(home.position);
+                    mesh.rotation.copy(home.rotation);
+                    mesh.scale.copy(home.scale);
+                    return inherent;
+                }
+                const grip = holdOf(modelId || 'player', 'shield');
+                const bone = handBone(model, grip.hand === 'R' ? 'hand.R' : 'hand.L');
+                if (!bone) return inherent;
+                if (mesh.parent !== bone) bone.add(mesh);
+                poseHold(mesh, grip, false);
+                return true;
+            }
             function armCarry(group, modelId) {
                 if (!group || !modelId || modelId === 'player') return;
                 const show = worldGrips && worldGrips[modelId] && worldGrips[modelId].show || '';
@@ -3083,6 +3142,7 @@
                 if (!show) return;
                 const body = group.userData.body;
                 if (!body) return;
+                if (show === 'shield' && poseShield(body, modelId, false)) return;
                 const grip = holdOf(modelId, show);
                 const bone = handBone(body, grip.hand === 'R' ? 'hand.R' : 'hand.L');
                 if (!bone) return;
@@ -3094,10 +3154,12 @@
             }
             function refreshHolds() {
                 seatTools();
+                if (playerRig) poseShield(playerRig, 'player', !!(character && character.equipment && character.equipment.offhand && character.equipment.offhand.style === 'plate'));
                 const arm = (group, modelId) => {
                     if (!group) return;
                     group.userData.carryKey = '';
                     armCarry(group, modelId);
+                    if (group.userData.body) poseShield(group.userData.body, modelId, false);
                 };
                 for (const entry of worldNpcs.values()) arm(entry.group, entry.group.userData.modelKind);
                 for (const entry of worldCivs.values()) arm(entry.group, entry.group.userData.modelKind || entry.role);
@@ -3105,6 +3167,8 @@
                 for (const entry of remotePlayers.values()) {
                     entry.mesh.userData.bladeKey = '';
                     wearBlades(entry.mesh, entry.data && entry.data.blades);
+                    const gear = entry.data && entry.data.gear;
+                    if (entry.mesh.userData.body) poseShield(entry.mesh.userData.body, 'player', !!(gear && gear.offhand && gear.offhand.style === 'plate'));
                 }
             }
 
@@ -7450,6 +7514,7 @@
                     group.userData.ring = ring;
                     worldNpcs.set(state.id, entry);
                     armCarry(group, modelKind);
+                    poseShield(group.userData.body, modelKind, false);
                 }
                 entry.dungeonId = state.dungeonId || entry.dungeonId || '';
                 entry.tx = state.x;
@@ -7547,6 +7612,7 @@
                     entry = { group, tx: row.x, tz: row.z, rotY: row.rotY || 0, hp: -1, maxHp: 1, name: '', kind: row.kind, dungeonId: row.dungeonId || '', bob: Math.random() * Math.PI * 2 };
                     worldCompanions.set(row.id, entry);
                     armCarry(group, modelKind);
+                    poseShield(group.userData.body, modelKind, false);
                 }
                 entry.tx = row.x;
                 entry.tz = row.z;

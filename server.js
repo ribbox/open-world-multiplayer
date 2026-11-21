@@ -8656,7 +8656,7 @@ function sanitizeWorld(input) {
 
 function sanitizeGrips(raw) {
     const models = new Set(['player', 'bandit', 'knight', 'cultist', 'ogre', 'ogre-caster', 'shop', 'inn', 'bank', 'trainer', 'broker', 'quest']);
-    const items = new Set(['sword', 'offSword', 'dagger', 'offDagger', 'staff', 'wand', 'bow', 'axe', 'pickaxe']);
+    const items = new Set(['sword', 'offSword', 'dagger', 'offDagger', 'staff', 'wand', 'bow', 'axe', 'pickaxe', 'shield']);
     const gripNum = (value, fallback, min, max) => {
         const n = Number(value);
         if (!Number.isFinite(n)) return fallback;
