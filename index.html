@@ -937,7 +937,7 @@
         Invite the targeted player. A party holds up to 5. A nearby member shares kill experience and quest credit<br>
         The open chat tab is the channel. /p is the party, /w Name whispers, /t whispers your target<br>
         The person icon on the minimap returns to the select screen. Reset character is on the sheet and returns that one to level 1<br>
-        Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health. Warriors and paladins wear plate. Hunters and rogues wear leather. Mages and warlocks wear cloth. Rogues can wield a sword or a dagger, and a second blade in the off hand. Stealth hides them from creatures of their level or lower. Stronger creatures can still see them, from farther away the higher they are<br>
+        Strength raises melee and bow hits, Intellect raises spells and mana, Stamina raises health. Warriors and paladins wear plate. Hunters and rogues wear leather. Mages and warlocks wear cloth. Rogues can wield a sword or a dagger, and a second blade in the off hand. A warrior or paladin wields either a two-handed sword, or a one-handed sword and a shield. The two-handed sword hits for half again as much and uses both hands, so the shield comes off. Stealth hides them from creatures of their level or lower. Stronger creatures can still see them, from farther away the higher they are<br>
         The red globe is health and the blue globe is mana. Health returns only out of combat. Mana always returns, faster with Intellect and Stamina. The screen reddens as health falls<br>
         Spells and talents share one tree. The sheet is only for looking. Talk to a trainer to spend points or to reset them and spend again. One point in a node opens the next. A branch does not wait on the other branch. Level 60 is not enough to fill every branch<br>
         At level 20 and 40 a trainer teaches a special skill. Specials are not talents. A hunter calls a wolf: Attack, Follow, Stay, and Heal. Bite comes at 40. Summon brings it back if it dies, or if it falls too far behind. The wolf fights your target. A warlock raises a corpse that fights your target for a short time<br>
@@ -2994,7 +2994,7 @@
             const offSword = holdTool('/models/stylized_emerald_sword.glb', { length: 1.05, x: -0.26, y: 0.95, z: 0.2, tilt: 0.2, spinZ: -(Math.PI / 2 - 0.802 + Math.PI) });
             function defaultHold(itemId) {
                 const right = itemId === 'offSword' || itemId === 'offDagger';
-                return { hand: right ? 'R' : 'L', x: 0, y: -0.04, z: 0.1, rx: 0.2, ry: 0, rz: right ? 0.15 : -0.15, scale: 0.85 };
+                return { hand: right ? 'R' : 'L', x: 0, y: -0.04, z: 0.1, rx: Math.PI / 2, ry: 0, rz: right ? 0.15 : -0.15, scale: 0.85 };
             }
             function holdOf(modelId, itemId) {
                 const saved = worldGrips && worldGrips[modelId] && worldGrips[modelId][itemId];
@@ -3018,6 +3018,7 @@
                 const rest = new THREE.Euler(grip.rx, grip.ry, grip.rz);
                 tool.userData.rest = rest;
                 if (!keepSwing) tool.rotation.copy(rest);
+                tool.traverse(obj => { obj.frustumCulled = false; });
             }
             function holdSource(itemId) {
                 if (itemId === 'axe') return axe;
@@ -3049,12 +3050,8 @@
             }
             function seatTools() {
                 if (!playerRig) return;
-                let left = null;
-                let right = null;
-                playerRig.traverse(obj => {
-                    if (obj.name === 'hand.L') left = obj;
-                    if (obj.name === 'hand.R') right = obj;
-                });
+                const left = handBone(playerRig, 'hand.L');
+                const right = handBone(playerRig, 'hand.R');
                 if (!left && !right) return;
                 const pairs = [['axe', axe], ['pickaxe', pickaxe], ['sword', sword], ['staff', staff], ['wand', wand], ['bow', bow], ['dagger', dagger], ['offSword', offSword], ['offDagger', offDagger]];
                 for (const [id, tool] of pairs) {
@@ -3067,6 +3064,7 @@
                     }
                     poseHold(tool, grip, swinging);
                 }
+                fitSwordScale();
             }
             function armCarry(group, modelId) {
                 if (!group || !modelId || modelId === 'player') return;
@@ -3179,10 +3177,10 @@
             function updateToolUI() {
                 const names = { axe: 'Axe', pickaxe: 'Pickaxe', sword: 'Sword', dagger: 'Dagger', staff: 'Staff', bow: 'Bow', wand: 'Wand' };
                 const toolLabel = document.getElementById('toolName');
-                if (toolLabel) toolLabel.textContent = names[currentTool] || currentTool;
+                if (toolLabel) toolLabel.textContent = (currentTool === 'sword' && character && character.equipment && character.equipment.weapon && character.equipment.weapon.weapon === 'greatsword') ? 'Greatsword' : (names[currentTool] || currentTool);
                 axe.visible = currentTool === 'axe';
                 pickaxe.visible = currentTool === 'pickaxe';
-                sword.visible = currentTool === 'sword';
+                sword.visible = currentTool === 'sword' || currentTool === 'greatsword';
                 dagger.visible = currentTool === 'dagger';
                 staff.visible = currentTool === 'staff';
                 bow.visible = currentTool === 'bow';
@@ -3191,6 +3189,7 @@
                 const offKind = off && off.kind === 'weapon' ? off.weapon : '';
                 offSword.visible = offKind === 'sword';
                 offDagger.visible = offKind === 'dagger';
+                fitSwordScale();
             }
             updateToolUI();
 
@@ -3200,11 +3199,26 @@
             const CLASS_ARMOR = { warrior: 'plate', paladin: 'plate', hunter: 'leather', rogue: 'leather', mage: 'cloth', warlock: 'cloth' };
             const CLASS_WEAPON = { warrior: 'sword', rogue: 'sword', paladin: 'sword', hunter: 'bow', mage: 'staff', warlock: 'wand' };
             const ARMOR_WHO = { plate: 'Warriors and paladins', leather: 'Hunters and rogues', cloth: 'Mages and warlocks' };
-            const WEAPON_WHO = { sword: 'Warriors, rogues, and paladins', dagger: 'Rogues', bow: 'Hunters', staff: 'Mages', wand: 'Warlocks' };
+            const WEAPON_WHO = { sword: 'Warriors, rogues, and paladins', greatsword: 'Warriors and paladins', dagger: 'Rogues', bow: 'Hunters', staff: 'Mages', wand: 'Warlocks' };
             function weaponAllowed(item) {
                 if (!item || !item.weapon || !character.class) return true;
+                if (item.weapon === 'greatsword') return character.class === 'warrior' || character.class === 'paladin';
                 if (character.class === 'rogue') return item.weapon === 'dagger' || item.weapon === 'sword';
+                if (character.class === 'warrior' || character.class === 'paladin') return item.weapon === 'sword';
                 return item.weapon === CLASS_WEAPON[character.class];
+            }
+            function shownWeapon(id) {
+                return id === 'greatsword' ? 'sword' : id;
+            }
+            function twoHandEquipped() {
+                const main = character && character.equipment && character.equipment.weapon;
+                return !!(main && main.weapon === 'greatsword');
+            }
+            function fitSwordScale() {
+                if (!sword) return;
+                const grip = holdOf('player', 'sword');
+                const base = grip.scale || 0.85;
+                sword.scale.setScalar(twoHandEquipped() ? base * 1.35 : base);
             }
             const LOOKS = {
                 warrior: '/portraits/warrior.jpg',
@@ -3440,11 +3454,14 @@
                     const wrongStyle = !!(item.style && mine && item.slot !== 'neck' && item.slot !== 'cloak' && item.style !== mine);
                     push(style + ' armor' + (item.magic ? ' · magic' : ''), wrongStyle);
                     if (SLOT_NAMES[item.slot]) push(SLOT_NAMES[item.slot]);
+                    if (item.slot === 'offhand' && item.style === 'plate') push('Shield · with a one-handed sword');
                     push('+' + (item.armor || 0) + ' Armor');
                 } else if (item.kind === 'weapon') {
-                    const names = { sword: 'Sword', dagger: 'Dagger', staff: 'Staff', bow: 'Bow', wand: 'Wand' };
+                    const names = { sword: 'Sword', greatsword: 'Greatsword', dagger: 'Dagger', staff: 'Staff', bow: 'Bow', wand: 'Wand' };
                     const wrongWeapon = !!(item.weapon && !weaponAllowed(item));
                     push((item.magic ? 'Magic ' : '') + (names[item.weapon] || 'Weapon'), wrongWeapon);
+                    if (item.weapon === 'greatsword') push('Two-handed · +50% damage · both hands');
+                    else if (item.weapon === 'sword' || item.weapon === 'dagger') push('One-handed');
                     if (SLOT_NAMES[item.slot]) push(SLOT_NAMES[item.slot]);
                     if (item.armor) push('+' + item.armor + ' Armor');
                 } else if (item.kind === 'bag') push('Adds ' + (item.slots || 0) + ' slots');
@@ -3806,6 +3823,10 @@
                     const off = gear.offhand;
                     const offBlade = off && off.kind === 'weapon' && (off.weapon === 'dagger' || off.weapon === 'sword');
                     if (character.class === 'rogue' && blade && gear.weapon && !offBlade) equipSlot = 'offhand';
+                    if ((character.class === 'warrior' || character.class === 'paladin') && slot.slot === 'offhand' && slot.style === 'plate' && gear.weapon && gear.weapon.weapon === 'greatsword') {
+                        showMessage('A two-handed sword needs both hands');
+                        return;
+                    }
                     sendCharacter('equip', { slot: equipSlot, index });
                     return;
                 }
@@ -6157,7 +6178,7 @@
                     characterGroup.rotation.y = Math.atan2(dx, dz);
                 }
                 const held = wornWeapon();
-                const visual = held === 'dagger' && action.weapon === 'sword' ? 'dagger' : action.weapon;
+                const visual = held === 'dagger' && action.weapon === 'sword' ? 'dagger' : shownWeapon(action.weapon);
                 equippedWeapon = visual;
                 currentTool = visual;
                 updateToolUI();
@@ -8728,8 +8749,8 @@
                 if (barPage >= BAR_PAGES) barPage = 0;
                 const worn = wornWeapon();
                 if (worn && currentTool !== 'axe' && currentTool !== 'pickaxe') {
-                    equippedWeapon = worn;
-                    currentTool = worn;
+                    equippedWeapon = shownWeapon(worn);
+                    currentTool = shownWeapon(worn);
                     updateToolUI();
                 }
                 renderBar();
@@ -9850,7 +9871,7 @@
                         const open = trained && skill.level >= need;
                         const ready = open && can > 0;
                         const title = document.createElement('span');
-                        title.textContent = recipe.name + (ready ? ' x' + can : '') + (recipe.buy ? ' · skill ' + (recipe.craftLevel || 1) : '') + (tier ? ' · tier ' + tier : '');
+                        title.textContent = recipe.name + (recipe.weapon === 'greatsword' ? ' · two-handed' : (recipe.slot === 'offhand' && recipe.style === 'plate' ? ' · shield' : '')) + (ready ? ' x' + can : '') + (recipe.buy ? ' · skill ' + (recipe.craftLevel || 1) : '') + (tier ? ' · tier ' + tier : '');
                         if (ready) title.className = 'craft-have';
                         label.appendChild(title);
                         if (costs.length) {
@@ -10693,8 +10714,13 @@
                 });
             }
             function handBone(model, name) {
+                const flat = String(name || '').replace(/[^\w-]/g, '');
                 let found = null;
-                if (model) model.traverse(obj => { if (obj.name === name) found = obj; });
+                if (model) model.traverse(obj => {
+                    if (found) return;
+                    const original = obj.userData && obj.userData.name;
+                    if (original === name || obj.name === name || obj.name === flat) found = obj;
+                });
                 return found;
             }
             function wearBlades(group, blades) {
@@ -10702,9 +10728,9 @@
                 if (!model) return;
                 const main = blades && blades.main || '';
                 const off = blades && blades.off || '';
-                const mainId = main === 'sword' ? 'sword' : main === 'dagger' ? 'dagger' : '';
+                const mainId = main === 'sword' || main === 'greatsword' ? 'sword' : main === 'dagger' ? 'dagger' : '';
                 const offId = off === 'sword' ? 'offSword' : off === 'dagger' ? 'offDagger' : '';
-                const key = mainId + '|' + offId + '|' + JSON.stringify((worldGrips && worldGrips.player) || {});
+                const key = main + '|' + off + '|' + JSON.stringify((worldGrips && worldGrips.player) || {});
                 if (group.userData.bladeKey === key) return;
                 group.userData.bladeKey = key;
                 if (group.userData.bladeLeft && group.userData.bladeLeft.parent) group.userData.bladeLeft.parent.remove(group.userData.bladeLeft);
@@ -10718,6 +10744,7 @@
                     if (!bone) return null;
                     const mesh = holdMesh(itemId, kind);
                     poseHold(mesh, grip, false);
+                    if (kind === 'greatsword') mesh.scale.multiplyScalar(1.35);
                     mesh.visible = true;
                     bone.add(mesh);
                     return mesh;

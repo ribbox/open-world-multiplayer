@@ -1434,7 +1434,7 @@ function applyElite(npc, elite, baseHp) {
 
 function bladeKind(piece) {
     if (!piece || piece.kind !== 'weapon') return '';
-    if (piece.weapon === 'dagger' || piece.weapon === 'sword') return piece.weapon;
+    if (piece.weapon === 'dagger' || piece.weapon === 'sword' || piece.weapon === 'greatsword') return piece.weapon;
     return '';
 }
 
@@ -2548,6 +2548,10 @@ function weaponFamily(weapon) {
     return weapon || '';
 }
 
+function isTwoHandSword(item) {
+    return !!(item && item.kind === 'weapon' && item.weapon === 'greatsword');
+}
+
 function abilityRank(player, id) {
     const maxRank = (SPELLS[id] && SPELLS[id].maxRank) || 1;
     const rank = (player.spellRanks && player.spellRanks[id]) || 1;
@@ -2601,6 +2605,8 @@ const RECIPES = {
     'plate-pauldrons': { name: 'Plate Pauldrons', set: 'plate', slot: 'shoulders', kind: 'armor', style: 'plate', armor: 3, cost: { ore: 3 }, loot: true },
     'plate-belt': { name: 'Plate Belt', set: 'plate', slot: 'waist', kind: 'armor', style: 'plate', armor: 2, cost: { ore: 2 }, loot: true },
     'iron-sword': { name: 'Iron Sword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', armor: 0, cost: { ore: 2, wood: 1 } },
+    'iron-greatsword': { name: 'Iron Greatsword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'greatsword', armor: 0, cost: { ore: 4, wood: 2 }, craftLevel: 20 },
+    'iron-shield': { name: 'Iron Shield', set: 'weapon', slot: 'offhand', kind: 'armor', style: 'plate', armor: 3, cost: { ore: 3 }, craftLevel: 12 },
     'oak-staff': { name: 'Oak Staff', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'staff', armor: 0, cost: { wood: 3 } },
     'yew-bow': { name: 'Yew Bow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'bow', armor: 0, cost: { wood: 3 } },
     'oak-wand': { name: 'Oak Wand', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'wand', armor: 0, cost: { wood: 2, gem: 1 } },
@@ -2654,10 +2660,16 @@ const RECIPES = {
     'thorium-breastplate': { name: 'Thorium Breastplate', set: 'plate', slot: 'chest', kind: 'armor', style: 'plate', armor: 12, cost: { ore: 12, stone: 4, gem: 2 }, tier: 225, craftLevel: 225 },
     'thorium-helm': { name: 'Thorium Helm', set: 'plate', slot: 'head', kind: 'armor', style: 'plate', armor: 8, cost: { ore: 8, stone: 2, gem: 2 }, tier: 225, craftLevel: 260 },
     'steel-sword': { name: 'Steel Sword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', armor: 0, cost: { ore: 4, wood: 1 }, tier: 75, craftLevel: 75 },
+    'broad-greatsword': { name: 'Broad Greatsword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'greatsword', armor: 0, cost: { ore: 6, wood: 2 }, tier: 75, craftLevel: 85 },
+    'steel-shield': { name: 'Steel Shield', set: 'weapon', slot: 'offhand', kind: 'armor', style: 'plate', armor: 5, cost: { ore: 5, stone: 1 }, tier: 75, craftLevel: 90 },
     'steel-staff': { name: 'Steel Staff', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'staff', armor: 0, cost: { wood: 6 }, tier: 75, craftLevel: 100 },
     'mithril-sword': { name: 'Mithril Sword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', armor: 0, cost: { ore: 6, wood: 1, gem: 1 }, tier: 150, craftLevel: 150 },
+    'mithril-greatsword': { name: 'Mithril Greatsword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'greatsword', armor: 0, cost: { ore: 8, wood: 2, gem: 1 }, tier: 150, craftLevel: 160 },
+    'mithril-shield': { name: 'Mithril Shield', set: 'weapon', slot: 'offhand', kind: 'armor', style: 'plate', armor: 7, cost: { ore: 7, stone: 2, gem: 1 }, tier: 150, craftLevel: 170 },
     'mithril-staff': { name: 'Mithril Staff', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'staff', armor: 0, cost: { wood: 8, gem: 1 }, tier: 150, craftLevel: 180 },
     'thorium-sword': { name: 'Thorium Sword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'sword', armor: 0, cost: { ore: 8, wood: 2, gem: 2 }, tier: 225, craftLevel: 225 },
+    'thorium-greatsword': { name: 'Thorium Greatsword', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'greatsword', armor: 0, cost: { ore: 10, wood: 3, gem: 2 }, tier: 225, craftLevel: 235 },
+    'thorium-shield': { name: 'Thorium Shield', set: 'weapon', slot: 'offhand', kind: 'armor', style: 'plate', armor: 9, cost: { ore: 9, stone: 2, gem: 2 }, tier: 225, craftLevel: 245 },
     'thorium-staff': { name: 'Thorium Staff', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'staff', armor: 0, cost: { wood: 10, gem: 2 }, tier: 225, craftLevel: 260 },
     'ash-bow': { name: 'Ash Bow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'bow', armor: 0, cost: { wood: 5 }, tier: 75, craftLevel: 85 },
     'recurve-bow': { name: 'Recurve Bow', set: 'weapon', slot: 'weapon', kind: 'weapon', weapon: 'bow', armor: 0, cost: { wood: 8 }, tier: 150, craftLevel: 160 },
@@ -2760,7 +2772,7 @@ const CRAFT_SETS = {
     cloth: { name: 'Clothworking', cost: 12, rarity: 1, text: 'Buttons, thread, and bolts, then cloth armor. Higher patterns need rarer metal and silk.' },
     leather: { name: 'Leatherworking', cost: 20, rarity: 2, text: 'Strips, buckles, and laces, then leather armor. Higher patterns need rarer metal.' },
     plate: { name: 'Armorsmithing', cost: 30, rarity: 3, text: 'Sheets, rivets, and straps, then plate. Higher patterns need rarer ore.' },
-    weapon: { name: 'Weaponsmithing', cost: 16, rarity: 1, text: 'Blades, hafts, and fittings. Higher patterns need rarer ore and wood.' },
+    weapon: { name: 'Weaponsmithing', cost: 16, rarity: 1, text: 'One-handed swords, shields, and two-handed swords. A two-handed sword hits harder and needs both hands. Higher patterns need rarer ore and wood.' },
     magic: { name: 'Spellforging', cost: 28, rarity: 4, text: 'Focuses and bindings, then enchanted gear. Higher patterns need rarer gems.' },
     alchemy: { name: 'Alchemy', cost: 18, rarity: 2, text: 'Vials and extracts, then potions. Higher recipes need rarer gems.' },
     explosive: { name: 'Explosives', cost: 22, rarity: 2, text: 'A bomb needs a case, powder, and a trigger. Cases start from copper. Triggers start from a gem and iron. Higher bombs need rarer ore and gems.' }
@@ -3461,7 +3473,8 @@ function installCraftParts() {
             };
         } else if (set === 'weapon' || set === 'magic') {
             const family = weaponFamily(recipe.weapon);
-            const caster = family === 'staff' || family === 'wand' || recipe.slot === 'offhand' || recipe.slot === 'neck' || !recipe.weapon;
+            const shield = recipe.slot === 'offhand' && recipe.style === 'plate';
+            const caster = !shield && (family === 'staff' || family === 'wand' || recipe.slot === 'offhand' || recipe.slot === 'neck' || !recipe.weapon);
             const bow = family === 'bow';
             const gem = grade.gem === 'gem' ? 'gem' : grade.gem;
             if (set === 'magic') {
@@ -3930,6 +3943,15 @@ function spendTalent(player, id) {
     return spendNode(player, id);
 }
 
+function openBagSlots(player, alsoFree) {
+    normalizeSlots(player);
+    let open = 0;
+    player.slots.forEach((slot, index) => {
+        if (!slot || index === alsoFree) open += 1;
+    });
+    return open;
+}
+
 function equipItem(player, equipSlot, bagIndex) {
     if (!EQUIP_SLOTS.includes(equipSlot)) return 'Bad slot';
     const item = player.slots[bagIndex];
@@ -3938,9 +3960,16 @@ function equipItem(player, equipSlot, bagIndex) {
     if (item.kind !== 'weapon' && item.kind !== 'armor') return 'Cannot equip that';
     if ((item.reqLevel || 1) > (player.level || 1)) return 'Requires level ' + (item.reqLevel || 1);
     if (!player.class) return 'Choose a class first';
-    const rogueBlade = player.class === 'rogue' && (item.weapon === 'dagger' || item.weapon === 'sword');
+    const twoHand = isTwoHandSword(item);
+    const plateFighter = player.class === 'warrior' || player.class === 'paladin';
+    const rogueBlade = player.class === 'rogue' && !twoHand && (item.weapon === 'dagger' || item.weapon === 'sword');
+    const fighterSword = plateFighter && item.kind === 'weapon' && (item.weapon === 'sword' || item.weapon === 'greatsword');
+    if (twoHand && !plateFighter) return 'Only a warrior or paladin can wield a two-handed sword';
+    if (twoHand && equipSlot !== 'weapon') return 'A two-handed sword needs both hands';
     if (item.kind === 'weapon' && rogueBlade && (equipSlot === 'weapon' || equipSlot === 'offhand')) {
-        /* a rogue may wear a sword or a dagger in either hand */
+        /* a rogue may wear a one-handed sword or a dagger in either hand */
+    } else if (fighterSword && equipSlot === 'weapon') {
+        /* a warrior or paladin may wear a one-handed sword, or a two-handed sword */
     } else {
         if (fits !== equipSlot) return 'Does not fit';
         if (item.kind === 'weapon' && item.weapon !== CLASS_KITS[player.class].weapon.weapon) return 'Wrong class';
@@ -3952,20 +3981,40 @@ function equipItem(player, equipSlot, bagIndex) {
             return who + 's wear ' + need;
         }
     }
+    if (item.slot === 'offhand' && item.style === 'plate' && isTwoHandSword(player.equipment.weapon)) return 'A two-handed sword needs both hands';
+    const worn = player.equipment[equipSlot];
+    const off = twoHand ? player.equipment.offhand : null;
+    const stow = (worn ? 1 : 0) + (off ? 1 : 0);
+    const freeing = (item.qty || 1) <= 1 ? bagIndex : -1;
+    if (stow > openBagSlots(player, freeing)) return 'Inventory full';
     const piece = copySlot(item);
     piece.qty = 1;
     piece.worn = true;
     item.qty -= 1;
-    const worn = player.equipment[equipSlot];
     if (item.qty <= 0) player.slots[bagIndex] = null;
-    if (worn) {
-        const rest = addToSlots(player, worn);
+    const restoreBag = () => {
+        if (player.slots[bagIndex]) player.slots[bagIndex].qty += 1;
+        else player.slots[bagIndex] = copySlot(piece);
+    };
+    if (off) {
+        const rest = addToSlots(player, off);
         if (rest) {
-            if (player.slots[bagIndex]) player.slots[bagIndex].qty += 1;
-            else player.slots[bagIndex] = copySlot(item.qty ? item : piece);
+            restoreBag();
             return 'Inventory full';
         }
     }
+    if (worn) {
+        const rest = addToSlots(player, worn);
+        if (rest) {
+            if (off) {
+                const index = player.slots.findIndex(slot => slot && slot.name === off.name && slot.kind === off.kind && (slot.weapon || '') === (off.weapon || '') && (slot.slot || '') === (off.slot || ''));
+                if (index >= 0) player.slots[index] = null;
+            }
+            restoreBag();
+            return 'Inventory full';
+        }
+    }
+    if (off) player.equipment.offhand = null;
     player.equipment[equipSlot] = piece;
     refreshDerived(player);
     savePlayer(player);
@@ -4489,8 +4538,9 @@ function makeGear(level, tableId) {
             piece.name = amount >= 6 ? 'Arcane Staff' : 'Carved Staff';
             piece.magic = amount >= 6 || magic;
         } else {
-            piece.weapon = 'sword';
-            piece.name = amount >= 6 ? 'Rune Blade' : 'Iron Sword';
+            const two = Math.random() < 0.45;
+            piece.weapon = two ? 'greatsword' : 'sword';
+            piece.name = two ? (amount >= 6 ? 'Rune Greatsword' : 'Iron Greatsword') : (amount >= 6 ? 'Rune Blade' : 'Iron Sword');
         }
     } else if (slot === 'offhand') {
         if (focus === 'intellect') {
@@ -4499,9 +4549,9 @@ function makeGear(level, tableId) {
             piece.magic = true;
             piece.armor = Math.max(1, armor);
         } else {
-            piece.name = 'Iron Buckler';
+            piece.name = amount >= 6 ? 'Tower Shield' : 'Iron Shield';
             piece.style = 'plate';
-            piece.armor = Math.max(1, 1 + Math.floor(lv / 6));
+            piece.armor = Math.max(2, 2 + Math.floor(lv / 5));
         }
     } else if (slot === 'neck') {
         piece.name = focus === 'intellect' ? 'Gem Pendant' : (style === 'plate' ? 'Iron Pendant' : 'Hide Pendant');
@@ -6613,7 +6663,8 @@ wss.on('connection', (ws) => {
                 ? ((player.stats && player.stats.strength) || 0)
                 : ((player.stats && player.stats.intellect) || 0);
             const powerTalent = player.class === 'rogue' ? ['lethal', 'murder'] : player.class === 'paladin' ? ['zeal', 'conviction'] : spec.weapon === 'sword' ? ['might', 'frenzy'] : spec.weapon === 'bow' ? ['precision', 'eagle-eye'] : spec.weapon === 'wand' ? ['affliction', 'ruin', 'siphon'] : ['arcane-power', 'focus'];
-            const per = (spellAmount(abilityId, player.level) + statBonus + (spec.damage || spec.leech ? ranksIn(player, powerTalent) : 0)) * rankPower(rank);
+            const twoHand = (player.class === 'warrior' || player.class === 'paladin') && spec.weapon === 'sword' && spec.damage && isTwoHandSword(player.equipment && player.equipment.weapon);
+            const per = (spellAmount(abilityId, player.level) + statBonus + (spec.damage || spec.leech ? ranksIn(player, powerTalent) : 0)) * rankPower(rank) * (twoHand ? 1.5 : 1);
             const projectile = !!spec.bolt;
             const travel = projectile ? Math.min(900, Math.max(220, Math.round(dist * 140))) : 0;
             const victims = [npc];

@@ -2314,7 +2314,8 @@
         let gripItemId = 'sword';
         function defaultGrip(itemId) {
             const right = itemId === 'offSword' || itemId === 'offDagger';
-            return { hand: right ? 'R' : 'L', x: 0, y: -0.04, z: 0.1, rx: 0.2, ry: 0, rz: right ? 0.15 : -0.15, scale: 0.85 };
+            // Bone +Y runs back up the arm, so the blade is pitched forward out of the hand.
+            return { hand: right ? 'R' : 'L', x: 0, y: -0.04, z: 0.1, rx: Math.PI / 2, ry: 0, rz: right ? 0.15 : -0.15, scale: 0.85 };
         }
         function round3(n) { return Math.round(Number(n) * 1000) / 1000; }
         function gripChar(id) { return GRIP_CHARACTERS.find(row => row.id === id) || GRIP_CHARACTERS[0]; }
@@ -2492,9 +2493,14 @@
             return group;
         }
         function findBone(root, side) {
-            const name = side === 'R' ? 'hand.R' : 'hand.L';
+            const raw = side === 'R' ? 'hand.R' : 'hand.L';
+            const flat = raw.replace(/[^\w-]/g, '');
             let found = null;
-            root.traverse(obj => { if (obj.name === name) found = obj; });
+            root.traverse(obj => {
+                if (found) return;
+                const original = obj.userData && obj.userData.name;
+                if (original === raw || obj.name === raw || obj.name === flat) found = obj;
+            });
             return found;
         }
         function poseWeapon(grip) {
@@ -2509,6 +2515,7 @@
             weaponRoot.position.set(grip.x, grip.y, grip.z);
             weaponRoot.rotation.set(grip.rx, grip.ry, grip.rz);
             weaponRoot.scale.setScalar(grip.scale || 0.85);
+            weaponRoot.traverse(obj => { obj.frustumCulled = false; });
         }
         function frameCharacter(spec) {
             const y = spec.height * 0.55;

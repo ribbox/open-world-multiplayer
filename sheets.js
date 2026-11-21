@@ -205,8 +205,9 @@ function itemAbout(item) {
         }[item.slot] || 'armor';
         sentences.push((item.style ? cap(item.style) : 'Armor') + ' ' + where + (Number(item.armor) ? ', armor ' + item.armor : ''));
     } else if (kind === 'weapon') {
-        const weaponName = { sword: 'Sword', dagger: 'Dagger', staff: 'Staff', bow: 'Bow', wand: 'Wand' }[item.weapon] || 'Weapon';
+        const weaponName = { sword: 'One-handed sword', greatsword: 'Two-handed sword', dagger: 'Dagger', staff: 'Staff', bow: 'Bow', wand: 'Wand' }[item.weapon] || 'Weapon';
         sentences.push((yesNo(item.magic) === 'yes' ? 'Magic ' : '') + weaponName);
+        if (item.weapon === 'greatsword') sentences.push('Hits harder than a one-handed sword and uses both hands');
     } else if (kind === 'health') {
         sentences.push('Health potion' + (Number(item.amount) ? ' that restores ' + item.amount + ' health' : ''));
     } else if (kind === 'mana') {
@@ -230,6 +231,7 @@ function itemAbout(item) {
     if (kind === 'armor' && item.style && item.slot !== 'neck' && item.slot !== 'cloak') {
         const who = { plate: 'Warriors and paladins', leather: 'Hunters and rogues', cloth: 'Mages and warlocks' }[item.style];
         if (who) sentences.push(who + ' can wear it');
+        if (item.slot === 'offhand' && item.style === 'plate') sentences.push('A warrior or paladin holds it with a one-handed sword, not a two-handed sword');
     }
     const made = materialsPhrase(item.cost);
     if (made) sentences.push('Made from ' + made);
