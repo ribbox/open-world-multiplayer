@@ -2432,6 +2432,8 @@
                 model.position.z -= (grounded.min.z + grounded.max.z) / 2;
             }
             model.traverse(obj => {
+                const name = (obj.userData && obj.userData.name) || obj.name || '';
+                if (name === 'shield' || name.startsWith('gear-offhand')) obj.visible = false;
                 if (!obj.isMesh) return;
                 obj.castShadow = true;
                 obj.receiveShadow = true;
