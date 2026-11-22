@@ -1104,7 +1104,7 @@
             <h2>Threat</h2>
             <button type="button" class="text-btn" id="threatClose">Close</button>
         </div>
-        <div id="threatBody"><p class="muted">Open during a fight. The number is threat. The bar is that fighter's share of the damage. DPS and HPS are the last 5 seconds, including a pet.</p></div>
+        <div id="threatBody"><p class="muted">Open during a fight. The number is threat. The bar is that fighter's share of the damage. DPS and HPS are the last 5 seconds, including a pet or a training dummy.</p></div>
     </div>
     <div id="party" hidden></div>
     <div id="partyPrompt" hidden>
@@ -10167,7 +10167,7 @@
                 if (!mobs.length) {
                     const empty = document.createElement('p');
                     empty.className = 'muted';
-                    empty.textContent = 'No threat yet. Hit a mob.';
+                    empty.textContent = 'No threat yet. Hit a mob or a training dummy.';
                     body.appendChild(empty);
                     return;
                 }

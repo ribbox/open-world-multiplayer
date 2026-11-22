@@ -2023,7 +2023,7 @@ function stealthSight(npc, player) {
 
 function veilThreat(player) {
     for (const npc of npcs.values()) {
-        if (!npc.threat || !npc.alive) continue;
+        if (!npc.threat || !npc.alive || npc.dummy) continue;
         const see = stealthSight(npc, player);
         if (Math.hypot((player.x || 0) - npc.x, (player.z || 0) - npc.z) > see) npc.threat.delete(player.persistentId);
     }
@@ -5553,7 +5553,8 @@ function plateFactor(player) {
 }
 
 function noteThreat(npc, actor, damage) {
-    if (!npc || !npc.alive || !actor || !(damage > 0)) return;
+    if (!npc || !actor || !(damage > 0)) return;
+    if (!npc.alive && !npc.dummy) return;
     if (!npc.threat) npc.threat = new Map();
     let row = npc.threat.get(actor.id);
     if (!row) {
@@ -5565,8 +5566,8 @@ function noteThreat(npc, actor, damage) {
     row.ownerId = actor.ownerId || row.ownerId;
     row.damage += damage;
     row.threat += damage * (actor.factor || 1);
-    if (actor.kind === 'player') noteOutput(players.get(actor.id), 'damage', damage);
-    else if (actor.ownerId) noteOutput(players.get(actor.ownerId), 'damage', damage);
+    const who = actor.player || (actor.kind === 'player' ? players.get(actor.id) : players.get(actor.ownerId));
+    noteOutput(who, 'damage', damage);
 }
 
 const METER_MS = 5000;
@@ -5595,7 +5596,7 @@ function outputRate(player, kind) {
 }
 
 function playerThreat(player) {
-    return { id: player.persistentId, name: player.name || 'Player', kind: 'player', ownerId: '', factor: plateFactor(player) };
+    return { id: player.persistentId, name: player.name || 'Player', kind: 'player', ownerId: '', factor: plateFactor(player), player };
 }
 
 function practiceHit(npc, player, damage, label) {
@@ -5679,11 +5680,15 @@ function publishThreat(now) {
         }
         const mobs = [];
         for (const npc of npcs.values()) {
-            if (!npc.alive || !npc.threat || !npc.threat.size) continue;
-            if ((npc.mapId || '') !== (player.mapId || '')) continue;
+            if ((!npc.alive && !npc.dummy) || !npc.threat || !npc.threat.size) continue;
             if ((npc.instanceId || '') !== (player.instanceId || '')) continue;
             if ((npc.dungeonId || '') !== (player.dungeonId || '')) continue;
-            if (Math.hypot(npc.x - player.x, npc.z - player.z) > 48) continue;
+            const mine = npc.threat.has(player.persistentId) || npc.threat.has(player.persistentId + ':pet') || npc.threat.has(player.persistentId + ':minion');
+            const npcMap = npc.mapId || '';
+            const playerMap = player.mapId || '';
+            if (npcMap && playerMap && npcMap !== playerMap && !mine) continue;
+            const dist = Math.hypot(npc.x - player.x, npc.z - player.z);
+            if (dist > (mine || npc.dummy ? 80 : 48)) continue;
             let total = 0;
             for (const row of npc.threat.values()) total += row.damage;
             const focus = threatFocus(npc);
