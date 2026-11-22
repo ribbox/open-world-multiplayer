@@ -2313,7 +2313,7 @@
             }
             function placeProp(template, item, scale) {
                 const mesh = template.clone(true);
-                mesh.userData.shared = true;
+                mesh.traverse(obj => { obj.userData.shared = true; });
                 mesh.scale.setScalar(scale);
                 mesh.rotation.y = (item.x * 12.9898 + item.z * 78.233) % (Math.PI * 2);
                 mesh.position.set(item.px, terrainHeight(item.x, item.z), item.pz);
@@ -5537,6 +5537,7 @@
 
                 scene.add(group);
                 loadedChunks.set(key, { group, colliders, placed });
+                placeThemeDress(cx, cz, group, colliders, false);
                 return true;
             }
 
@@ -5625,6 +5626,236 @@
                 if (!data.placed) data.placed = new Set(data.colliders.map(item => item.id));
                 const [cx, cz] = key.split(',').map(Number);
                 placeChunkProps(cx, cz, data.group, data.colliders, data.placed);
+                placeThemeDress(cx, cz, data.group, data.colliders, false);
+            }
+
+            let themeKit = null;
+            function themeRoll(n) {
+                const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+                return x - Math.floor(x);
+            }
+            function themeBits() {
+                if (themeKit) return themeKit;
+                const mat = (color, extra) => new THREE.MeshLambertMaterial(Object.assign({ color }, extra || {}));
+                const flat = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 };
+                themeKit = {
+                    mud: mat(0x3d2c18, flat),
+                    reed: mat(0x6d8f38, { side: THREE.DoubleSide }),
+                    reedDark: mat(0x3c5a22, { side: THREE.DoubleSide }),
+                    tuft: mat(0x8aaa40, { side: THREE.DoubleSide }),
+                    flower: mat(0xf4d35e),
+                    snow: mat(0xe7eef3, flat),
+                    ice: mat(0xc5dcea),
+                    scorch: mat(0x1c1210, flat),
+                    ember: new THREE.MeshLambertMaterial({ color: 0xff6a2a, emissive: 0xc2410c, emissiveIntensity: 0.9 }),
+                    dead: mat(0x2a211c),
+                    cactus: mat(0x2d6a3e),
+                    scrub: mat(0x6a5530),
+                    stone: mat(0x6e6860),
+                    dirt: mat(0x6b4f32, flat),
+                    cobble: mat(0x7a7064, flat),
+                    hedge: mat(0x3f6b34),
+                    mudGeo: new THREE.CircleGeometry(1.8, 7),
+                    snowGeo: new THREE.CircleGeometry(2.4, 8),
+                    scorchGeo: new THREE.CircleGeometry(2.2, 7),
+                    dirtGeo: new THREE.CircleGeometry(1.6, 7),
+                    blade: new THREE.PlaneGeometry(0.16, 1),
+                    trunk: new THREE.CylinderGeometry(0.16, 0.22, 1, 5),
+                    limb: new THREE.CylinderGeometry(0.05, 0.07, 1, 4),
+                    cactusGeo: new THREE.CylinderGeometry(0.2, 0.24, 1, 6),
+                    spike: new THREE.ConeGeometry(0.2, 1.4, 5),
+                    shrub: new THREE.IcosahedronGeometry(0.4, 0),
+                    rock: new THREE.DodecahedronGeometry(0.46, 0),
+                    bloom: new THREE.SphereGeometry(0.09, 5, 4)
+                };
+                return themeKit;
+            }
+            function markTheme(mesh) {
+                mesh.traverse(obj => { obj.userData.themePiece = true; });
+                return mesh;
+            }
+            function campClear(x, z) {
+                if (!lastCamps) return true;
+                for (const site of lastCamps) {
+                    const reach = site.layout === 'city' ? CITY_RADIUS : 14;
+                    if (Math.hypot(x - site.x, z - site.z) < reach) return false;
+                }
+                return true;
+            }
+            function themePoint(cx, cz, i) {
+                const n = cx * 928371 + cz * 689287 + i * 9176;
+                const lx = (themeRoll(n) - 0.5) * CHUNK_SIZE * 0.92;
+                const lz = (themeRoll(n + 1.7) - 0.5) * CHUNK_SIZE * 0.92;
+                return { x: cx * CHUNK_SIZE + lx, z: cz * CHUNK_SIZE + lz, lx, lz, n };
+            }
+            function themeOpen(x, z) {
+                if (!campClear(x, z)) return false;
+                if (waterAt(x, z) || terrainHeight(x, z) < WATER_LEVEL + 0.5) return false;
+                const road = roadAt(x, z);
+                return !(road && road.dist < 2.2);
+            }
+            function dropThemeColliders(colliders) {
+                for (let i = colliders.length - 1; i >= 0; i--) {
+                    if (!colliders[i].theme) continue;
+                    const idx = allColliders.indexOf(colliders[i]);
+                    if (idx !== -1) allColliders.splice(idx, 1);
+                    colliders.splice(i, 1);
+                }
+            }
+            function addThemeSolid(colliders, id, x, z, r) {
+                const collider = { id, x, z, r: r + characterRadius, type: 'plain-tree', gather: false, hits: 0, meshes: [], parent: null, theme: true };
+                colliders.push(collider);
+                allColliders.push(collider);
+            }
+            function layPatch(group, geo, mat, lx, lz, y, sx, sz) {
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.rotation.x = -Math.PI / 2;
+                mesh.position.set(lx, y + 0.06, lz);
+                mesh.scale.set(sx, sz, 1);
+                group.add(markTheme(mesh));
+            }
+            function addBlades(group, mat, lx, lz, y, n, count, tall) {
+                const kit = themeBits();
+                for (let b = 0; b < count; b++) {
+                    const h = (tall ? 1.15 : 0.36) + themeRoll(n + b) * (tall ? 0.9 : 0.22);
+                    const ang = themeRoll(n + b * 5) * Math.PI * 2;
+                    const rad = themeRoll(n + b * 3) * (tall ? 0.9 : 0.38);
+                    const blade = new THREE.Mesh(kit.blade, mat);
+                    blade.position.set(lx + Math.cos(ang) * rad, y + h * 0.5, lz + Math.sin(ang) * rad);
+                    blade.scale.set(tall ? 1.2 : 0.75, h, 1);
+                    blade.rotation.y = ang;
+                    group.add(markTheme(blade));
+                    const cross = blade.clone();
+                    cross.rotation.y = ang + Math.PI / 2;
+                    cross.userData.themePiece = true;
+                    group.add(cross);
+                }
+            }
+            function addStickTree(group, mat, lx, lz, y, n, tall) {
+                const kit = themeBits();
+                const h = (tall ? 2.4 : 1.6) + themeRoll(n) * 1.3;
+                const trunk = new THREE.Mesh(kit.trunk, mat);
+                trunk.scale.set(1, h, 1);
+                trunk.position.set(lx, y + h * 0.5, lz);
+                group.add(markTheme(trunk));
+                for (let i = 0; i < 3; i++) {
+                    const limb = new THREE.Mesh(kit.limb, mat);
+                    limb.scale.set(1, 0.7 + themeRoll(n + i), 1);
+                    limb.position.set(lx, y + h * (0.55 + i * 0.12), lz);
+                    limb.rotation.z = (i - 1) * 0.9;
+                    limb.rotation.y = i * 1.4;
+                    group.add(markTheme(limb));
+                }
+            }
+            function placeThemeDress(cx, cz, group, colliders, force) {
+                const camps = lastCamps ? lastCamps.length : -1;
+                const treesReady = !!treeTemplate;
+                if (!force && group.userData.themeCamps === camps && group.userData.themeTrees === treesReady) return;
+                dropThemeColliders(colliders);
+                if (group.userData.themeRoot) group.remove(group.userData.themeRoot);
+                const root = new THREE.Group();
+                group.add(root);
+                group.userData.themeRoot = root;
+                const kit = themeBits();
+                const scatter = (themeId, count, salt, place) => {
+                    let hit = 0;
+                    for (let i = 0; i < count * 3 && hit < count; i++) {
+                        const spot = themePoint(cx, cz, salt + i);
+                        if (!themeOpen(spot.x, spot.z)) continue;
+                        const theme = groundThemeAt(spot.x, spot.z);
+                        if (!theme || theme.id !== themeId) continue;
+                        const y = terrainHeight(spot.x, spot.z);
+                        place(spot, y, hit);
+                        hit += 1;
+                    }
+                };
+                scatter('forest', 14, 100, (spot) => {
+                    if (!treeTemplate) return;
+                    const scale = 6.6 + themeRoll(spot.n) * 2.6;
+                    root.add(placeProp(treeTemplate, { x: spot.x, z: spot.z, px: spot.lx, pz: spot.lz }, scale));
+                    addThemeSolid(colliders, 'theme-f-' + cx + '-' + cz + '-' + spot.n, spot.x, spot.z, 0.42);
+                });
+                scatter('swamp', 7, 200, (spot, y) => {
+                    layPatch(root, kit.mudGeo, kit.mud, spot.lx, spot.lz, y, 0.85 + themeRoll(spot.n) * 0.7, 1.15);
+                    layPatch(root, kit.mudGeo, kit.mud, spot.lx + 1.6, spot.lz + 0.8, y, 0.5, 0.65);
+                    addBlades(root, themeRoll(spot.n) > 0.5 ? kit.reedDark : kit.reed, spot.lx - 1.2, spot.lz + 1.1, y, spot.n, 7, true);
+                });
+                scatter('swamp', 6, 260, (spot, y) => {
+                    addBlades(root, kit.reed, spot.lx, spot.lz, y, spot.n, 8, true);
+                });
+                scatter('plains', 8, 300, (spot, y) => {
+                    addBlades(root, kit.tuft, spot.lx, spot.lz, y, spot.n, 4, false);
+                    if (themeRoll(spot.n) > 0.45) {
+                        const bloom = new THREE.Mesh(kit.bloom, kit.flower);
+                        bloom.position.set(spot.lx + 0.2, y + 0.42, spot.lz);
+                        root.add(markTheme(bloom));
+                    }
+                });
+                scatter('desert', 5, 400, (spot, y) => {
+                    const h = 1.3 + themeRoll(spot.n) * 0.8;
+                    const stem = new THREE.Mesh(kit.cactusGeo, kit.cactus);
+                    stem.scale.set(1, h, 1);
+                    stem.position.set(spot.lx, y + h * 0.5, spot.lz);
+                    root.add(markTheme(stem));
+                    const arm = new THREE.Mesh(kit.cactusGeo, kit.cactus);
+                    arm.scale.set(0.45, 0.55, 0.45);
+                    arm.position.set(spot.lx + 0.28, y + h * 0.62, spot.lz);
+                    arm.rotation.z = -0.9;
+                    root.add(markTheme(arm));
+                    addThemeSolid(colliders, 'theme-d-' + cx + '-' + cz + '-' + spot.n, spot.x, spot.z, 0.28);
+                });
+                scatter('desert', 6, 460, (spot, y) => {
+                    const bush = new THREE.Mesh(kit.shrub, kit.scrub);
+                    bush.position.set(spot.lx, y + 0.22, spot.lz);
+                    bush.scale.set(1.1, 0.55, 1.1);
+                    root.add(markTheme(bush));
+                });
+                scatter('hills', 8, 500, (spot, y) => {
+                    for (let r = 0; r < 3; r++) {
+                        const rock = new THREE.Mesh(kit.rock, kit.stone);
+                        const s = 0.55 + themeRoll(spot.n + r) * 0.7;
+                        rock.position.set(spot.lx + (r - 1) * 0.7, y + s * 0.28, spot.lz + themeRoll(spot.n + r * 2) * 0.5);
+                        rock.scale.setScalar(s);
+                        rock.rotation.y = r;
+                        root.add(markTheme(rock));
+                    }
+                    addThemeSolid(colliders, 'theme-h-' + cx + '-' + cz + '-' + spot.n, spot.x, spot.z, 0.55);
+                });
+                scatter('hills', 4, 560, (spot, y) => {
+                    const bush = new THREE.Mesh(kit.shrub, kit.scrub);
+                    bush.position.set(spot.lx, y + 0.28, spot.lz);
+                    bush.scale.set(0.8, 0.45, 0.8);
+                    root.add(markTheme(bush));
+                });
+                scatter('ice', 6, 600, (spot, y) => {
+                    layPatch(root, kit.snowGeo, kit.snow, spot.lx, spot.lz, y, 0.7 + themeRoll(spot.n), 1);
+                    const spike = new THREE.Mesh(kit.spike, kit.ice);
+                    spike.position.set(spot.lx + 0.8, y + 0.7, spot.lz - 0.4);
+                    spike.scale.set(0.7 + themeRoll(spot.n), 1, 0.7);
+                    root.add(markTheme(spike));
+                });
+                scatter('ice', 3, 660, (spot, y) => addStickTree(root, kit.dead, spot.lx, spot.lz, y, spot.n, false));
+                scatter('town', 5, 700, (spot, y) => {
+                    layPatch(root, kit.dirtGeo, themeRoll(spot.n) > 0.5 ? kit.cobble : kit.dirt, spot.lx, spot.lz, y, 0.8, 1.2);
+                    const hedge = new THREE.Mesh(kit.shrub, kit.hedge);
+                    hedge.position.set(spot.lx + 1.3, y + 0.35, spot.lz);
+                    hedge.scale.set(1.4, 0.7, 0.5);
+                    root.add(markTheme(hedge));
+                });
+                scatter('hell', 6, 800, (spot, y) => {
+                    layPatch(root, kit.scorchGeo, kit.scorch, spot.lx, spot.lz, y, 0.9 + themeRoll(spot.n) * 0.5, 1);
+                    const crack = new THREE.Mesh(kit.limb, kit.ember);
+                    crack.scale.set(1, 1.6, 1);
+                    crack.rotation.z = Math.PI / 2;
+                    crack.position.set(spot.lx, y + 0.08, spot.lz);
+                    root.add(markTheme(crack));
+                });
+                scatter('hell', 5, 860, (spot, y) => {
+                    addStickTree(root, kit.dead, spot.lx, spot.lz, y, spot.n, true);
+                    addThemeSolid(colliders, 'theme-x-' + cx + '-' + cz + '-' + spot.n, spot.x, spot.z, 0.3);
+                });
+                group.userData.themeCamps = camps;
+                group.userData.themeTrees = treesReady;
             }
 
             const roadRibbonMat = new THREE.MeshStandardMaterial({
@@ -7373,6 +7604,10 @@
                 scene.add(campRoot);
                 for (const site of lastCamps) buildCamp(campRoot, site);
                 retintGround();
+                for (const [key, data] of loadedChunks) {
+                    const [cx, cz] = key.split(',').map(Number);
+                    placeThemeDress(cx, cz, data.group, data.colliders, true);
+                }
             }
 
             let civZoneKey = '';
@@ -7553,7 +7788,7 @@
                 }
                 const label = makeNpcSprite(state.name, state.level, state.hp, state.maxHp, state.elite, state.dummy);
                 label.position.y = entry.group.userData.labelY || 2.45;
-                label.visible = state.id === selectedNpcId;
+                label.visible = !!state.dummy || state.id === selectedNpcId;
                 entry.group.add(label);
                 entry.group.userData.label = label;
                 entry.name = state.name || entry.name;
@@ -8059,8 +8294,8 @@
                                 const ti = terrainMeshes.indexOf(obj);
                                 if (ti !== -1) terrainMeshes.splice(ti, 1);
                             }
-                            if (obj.geometry) obj.geometry.dispose();
-                            if (obj.material && obj.material !== grassMat && obj.material !== roadRibbonMat) {
+                            if (obj.geometry && !(obj.userData && (obj.userData.shared || obj.userData.themePiece))) obj.geometry.dispose();
+                            if (obj.material && obj.material !== grassMat && obj.material !== roadRibbonMat && !(obj.userData && (obj.userData.shared || obj.userData.themePiece))) {
                                 if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
                                 else obj.material.dispose();
                             }
@@ -10694,7 +10929,7 @@
                     entry.group.rotation.y = entry.rotY;
                     if (!entry.dying) entry.group.position.y = entry.dungeonId ? 0.2 : terrainHeight(entry.group.position.x, entry.group.position.z);
                     const name = entry.group.userData.label;
-                    if (name) name.visible = entry.group.visible && (wounded || entry.group.userData.npcId === selectedNpcId || Math.hypot(entry.group.position.x - characterGroup.position.x, entry.group.position.z - characterGroup.position.z) < 32);
+                    if (name) name.visible = entry.group.visible && (entry.dummy || entry.group.userData.npcId === selectedNpcId);
                     const ring = entry.group.userData.ring;
                     if (ring) ring.visible = entry.group.visible && wounded;
                     const body = entry.group.userData.body;
