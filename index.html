@@ -3395,6 +3395,7 @@
                 }
             }
             function applyStats(data) {
+                const wasLevel = stats.level;
                 if (data.level != null) stats.level = data.level;
                 if (data.xp != null) stats.xp = data.xp;
                 if (data.xpToNext != null) stats.xpToNext = data.xpToNext;
@@ -3419,6 +3420,10 @@
                 }
                 updateStatsUI();
                 rememberCharacter();
+                if (data.level != null && data.level !== wasLevel && selectedNpcId && worldNpcs.has(selectedNpcId)) {
+                    const entry = worldNpcs.get(selectedNpcId);
+                    if (entry && !entry.dying) setNpcLabel(entry, { name: entry.name, level: entry.level, hp: entry.hp, maxHp: entry.maxHp, elite: entry.elite, dummy: entry.dummy, wounded: entry.wounded, id: entry.id });
+                }
             }
 
             const inventory = { slots: Array(16).fill(null), capacity: 16, bagSlots: 0, bags: [null, null, null, null], bank: [], baseSlots: 16, coins: 0, materials: {} };
@@ -6480,7 +6485,7 @@
                 frame.style.borderColor = aimed.elite ? 'rgba(241,196,15,0.95)' : aimed.kind === 'player' ? 'rgba(80,180,255,0.8)' : 'rgba(255,80,80,0.7)';
                 document.getElementById('targetName').textContent = aimed.kind === 'player'
                     ? aimed.name
-                    : (aimed.elite ? 'Elite ' : '') + aimed.name + '  Lv ' + (aimed.level || 1);
+                    : (aimed.elite ? 'Elite ' : '') + aimed.name + '  ' + shownMobLevel(aimed.level);
                 const pct = aimed.maxHp ? Math.max(0, Math.min(1, (aimed.hp || 0) / aimed.maxHp)) : 1;
                 const fill = document.getElementById('targetHpFill');
                 fill.style.width = (pct * 100) + '%';
@@ -6846,22 +6851,28 @@
             }
 
             function refreshNameplates() {
-                for (const [id, entry] of worldCivs) {
+                for (const entry of worldCivs.values()) {
                     const label = entry.group.userData.label;
-                    if (label) label.visible = id === selectedNpcId;
+                    if (label) label.visible = true;
                 }
                 for (const [id, entry] of worldNpcs) {
                     const label = entry.group.userData.label;
                     if (label) label.visible = id === selectedNpcId;
                 }
-                for (const [id, entry] of remotePlayers) {
+                for (const entry of remotePlayers.values()) {
                     const label = entry.mesh && entry.mesh.userData.label;
-                    if (label) label.visible = id === selectedNpcId;
+                    if (label) label.visible = true;
                 }
-                for (const [id, marker] of corpseMarkers) {
+                for (const marker of corpseMarkers.values()) {
                     const label = marker.userData.label;
-                    if (label) label.visible = id === selectedNpcId;
+                    if (label) label.visible = true;
                 }
+            }
+
+            function shownMobLevel(level) {
+                const mine = stats.level || 1;
+                const lv = Math.max(1, Math.round(Number(level) || 1));
+                return lv >= mine + 10 ? '??' : ('Lv ' + lv);
             }
 
             function makeNpcSprite(name, level, hp, maxHp, elite, dummy) {
@@ -6882,7 +6893,7 @@
                 ctx.textBaseline = 'middle';
                 ctx.fillText(dummy ? (name || 'Training dummy') : (elite ? 'Elite ' + (name || 'Hostile') : (name || 'Hostile')), 256, 40);
                 ctx.font = '32px Arial';
-                ctx.fillText(dummy ? (hp / (maxHp || 1) <= 0.35 ? 'Wounded' : 'Practice') : ('Lv ' + level), 256, 84);
+                ctx.fillText(dummy ? (hp / (maxHp || 1) <= 0.35 ? 'Wounded' : 'Practice') : shownMobLevel(level), 256, 84);
                 ctx.fillStyle = '#222';
                 ctx.fillRect(56, 132, 400, 28);
                 const width = Math.max(0, Math.min(400, 400 * (hp / (maxHp || 1))));
@@ -6932,7 +6943,7 @@
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
                 sprite.scale.set(1.8, 0.68, 1);
                 sprite.position.y = 2.45;
-                sprite.visible = false;
+                sprite.visible = true;
                 sprite.userData.texture = tex;
                 return sprite;
             }
@@ -7135,7 +7146,7 @@
                 group.userData.civilId = civ.id;
                 const label = makeCivSprite(civ.name, civ.title, civ.tint);
                 label.position.y = group.userData.labelY;
-                label.visible = civ.id === selectedNpcId;
+                label.visible = true;
                 group.add(label);
                 group.userData.label = label;
                 scene.add(group);
@@ -10821,7 +10832,7 @@
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
                 sprite.scale.set(2.4, 0.6, 1);
                 sprite.position.y = 2.6;
-                sprite.visible = false;
+                sprite.visible = true;
                 sprite.userData.texture = tex;
                 return sprite;
             }
@@ -10881,7 +10892,7 @@
                     group.userData.fallback = body;
                 }
                 const label = makeNameSprite(p.name, p.color);
-                label.visible = p.id === selectedNpcId;
+                label.visible = true;
                 group.add(label);
                 group.userData.label = label;
                 group.userData.playerId = p.id;
@@ -10897,7 +10908,7 @@
                     if (old.userData.texture) old.userData.texture.dispose();
                 }
                 const label = makeNameSprite(name, color || entry.data.color);
-                label.visible = entry.mesh.userData.playerId === selectedNpcId;
+                label.visible = true;
                 entry.mesh.add(label);
                 entry.mesh.userData.label = label;
             }
@@ -11012,7 +11023,7 @@
                     }
                     const label = makeNameSprite((name || 'Body') + ' — body', color || '#c5d8f2');
                     label.position.y = 1.1;
-                    label.visible = id === selectedNpcId;
+                    label.visible = true;
                     marker.add(label);
                     marker.userData.label = label;
                     scene.add(marker);
@@ -11608,7 +11619,15 @@
                             showMessage('-' + data.damage + ' HP' + (data.absorbed ? ' · blocked ' + data.absorbed : ''));
                             sfx('hurt');
                         }
-                        if (data.attackerId) selectNpc(data.attackerId);
+                        if (data.attackerId) {
+                            selectNpc(data.attackerId);
+                            const foe = worldNpcs.get(data.attackerId);
+                            if (foe && !foe.dummy && !foe.dying && !ghost) {
+                                autoAttack = true;
+                                const basic = basicAttackId();
+                                if (basic) tryAttack(basic, true);
+                            }
+                        }
                     } else if (data.type === 'spawn') {
                         if (!data.ok) showMessage(data.reason || 'Cannot set rest');
                         else {
