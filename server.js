@@ -39,6 +39,8 @@ function loadSave() {
         const parsed = JSON.parse(fs.readFileSync(savePath, 'utf8'));
         return {
             resources: parsed.resources && typeof parsed.resources === 'object' ? parsed.resources : {},
+            respawnAt: parsed.respawnAt && typeof parsed.respawnAt === 'object' ? parsed.respawnAt : {},
+            resourceMap: parsed.resourceMap && typeof parsed.resourceMap === 'object' ? parsed.resourceMap : {},
             players: parsed.players && typeof parsed.players === 'object' ? parsed.players : {},
             mail: parsed.mail && typeof parsed.mail === 'object' ? parsed.mail : {},
             market: Array.isArray(parsed.market) ? parsed.market : [],
@@ -46,7 +48,7 @@ function loadSave() {
             accounts: parsed.accounts && typeof parsed.accounts === 'object' ? parsed.accounts : {}
         };
     } catch {
-        return { resources: {}, players: {}, mail: {}, market: [], hands: [], accounts: {} };
+        return { resources: {}, respawnAt: {}, resourceMap: {}, players: {}, mail: {}, market: [], hands: [], accounts: {} };
     }
 }
 
@@ -89,8 +91,20 @@ function resourceById(id) {
     return list[index] || null;
 }
 
-function hitsFor(id) {
-    if (Object.prototype.hasOwnProperty.call(save.resources, id)) return save.resources[id];
+function resourceKey(mapId, id) {
+    return mapId ? mapId + '::' + id : id;
+}
+
+function splitResourceKey(key) {
+    const mark = String(key).indexOf('::');
+    if (mark === -1) return { mapId: '', id: String(key) };
+    return { mapId: key.slice(0, mark), id: key.slice(mark + 2) };
+}
+
+function hitsFor(mapId, id) {
+    const key = resourceKey(mapId, id);
+    if (Object.prototype.hasOwnProperty.call(save.resources, key)) return save.resources[key];
+    if (mapId && Object.prototype.hasOwnProperty.call(save.resources, id)) return save.resources[id];
     const base = resourceById(id);
     return base ? base.hits : null;
 }
@@ -114,31 +128,94 @@ function gatherDrop(node) {
 const RESOURCE_RESPAWN_MS = { herb: 60000, tree: 180000, rock: 180000, sulfur: 180000 };
 const resourceRespawn = new Map();
 
-function scheduleResourceRespawn(node, now = Date.now()) {
+function respawnDelay(node) {
+    return (node && RESOURCE_RESPAWN_MS[node.type]) || 180000;
+}
+
+function rememberRespawn(key, at, mapId) {
+    if (!save.respawnAt) save.respawnAt = {};
+    if (!save.resourceMap) save.resourceMap = {};
+    save.respawnAt[key] = at;
+    if (mapId) save.resourceMap[key] = mapId;
+}
+
+function clearResource(mapId, id) {
+    const key = resourceKey(mapId, id);
+    delete save.resources[key];
+    if (mapId) delete save.resources[id];
+    if (save.respawnAt) {
+        delete save.respawnAt[key];
+        delete save.respawnAt[id];
+    }
+    if (save.resourceMap) {
+        delete save.resourceMap[key];
+        delete save.resourceMap[id];
+    }
+}
+
+function scheduleResourceRespawn(node, now = Date.now(), mapId = currentMapId()) {
     if (!node || !(node.hits > 0)) return;
-    const delay = RESOURCE_RESPAWN_MS[node.type] || 180000;
-    resourceRespawn.set(node.id, now + delay);
+    const key = resourceKey(mapId, node.id);
+    const at = now + respawnDelay(node);
+    resourceRespawn.set(key, { at, mapId: mapId || '', id: node.id });
+    rememberRespawn(key, at, mapId);
+}
+
+function nodeOnMap(mapId, id) {
+    const prev = currentMapId();
+    if (mapId) activateMap(mapId);
+    const node = resourceById(id);
+    if (prev && prev !== currentMapId()) activateMap(prev);
+    return node;
 }
 
 function armDepletedResources() {
+    resourceRespawn.clear();
     const now = Date.now();
-    for (const [id, hits] of Object.entries(save.resources)) {
-        if (hits > 0 || resourceRespawn.has(id)) continue;
-        scheduleResourceRespawn(resourceById(id), now);
+    if (!save.respawnAt || typeof save.respawnAt !== 'object') save.respawnAt = {};
+    if (!save.resourceMap || typeof save.resourceMap !== 'object') save.resourceMap = {};
+    let changed = false;
+    for (const [key, hits] of Object.entries(save.resources)) {
+        if (hits > 0) continue;
+        const split = splitResourceKey(key);
+        const mapId = save.resourceMap[key] || split.mapId || '';
+        const id = split.id;
+        let at = Number(save.respawnAt[key]);
+        if (!Number.isFinite(at) || at <= 0) {
+            at = now + respawnDelay(nodeOnMap(mapId, id));
+            rememberRespawn(key, at, mapId);
+            changed = true;
+        }
+        resourceRespawn.set(key, { at, mapId, id });
     }
+    if (changed) scheduleSave();
 }
 
 function tickResourceRespawn(now) {
     if (!resourceRespawn.size) return;
-    let changed = false;
-    for (const [id, at] of resourceRespawn) {
+    const due = [];
+    for (const [key, row] of resourceRespawn) {
+        const at = typeof row === 'number' ? row : row.at;
         if (at > now) continue;
-        resourceRespawn.delete(id);
-        const base = resourceById(id);
-        delete save.resources[id];
-        changed = true;
-        if (base && base.hits > 0) broadcast({ type: 'resource', id, hits: base.hits });
+        const split = splitResourceKey(key);
+        due.push({
+            key,
+            mapId: row && typeof row === 'object' ? (row.mapId || split.mapId || '') : split.mapId,
+            id: row && typeof row === 'object' && row.id ? row.id : split.id
+        });
     }
+    if (!due.length) return;
+    const prev = currentMapId();
+    let changed = false;
+    for (const row of due) {
+        resourceRespawn.delete(row.key);
+        if (row.mapId) activateMap(row.mapId);
+        const base = resourceById(row.id);
+        clearResource(row.mapId, row.id);
+        changed = true;
+        if (base && base.hits > 0) broadcast({ type: 'resource', id: base.id, hits: base.hits, mapId: row.mapId || '' });
+    }
+    if (prev) activateMap(prev);
     if (changed) scheduleSave();
 }
 
@@ -6309,7 +6386,6 @@ function tickNpcs() {
 }
 
 setInterval(tickNpcs, 50);
-armDepletedResources();
 
 function broadcast(data, excludeWs = null) {
     const msg = JSON.stringify(data);
@@ -6468,7 +6544,7 @@ wss.on('connection', (ws) => {
                 chests: scene.chests,
                 actionbar: player.actionbar,
                 character: publicCharacter(player),
-                resources: save.resources,
+                resources: resourcesFor(player.mapId || currentMapId()),
                 fog: scene.fog,
                 world: scene.world,
                 mapId: scene.mapId,
@@ -6653,7 +6729,8 @@ wss.on('connection', (ws) => {
                 send(ws, { type: 'gatherResult', ok: false, reason: 'That cannot be gathered' });
                 return;
             }
-            const hits = hitsFor(node.id);
+            const mapId = player.mapId || currentMapId();
+            const hits = hitsFor(mapId, node.id);
             if (hits <= 0) {
                 send(ws, { type: 'gatherResult', ok: false, reason: 'Already gone', id: node.id, hits: 0, inventory: inventoryOf(player) });
                 return;
@@ -6681,10 +6758,12 @@ wss.on('connection', (ws) => {
                 qty = drop.qty;
                 savePlayer(player);
             }
-            save.resources[node.id] = next;
-            if (next <= 0) scheduleResourceRespawn(node, now);
+            const key = resourceKey(mapId, node.id);
+            if (mapId && Object.prototype.hasOwnProperty.call(save.resources, node.id)) delete save.resources[node.id];
+            save.resources[key] = next;
+            if (next <= 0) scheduleResourceRespawn(node, now, mapId);
             scheduleSave();
-            broadcast({ type: 'resource', id: node.id, hits: next });
+            broadcast({ type: 'resource', id: node.id, hits: next, mapId });
             send(ws, {
                 type: 'gatherResult',
                 ok: true,
@@ -8904,6 +8983,19 @@ function chestsOn(player) {
     }).map(publicChest);
 }
 
+function resourcesFor(mapId) {
+    const out = {};
+    const legacy = {};
+    for (const [key, hits] of Object.entries(save.resources || {})) {
+        const split = splitResourceKey(key);
+        if (split.mapId) {
+            if (split.mapId === (mapId || '')) out[split.id] = hits;
+        } else legacy[split.id] = hits;
+    }
+    for (const [id, hits] of Object.entries(legacy)) if (out[id] == null) out[id] = hits;
+    return out;
+}
+
 function sceneFor(player) {
     if (player.mapId) activateMap(player.mapId);
     const mapId = player.mapId || currentMapId();
@@ -8915,7 +9007,8 @@ function sceneFor(player) {
         camps: campSites(),
         npcs: visibleNpcs(player),
         chests: chestsOn(player),
-        fog: fogOn(player)
+        fog: fogOn(player),
+        resources: resourcesFor(mapId)
     };
 }
 
@@ -9000,6 +9093,7 @@ function applyLoaded(config) {
     spawnDungeonMobs();
     spawnCityDummies();
     failMissingNamedQuests();
+    armDepletedResources();
 }
 
 function loadWorldFile() {

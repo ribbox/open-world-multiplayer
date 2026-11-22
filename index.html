@@ -6064,6 +6064,10 @@
             }
 
             function applyMapWorld(data, spot) {
+                if (data.resources) {
+                    resourceHits.clear();
+                    for (const [id, hits] of Object.entries(data.resources)) resourceHits.set(id, hits);
+                }
                 if (data.world) {
                     applyWorldConfig(data.world);
                     bootWorld = data.world;
@@ -6127,6 +6131,22 @@
                     if (m.material && m.material.dispose) m.material.dispose();
                 });
                 removeCollider(c);
+                for (const data of loadedChunks.values()) {
+                    if (data.placed) data.placed.delete(c.id);
+                }
+            }
+
+            function applyResourceSnapshot(resources) {
+                resourceHits.clear();
+                for (const [id, hits] of Object.entries(resources || {})) resourceHits.set(id, hits);
+                for (const [key, chunk] of loadedChunks) {
+                    for (const c of [...chunk.colliders]) {
+                        if (c.gather) removeNode(c);
+                    }
+                    chunk.placed = new Set(chunk.colliders.map(item => item.id));
+                    const [cx, cz] = key.split(',').map(Number);
+                    placeChunkProps(cx, cz, chunk.group, chunk.colliders, chunk.placed);
+                }
             }
 
             function applyResourceState(id, hits) {
@@ -11435,11 +11455,7 @@
                             exploredZones.clear();
                             for (const key of data.fog) rememberFog(key);
                         }
-                        if (data.resources) {
-                            for (const [id, hits] of Object.entries(data.resources)) {
-                                applyResourceState(id, hits);
-                            }
-                        }
+                        if (data.resources && !data.world) applyResourceSnapshot(data.resources);
                         (data.players || []).forEach(p => {
                             if (p.id !== myId) ensureRemote(p);
                         });
@@ -11481,6 +11497,7 @@
                             remotePlayers.delete(data.id);
                         }
                     } else if (data.type === 'resource') {
+                        if (data.mapId && hereMapId && data.mapId !== hereMapId) return;
                         applyResourceState(data.id, data.hits);
                     } else if (data.type === 'gatherResult') {
                         if (data.id != null && data.hits != null) applyResourceState(data.id, data.hits);
