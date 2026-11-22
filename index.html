@@ -9324,34 +9324,42 @@
                 return name + ' x' + (slot.qty || 1) + ' · ' + formatMoney(sellPrice(slot)) + ' each';
             }
 
+            function sellPile(item) {
+                const kind = String(item && item.kind || '');
+                if (kind === 'armor' || kind === 'weapon' || kind === 'bag') return 0;
+                if (kind === 'health' || kind === 'mana' || kind === 'bomb' || kind === 'lure' || kind === 'junk' || kind === 'quest') return 1;
+                return 2;
+            }
+
             function renderSellList(parent) {
                 const sellNote = document.createElement('p');
                 sellNote.textContent = nearestRole('shop')
-                    ? 'Grouped by rarity. Junk is first. Shift-click sells the stack.'
+                    ? 'Grouped by rarity, then equipment, supplies, and crafting. Junk is first. Shift-click sells the stack.'
                     : 'Stand next to a shop assistant to sell.';
                 parent.appendChild(sellNote);
                 const atShop = !!nearestRole('shop');
                 const sellNames = ['Junk', 'Common', 'Uncommon', 'Rare', 'Epic', 'Gem'];
+                const pileNames = ['Equipment', 'Supplies', 'Crafting'];
                 const offers = [];
                 (inventory.slots || []).forEach((slot, index) => {
                     if (!slot) return;
                     const group = slot.kind === 'junk' ? 0 : itemRarity(slot);
-                    offers.push({ group, amount: slot.amount || 0, name: sellTitle(slot), item: slot, send: (all) => sendCharacter('sell', { slot: index, all }) });
+                    offers.push({ group, pile: sellPile(slot), amount: slot.amount || 0, name: sellTitle(slot), item: slot, send: (all) => sendCharacter('sell', { slot: index, all }) });
                 });
                 for (const [kind, name] of SUPPLY_KINDS) {
                     const qty = (inventory.materials && inventory.materials[kind]) || 0;
                     if (!qty) continue;
                     const group = itemRarity({ kind });
-                    offers.push({ group, name: name + ' x' + qty + ' · ' + formatMoney(sellPrice({ kind })) + ' each', item: { kind, name, qty }, send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
+                    offers.push({ group, pile: 2, name: name + ' x' + qty + ' · ' + formatMoney(sellPrice({ kind })) + ' each', item: { kind, name, qty }, send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
                 }
                 const knownSupply = new Set(SUPPLY_KINDS.map(([id]) => id));
                 for (const [kind, qty] of Object.entries(inventory.materials || {})) {
                     if (!qty || knownSupply.has(kind) || kind === 'ore') continue;
                     const name = materialName(kind);
                     const group = itemRarity({ kind });
-                    offers.push({ group, name: name + ' x' + qty + ' · ' + formatMoney(sellPrice({ kind })) + ' each', item: { kind, name, qty }, send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
+                    offers.push({ group, pile: 2, name: name + ' x' + qty + ' · ' + formatMoney(sellPrice({ kind })) + ' each', item: { kind, name, qty }, send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
                 }
-                offers.sort((a, b) => a.group - b.group || a.name.localeCompare(b.name) || (a.amount || 0) - (b.amount || 0));
+                offers.sort((a, b) => a.group - b.group || a.pile - b.pile || a.name.localeCompare(b.name) || (a.amount || 0) - (b.amount || 0));
                 if (!offers.length) {
                     const empty = document.createElement('p');
                     empty.textContent = 'Nothing to sell.';
@@ -9359,13 +9367,22 @@
                     return;
                 }
                 let sellGroup = -1;
+                let shownPile = -1;
                 for (const offer of offers) {
                     if (offer.group !== sellGroup) {
                         sellGroup = offer.group;
+                        shownPile = -1;
                         const head = document.createElement('h3');
                         head.textContent = sellNames[offer.group] || 'Common';
                         head.style.margin = '10px 0 4px';
                         parent.appendChild(head);
+                    }
+                    if (offer.pile !== shownPile) {
+                        shownPile = offer.pile;
+                        const sub = document.createElement('div');
+                        sub.textContent = pileNames[offer.pile] || 'Crafting';
+                        sub.style.cssText = 'margin: 6px 0 2px; font-size: 12px; color: #c8b48a;';
+                        parent.appendChild(sub);
                     }
                     const line = document.createElement('div');
                     line.className = 'spell-row';
