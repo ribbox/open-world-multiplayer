@@ -2468,6 +2468,7 @@
             if (!Array.isArray(trackedQuests)) trackedQuests = [];
             let talkingId = null;
             let serviceTab = '';
+            let sellTab = '';
             let selectedNpcId = null;
             const shots = [];
             const combatFx = [];
@@ -9334,12 +9335,11 @@
             function renderSellList(parent) {
                 const sellNote = document.createElement('p');
                 sellNote.textContent = nearestRole('shop')
-                    ? 'Grouped by rarity, then equipment, supplies, and crafting. Junk is first. Shift-click sells the stack.'
+                    ? 'Grouped by rarity. Junk is first. Shift-click sells the stack.'
                     : 'Stand next to a shop assistant to sell.';
                 parent.appendChild(sellNote);
                 const atShop = !!nearestRole('shop');
                 const sellNames = ['Junk', 'Common', 'Uncommon', 'Rare', 'Epic', 'Gem'];
-                const pileNames = ['Equipment', 'Supplies', 'Crafting'];
                 const offers = [];
                 (inventory.slots || []).forEach((slot, index) => {
                     if (!slot) return;
@@ -9359,30 +9359,43 @@
                     const group = itemRarity({ kind });
                     offers.push({ group, pile: 2, name: name + ' x' + qty + ' · ' + formatMoney(sellPrice({ kind })) + ' each', item: { kind, name, qty }, send: (all) => sendCharacter('sell', { supply: true, kind, all }) });
                 }
-                offers.sort((a, b) => a.group - b.group || a.pile - b.pile || a.name.localeCompare(b.name) || (a.amount || 0) - (b.amount || 0));
-                if (!offers.length) {
+                offers.sort((a, b) => a.group - b.group || a.name.localeCompare(b.name) || (a.amount || 0) - (b.amount || 0));
+                const piles = [[0, 'Equipment'], [1, 'Supplies'], [2, 'Crafting']];
+                const counts = [0, 0, 0];
+                for (const offer of offers) if (counts[offer.pile] != null) counts[offer.pile] += 1;
+                if (!piles.some(([id]) => String(id) === sellTab)) {
+                    const first = piles.find(([id]) => counts[id]) || piles[0];
+                    sellTab = String(first[0]);
+                }
+                const bar = document.createElement('div');
+                bar.className = 'tabs';
+                for (const [id, label] of piles) {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'sheet-tab' + (sellTab === String(id) ? ' on' : '');
+                    button.textContent = counts[id] ? label + ' (' + counts[id] + ')' : label;
+                    button.addEventListener('click', () => {
+                        sellTab = String(id);
+                        refreshOpenTalk();
+                    });
+                    bar.appendChild(button);
+                }
+                parent.appendChild(bar);
+                const shown = offers.filter(offer => String(offer.pile) === sellTab);
+                if (!shown.length) {
                     const empty = document.createElement('p');
                     empty.textContent = 'Nothing to sell.';
                     parent.appendChild(empty);
                     return;
                 }
                 let sellGroup = -1;
-                let shownPile = -1;
-                for (const offer of offers) {
+                for (const offer of shown) {
                     if (offer.group !== sellGroup) {
                         sellGroup = offer.group;
-                        shownPile = -1;
                         const head = document.createElement('h3');
                         head.textContent = sellNames[offer.group] || 'Common';
                         head.style.margin = '10px 0 4px';
                         parent.appendChild(head);
-                    }
-                    if (offer.pile !== shownPile) {
-                        shownPile = offer.pile;
-                        const sub = document.createElement('div');
-                        sub.textContent = pileNames[offer.pile] || 'Crafting';
-                        sub.style.cssText = 'margin: 6px 0 2px; font-size: 12px; color: #c8b48a;';
-                        parent.appendChild(sub);
                     }
                     const line = document.createElement('div');
                     line.className = 'spell-row';
