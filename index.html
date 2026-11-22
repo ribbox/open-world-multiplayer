@@ -9969,15 +9969,20 @@
                 split.className = 'spell-row';
                 const splitText = document.createElement('div');
                 const stones = haveKind('stone');
-                splitText.textContent = 'Split rock · 1 stone' + (stones ? ' · ' + stones + ' on hand' : '') + ' · sometimes an ore or a gem';
+                splitText.textContent = 'Split rock · 1 stone each' + (stones ? ' · ' + stones + ' on hand' : '') + ' · an ore every time, mostly copper, tin, or iron. A gem is rare.';
                 split.appendChild(splitText);
-                const splitBtn = document.createElement('button');
-                splitBtn.type = 'button';
-                splitBtn.className = 'text-btn';
-                splitBtn.textContent = 'Split';
-                splitBtn.disabled = stones < 1;
-                splitBtn.addEventListener('click', () => sendCharacter('split'));
-                split.appendChild(splitBtn);
+                const actions = document.createElement('div');
+                actions.className = 'craft-actions';
+                for (const [text, count] of [['x1', 1], ['x10', 10], ['All', 'all']]) {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'text-btn';
+                    button.textContent = text;
+                    button.disabled = stones < 1;
+                    if (!button.disabled) button.addEventListener('click', () => sendCharacter('split', { count }));
+                    actions.appendChild(button);
+                }
+                split.appendChild(actions);
                 body.appendChild(split);
                 const groups = {};
                 for (const [id, recipe] of Object.entries(craft.recipes || {})) {

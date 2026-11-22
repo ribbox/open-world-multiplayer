@@ -2933,7 +2933,7 @@ const MATERIAL_NAMES = {
     malachite: 'Malachite', quartz: 'Quartz', jade: 'Jade', ruby: 'Ruby', sapphire: 'Sapphire', diamond: 'Diamond'
 };
 
-const ORE_FINDS = [['copper', 30], ['tin', 24], ['iron', 18], ['silver', 10], ['mithril', 5], ['thorium', 2]];
+const ORE_FINDS = [['copper', 46], ['tin', 32], ['iron', 24], ['silver', 6], ['mithril', 2], ['thorium', 1]];
 const GEM_FINDS = [['malachite', 26], ['quartz', 20], ['jade', 14], ['ruby', 8], ['sapphire', 5], ['diamond', 2]];
 
 function weightedFind(table) {
@@ -2946,18 +2946,33 @@ function weightedFind(table) {
     return table[table.length - 1][0];
 }
 
-function splitRock(player) {
+function splitNote(table, found) {
+    return table.map(([kind]) => found[kind] ? found[kind] + ' ' + (MATERIAL_NAMES[kind] || kind) : '').filter(Boolean).join(', ');
+}
+
+function splitRock(player, count) {
     if (!player.materials) player.materials = blankMaterials();
-    if ((player.materials.stone || 0) < 1) return { error: 'Need 1 stone' };
-    player.materials.stone -= 1;
-    const roll = Math.random();
-    let note = 'The rock splits clean. Nothing inside.';
-    if (roll >= 0.48) {
-        const kind = weightedFind(roll < 0.8 ? ORE_FINDS : GEM_FINDS);
-        player.materials[kind] = (player.materials[kind] || 0) + 1;
-        note = 'The split reveals ' + (MATERIAL_NAMES[kind] || kind) + '.';
+    const have = player.materials.stone || 0;
+    if (have < 1) return { error: 'Need 1 stone' };
+    let n = count === 'all' ? have : Math.max(1, Math.round(Number(count) || 1));
+    n = Math.min(have, n);
+    player.materials.stone -= n;
+    const found = {};
+    const gems = {};
+    for (let i = 0; i < n; i++) {
+        const ore = weightedFind(ORE_FINDS);
+        player.materials[ore] = (player.materials[ore] || 0) + 1;
+        found[ore] = (found[ore] || 0) + 1;
+        if (Math.random() < 0.05) {
+            const gem = weightedFind(GEM_FINDS);
+            player.materials[gem] = (player.materials[gem] || 0) + 1;
+            gems[gem] = (gems[gem] || 0) + 1;
+        }
     }
     savePlayer(player);
+    let note = 'Split ' + n + ' stone: ' + splitNote(ORE_FINDS, found) + '.';
+    const gemText = splitNote(GEM_FINDS, gems);
+    if (gemText) note += ' Gem: ' + gemText + '.';
     return { note };
 }
 
@@ -7695,7 +7710,7 @@ wss.on('connection', (ws) => {
         }
 
         if (data.type === 'split') {
-            const result = splitRock(player);
+            const result = splitRock(player, data.count);
             send(ws, {
                 type: 'character',
                 ok: !result.error,
