@@ -15,7 +15,7 @@ Browser-based open-world game with multiplayer support, packaged for Docker. The
 - `/models/terrain-sand.glb` — beach and shore.
 - `/models/tree.glb` — scenery trees. They block movement and cannot be chopped.
 - `/models/gather-tree.glb` — trees placed in world setup that an axe can chop.
-- `/models/rock.glb` — scenery rocks. They block movement and cannot be mined.
+- `/models/rock.glb` — scenery rocks. They block movement and cannot be mined. A rock placed in setup is four times the size of the scattered ones.
 - `/models/mine-rock.glb` — rocks placed in world setup that a pickaxe can mine.
 - `/models/camp.glb`, `inn.glb`, `cabin.glb` — camp site, inn, and huts.
 - `/models/chest.glb` — loot chests.

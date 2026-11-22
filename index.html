@@ -5584,7 +5584,8 @@
                         meshes.push(crystal);
                     } else if (item.type === 'boulder' || item.type === 'plain-rock') {
                         if (!rockTemplate) continue;
-                        const rock = placeProp(rockTemplate, item, 1.15 + (item.sx || 1) * 0.4);
+                        const rockScale = item.authored ? 4 : 1;
+                        const rock = placeProp(rockTemplate, item, (1.15 + (item.sx || 1) * 0.4) * rockScale);
                         group.add(rock);
                         meshes.push(rock);
                     } else if (mineTemplate) {
@@ -5599,7 +5600,7 @@
                         id: item.id,
                         x: item.x,
                         z: item.z,
-                        r: (item.type === 'tree' || item.type === 'plain-tree' ? 0.5 : item.type === 'herb' ? 0.2 : item.type === 'sulfur' ? 0.4 : item.type === 'boulder' || item.type === 'plain-rock' ? 0.7 + (item.sx || 1) * 0.25 : 0.9) + characterRadius,
+                        r: (item.type === 'tree' || item.type === 'plain-tree' ? 0.5 : item.type === 'herb' ? 0.2 : item.type === 'sulfur' ? 0.4 : item.type === 'boulder' || item.type === 'plain-rock' ? (0.7 + (item.sx || 1) * 0.25) * (item.authored ? 4 : 1) : 0.9) + characterRadius,
                         type: item.type,
                         gather: !scenery && hits > 0,
                         hits,

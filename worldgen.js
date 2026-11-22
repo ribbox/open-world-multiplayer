@@ -1268,7 +1268,8 @@ function appendDesignedNodes(cx, cz, items) {
             sy: bulky ? 0.7 : sulfur ? 0.7 : 0,
             sz: bulky ? 1.1 : sulfur ? 0.45 : 0,
             hits,
-            placed: hits > 0
+            placed: hits > 0,
+            authored: true
         });
     }
 }
