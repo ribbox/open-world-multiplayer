@@ -95,6 +95,22 @@ function hitsFor(id) {
     return base ? base.hits : null;
 }
 
+function gatherYield(node) {
+    const id = String(node && node.id || '');
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 33 + id.charCodeAt(i)) >>> 0;
+    return 1 + (h % 5);
+}
+
+function gatherDrop(node) {
+    const qty = gatherYield(node);
+    if (node.type === 'tree') return { kind: 'wood', name: 'Wood', qty };
+    if (node.type === 'rock') return { kind: 'stone', name: 'Stone', qty };
+    if (node.type === 'herb') return { kind: 'herb', name: 'Herb', qty };
+    if (node.type === 'sulfur') return { kind: 'powder', name: 'Powder', qty };
+    return null;
+}
+
 const RESOURCE_RESPAWN_MS = { herb: 60000, tree: 180000, rock: 180000, sulfur: 180000 };
 const resourceRespawn = new Map();
 
@@ -6641,20 +6657,13 @@ wss.on('connection', (ws) => {
             }
 
             const next = hits - 1;
+            const drop = gatherDrop(node);
             let gained = null;
-            if (next <= 0) {
-                const drop = node.type === 'tree'
-                    ? { kind: 'wood', name: 'Wood', qty: 1 }
-                    : node.type === 'herb'
-                        ? { kind: 'herb', name: 'Herb', qty: 1 }
-                        : node.type === 'sulfur'
-                            ? { kind: 'powder', name: 'Powder', qty: 1 }
-                            : { kind: 'stone', name: 'Stone', qty: 1 };
-                if (addToSlots(player, drop)) {
-                    send(ws, { type: 'gatherResult', ok: false, reason: 'Inventory full', id: node.id, hits, inventory: inventoryOf(player) });
-                    return;
-                }
+            let qty = 0;
+            if (drop) {
+                addToSlots(player, drop);
                 gained = drop.kind;
+                qty = drop.qty;
                 savePlayer(player);
             }
             save.resources[node.id] = next;
@@ -6667,6 +6676,7 @@ wss.on('connection', (ws) => {
                 id: node.id,
                 hits: next,
                 gained,
+                qty,
                 inventory: inventoryOf(player)
             });
             return;

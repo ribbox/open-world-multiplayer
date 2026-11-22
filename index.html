@@ -11485,11 +11485,10 @@
                             sfx('deny');
                         } else if (data.gained) {
                             sfx('loot');
-                            if (data.gained === 'wood') showMessage('+1 Wood');
-                            else if (data.gained === 'stone') showMessage('+1 Stone');
-                            else if (data.gained === 'stone-gem') showMessage('+1 Stone, +1 Gem');
-                            else if (data.gained === 'herb') showMessage('+1 Herb');
-                            else if (data.gained === 'powder') showMessage('+1 Powder');
+                            const n = Math.max(1, Number(data.qty) || 1);
+                            const names = { wood: 'Wood', stone: 'Stone', herb: 'Herb', powder: 'Powder' };
+                            if (data.gained === 'stone-gem') showMessage('+' + n + ' Stone, +1 Gem');
+                            else if (names[data.gained]) showMessage('+' + n + ' ' + names[data.gained]);
                             else showMessage('Hit');
                         }
                         else showMessage('Hit');
