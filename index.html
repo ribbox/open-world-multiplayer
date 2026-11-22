@@ -6444,6 +6444,7 @@
                 if (parsed.channel === 'whisper' && parsed.to) lastTell = parsed.to;
                 gameSocket.send(JSON.stringify({ type: 'chat', channel: parsed.channel, text: parsed.text, to: parsed.to || '', toId: parsed.toId || '' }));
                 setLogTab(parsed.channel);
+                input.blur();
             });
 
             function refreshTargetFrame() {
@@ -8059,7 +8060,7 @@
                                 if (ti !== -1) terrainMeshes.splice(ti, 1);
                             }
                             if (obj.geometry) obj.geometry.dispose();
-                            if (obj.material) {
+                            if (obj.material && obj.material !== grassMat && obj.material !== roadRibbonMat) {
                                 if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
                                 else obj.material.dispose();
                             }
@@ -10332,7 +10333,24 @@
             window.addEventListener('blur', () => {
                 for (const code of Object.keys(held)) delete held[code];
                 arrows.up = arrows.down = arrows.left = arrows.right = false;
+                isOrbiting = false;
                 syncMoveKeys();
+            });
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) return;
+                for (const code of Object.keys(held)) delete held[code];
+                arrows.up = arrows.down = arrows.left = arrows.right = false;
+                isOrbiting = false;
+                syncMoveKeys();
+            });
+            function typingTarget(node) {
+                if (!node || !node.tagName) return false;
+                const tag = node.tagName;
+                return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || node.isContentEditable;
+            }
+            document.addEventListener('pointerdown', (e) => {
+                window.focus();
+                if (!typingTarget(e.target) && typingTarget(document.activeElement)) document.activeElement.blur();
             });
 
             renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -10367,7 +10385,11 @@
             window.addEventListener('mouseup', (e) => {
                 if (e.button === 2) isOrbiting = false;
             });
+            window.addEventListener('pointerup', (e) => {
+                if ((e.buttons & 2) === 0) isOrbiting = false;
+            });
             window.addEventListener('mousemove', (e) => {
+                if (isOrbiting && (e.buttons & 2) === 0) isOrbiting = false;
                 if (!isOrbiting) return;
                 const dx = e.clientX - lastMouseX;
                 const dy = e.clientY - lastMouseY;
@@ -10430,6 +10452,24 @@
                     }
                     if (!hit) break;
                 }
+            }
+
+            let lastFreeX = 0;
+            let lastFreeZ = 0;
+            let haveFree = false;
+            function stillInside(x, z) {
+                for (const c of allColliders) {
+                    const dx = x - c.x;
+                    const dz = z - c.z;
+                    if (c.hx != null) {
+                        const cos = Math.cos(c.yaw || 0);
+                        const sin = Math.sin(c.yaw || 0);
+                        const lx = dx * cos - dz * sin;
+                        const lz = dx * sin + dz * cos;
+                        if (Math.abs(lx) < (c.hx || 0) + 0.15 && Math.abs(lz) < (c.hz || 0) + 0.15) return true;
+                    } else if (c.r > 0.2 && dx * dx + dz * dz < (c.r - 0.2) * (c.r - 0.2)) return true;
+                }
+                return false;
             }
 
             const clock = new THREE.Clock();
@@ -10545,6 +10585,41 @@
                 }
 
                 resolveCollisions(characterGroup.position);
+                if (!Number.isFinite(characterGroup.position.x) || !Number.isFinite(characterGroup.position.z)) {
+                    if (haveFree) {
+                        characterGroup.position.x = lastFreeX;
+                        characterGroup.position.z = lastFreeZ;
+                    }
+                } else if (stillInside(characterGroup.position.x, characterGroup.position.z) && haveFree) {
+                    const dx = lastFreeX - characterGroup.position.x;
+                    const dz = lastFreeZ - characterGroup.position.z;
+                    const len = Math.hypot(dx, dz) || 1;
+                    characterGroup.position.x += (dx / len) * Math.min(0.8, len);
+                    characterGroup.position.z += (dz / len) * Math.min(0.8, len);
+                    resolveCollisions(characterGroup.position);
+                } else if (stillInside(characterGroup.position.x, characterGroup.position.z)) {
+                    let nx = 1;
+                    let nz = 0;
+                    let best = Infinity;
+                    for (const c of allColliders) {
+                        const dx = characterGroup.position.x - c.x;
+                        const dz = characterGroup.position.z - c.z;
+                        const d = dx * dx + dz * dz;
+                        if (d < best && d > 0.0001) {
+                            best = d;
+                            nx = dx;
+                            nz = dz;
+                        }
+                    }
+                    const len = Math.hypot(nx, nz) || 1;
+                    characterGroup.position.x += (nx / len) * 0.8;
+                    characterGroup.position.z += (nz / len) * 0.8;
+                    resolveCollisions(characterGroup.position);
+                } else if (!stillInside(characterGroup.position.x, characterGroup.position.z)) {
+                    lastFreeX = characterGroup.position.x;
+                    lastFreeZ = characterGroup.position.z;
+                    haveFree = true;
+                }
                 if (activeCave) {
                     const held = dungeonClamp(activeCave, characterGroup.position.x, characterGroup.position.z);
                     const feetHeld = dungeonClamp(activeCave, feetX, feetZ);
@@ -10772,15 +10847,29 @@
                 const rayLen = rayDir.length() || 1;
                 rayDir.multiplyScalar(1 / rayLen);
                 const cameraRay = cameraRaycaster;
-                if (activeCave && dungeonRoot) dungeonRoot.updateWorldMatrix(true, true);
-                for (let i = 0; i < terrainMeshes.length; i++) terrainMeshes[i].updateWorldMatrix(true, false);
-                cameraRay.set(camTarget, rayDir);
-                cameraRay.far = rayLen;
-                const hits = activeCave ? cameraRay.intersectObjects(dungeonRayMeshes, false) : cameraRay.intersectObjects(terrainMeshes, false);
                 let pull = rayLen;
-                if (hits.length && hits[0].distance < rayLen - 0.15) {
-                    pull = Math.max(0.8, hits[0].distance - 0.45);
-                }
+                try {
+                    if (activeCave && dungeonRoot) dungeonRoot.updateWorldMatrix(true, true);
+                    const ground = [];
+                    if (!activeCave) {
+                        for (let i = terrainMeshes.length - 1; i >= 0; i--) {
+                            const mesh = terrainMeshes[i];
+                            if (!mesh.geometry || !mesh.geometry.attributes || !mesh.geometry.attributes.position) {
+                                terrainMeshes.splice(i, 1);
+                                continue;
+                            }
+                            const ox = mesh.parent ? mesh.parent.position.x : mesh.position.x;
+                            const oz = mesh.parent ? mesh.parent.position.z : mesh.position.z;
+                            if (Math.abs(ox - desired.x) > chunkSize * 1.6 || Math.abs(oz - desired.z) > chunkSize * 1.6) continue;
+                            mesh.updateWorldMatrix(true, false);
+                            ground.push(mesh);
+                        }
+                    }
+                    cameraRay.set(camTarget, rayDir);
+                    cameraRay.far = rayLen;
+                    const hits = activeCave ? cameraRay.intersectObjects(dungeonRayMeshes, false) : cameraRay.intersectObjects(ground, false);
+                    if (hits.length && hits[0].distance < rayLen - 0.15) pull = Math.max(0.8, hits[0].distance - 0.45);
+                } catch (err) { /* keep the camera behind the character if a chunk is mid-rebuild */ }
                 camera.position.copy(camTarget).addScaledVector(rayDir, pull);
                 if (!activeCave) {
                 const bedY = terrainHeight(camera.position.x, camera.position.z);

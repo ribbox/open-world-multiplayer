@@ -65,7 +65,7 @@ node server.js
 ```
 
 ## Controls
-- W/S or the arrow keys: move. A/D or Left/Right: turn. Turning eases in, and the camera swings behind you unless the right mouse button is held.
+- W/S or the arrow keys: move. A/D or Left/Right: turn. Turning eases in, and the camera swings behind you unless the right mouse button is held. Click the world to take the keys back after typing in chat. A low step does not trap you, and if a prop pins you, you are pushed back to open ground.
 - Space: jump, Shift: sprint
 - 1-8 use the current action-bar page. [ and ] change page. The slots, bag, and character buttons are icons. Right-click a slot to assign a trained action. A slot turns dark and counts down while that action is cooling. A sword, a bolt, and a potion each wait a different time. Health and mana potions share one wait. Reaching a new level shows a short Level line.
 - Click an NPC or another player, or press Tab, to select them. Attacks hit the NPC. Mend heals the selected player, or you if nobody is selected. A mob's name plate shows only while that mob is targeted. Friendly NPCs and other players keep their names up. A mob 10 or more levels above you shows ?? instead of its level. When a hostile starts hitting you, it becomes your target and your basic attack swings on its own.

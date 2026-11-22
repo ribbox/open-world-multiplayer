@@ -144,6 +144,13 @@ export function terrainHeight(x, z) {
     const key = Math.round(x * 50) * 131071 + Math.round(z * 50);
     const hit = heightCache.get(key);
     if (hit !== undefined) return hit;
+    if (heightCache.size > 60000) {
+        let drop = 30000;
+        for (const key of heightCache.keys()) {
+            heightCache.delete(key);
+            if (--drop <= 0) break;
+        }
+    }
     const h = shapedHeight(x, z);
     heightCache.set(key, h);
     return h;
@@ -595,7 +602,9 @@ export function blocksClimb(x0, z0, x1, z1) {
     for (let i = 1; i <= steps; i++) {
         const t = i / steps;
         const y = terrainHeight(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t);
-        if ((y - prev) / (dist / steps) > shape.maxSlope) return true;
+        const rise = y - prev;
+        const run = dist / steps;
+        if (rise > 0.65 && rise / run > shape.maxSlope) return true;
         prev = y;
     }
     return false;
