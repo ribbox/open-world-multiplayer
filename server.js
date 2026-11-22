@@ -1548,6 +1548,8 @@ function publicNpc(n) {
         style: n.style || '',
         tint: n.tint,
         elite: !!n.elite,
+        dummy: !!n.dummy,
+        wounded: !!n.wounded,
         dungeonId: n.dungeonId || ''
     };
 }
@@ -5488,6 +5490,32 @@ function playerThreat(player) {
     return { id: player.persistentId, name: player.name || 'Player', kind: 'player', ownerId: '', factor: plateFactor(player) };
 }
 
+function practiceHit(npc, player, damage, label) {
+    if (!npc || !npc.dummy) return false;
+    const dealt = Math.max(0, Math.round(damage));
+    if (!(dealt > 0)) return true;
+    noteThreat(npc, playerThreat(player), dealt);
+    const name = npc.name || 'Training dummy';
+    tellCombat(player, (label || 'Hit') + ' ' + name + ' for ' + dealt);
+    tellParty(player, (player.name || 'Ally') + ' hits ' + name + ' for ' + dealt);
+    broadcast({
+        type: 'npcHit',
+        id: npc.id,
+        hp: npc.hp,
+        maxHp: npc.maxHp,
+        alive: true,
+        x: npc.x,
+        z: npc.z,
+        level: npc.level,
+        name: npc.name,
+        tint: npc.tint,
+        dummy: true,
+        wounded: !!npc.wounded,
+        damage: dealt
+    });
+    return true;
+}
+
 function threatLiving(npc, row) {
     if (!row) return null;
     if (row.kind === 'player') {
@@ -5569,8 +5597,37 @@ function publishThreat(now) {
 function companionStrike(owner, victim, amount, kind) {
     if (!victim || !victim.alive) return;
     const dealt = Math.max(1, Math.round(amount * damageScale(owner.level, victim.level)));
-    victim.hp -= dealt;
     const body = kind === 'minion' ? owner.minion : owner.pet;
+    const petLabel = (body && body.name) || (kind === 'minion' ? 'Minion' : 'Pet');
+    if (victim.dummy) {
+        noteThreat(victim, {
+            id: owner.persistentId + ':' + (kind || 'pet'),
+            name: petLabel,
+            kind: kind || 'pet',
+            ownerId: owner.persistentId,
+            factor: 1
+        }, dealt);
+        enterCombat(owner, Date.now());
+        tellCombat(owner, petLabel + ' hits ' + mobTag(victim) + ' for ' + dealt);
+        tellParty(owner, (owner.name || 'Ally') + "'s " + petLabel + ' hits ' + mobTag(victim) + ' for ' + dealt);
+        broadcast({
+            type: 'npcHit',
+            id: victim.id,
+            hp: victim.hp,
+            maxHp: victim.maxHp,
+            alive: true,
+            x: victim.x,
+            z: victim.z,
+            level: victim.level,
+            name: victim.name,
+            tint: victim.tint,
+            dummy: true,
+            wounded: !!victim.wounded,
+            damage: dealt
+        });
+        return;
+    }
+    victim.hp -= dealt;
     noteThreat(victim, {
         id: owner.persistentId + ':' + (kind || 'pet'),
         name: (body && body.name) || (kind === 'minion' ? 'Minion' : 'Pet'),
@@ -5579,7 +5636,6 @@ function companionStrike(owner, victim, amount, kind) {
         factor: 1
     }, dealt);
     enterCombat(owner, Date.now());
-    const petLabel = (body && body.name) || (kind === 'minion' ? 'Minion' : 'Pet');
     const verb = victim.hp <= 0 ? ' kills ' : ' hits ';
     tellCombat(owner, petLabel + verb + mobTag(victim) + ' for ' + dealt);
     tellParty(owner, (owner.name || 'Ally') + "'s " + petLabel + verb + mobTag(victim) + ' for ' + dealt);
@@ -5668,7 +5724,7 @@ function stepCompanion(body, tx, tz, speed, dt) {
 function companionPrey(owner, body) {
     if (!body || body.mode !== 'attack' || owner.ghost) return null;
     const marked = body.attackId ? npcs.get(body.attackId) : null;
-    if (marked && marked.alive && !inSettlement(marked.x, marked.z)) return marked;
+    if (marked && marked.alive && (marked.dummy || !inSettlement(marked.x, marked.z))) return marked;
     const foe = body.attackerId ? npcs.get(body.attackerId) : null;
     const recent = foe && foe.alive && (body.attackerAt || 0) > Date.now() - 4000 && !inSettlement(foe.x, foe.z);
     if (recent && (foe.mapId || '') === (owner.mapId || '') && Math.hypot(foe.x - body.x, foe.z - body.z) < 16) return foe;
@@ -5681,7 +5737,7 @@ function tickCompanionBody(owner, body, now, dt) {
     if (!body || !body.alive || owner.ghost) return;
     const prey = companionPrey(owner, body);
     const safe = inSettlement(owner.x, owner.z);
-    const chase = prey && !safe;
+    const chase = prey && (!safe || prey.dummy);
     const fromOwner = Math.hypot(body.x - owner.x, body.z - owner.z);
     let tx = owner.x + Math.sin((owner.rotY || 0) + 2.4) * 1.6;
     let tz = owner.z + Math.cos((owner.rotY || 0) + 2.4) * 1.6;
@@ -5972,6 +6028,14 @@ function tickNpcs() {
     for (const area of activeAreas.values()) tickAreaSpawns(area, now);
 
     for (const npc of npcs.values()) {
+        if (npc.dummy) {
+            npc.alive = true;
+            npc.aggroId = null;
+            npc.x = npc.homeX;
+            npc.z = npc.homeZ;
+            npc.hp = npc.wounded ? Math.round(npc.maxHp * 0.3) : npc.maxHp;
+            continue;
+        }
         if (npc.mapId && npc.mapId !== currentMapId()) activateMap(npc.mapId);
         if (!npc.alive) {
             if (npc.herd) {
@@ -6640,8 +6704,11 @@ wss.on('connection', (ws) => {
                 }
             }
             if (!spec.heal && !spec.stealth && inSettlement(player.x, player.z)) {
-                send(ws, { type: 'attackResult', ok: false, reason: 'This camp is safe' });
-                return;
+                const marked = data.targetId ? npcs.get(String(data.targetId)) : null;
+                if (!marked || !marked.dummy || !marked.alive) {
+                    send(ws, { type: 'attackResult', ok: false, reason: 'This camp is safe' });
+                    return;
+                }
             }
             const rank = abilityRank(player, abilityId);
             const cost = abilityCost(abilityId, rank);
@@ -6833,6 +6900,11 @@ wss.on('connection', (ws) => {
                 }
                 if ((player.shoutUntil || 0) > Date.now()) scale *= 1.25;
                 const dealtNow = Math.max(1, Math.round(per * scale * damageScale(player.level, victim.level)));
+                if (victim.dummy) {
+                    const label = executed ? 'Execute' : spec.leech ? 'Drain' : spec.slow ? 'Slow' : 'Hit';
+                    practiceHit(victim, player, dealtNow, label);
+                    return { dealt: dealtNow, killed: false, gained: 0, leveled: false, chest: null, executed };
+                }
                 victim.hp -= dealtNow;
                 noteThreat(victim, playerThreat(player), dealtNow);
                 tellParty(player, (player.name || 'Ally') + (victim.hp <= 0 ? ' kills ' : ' hits ') + (victim.name || 'Mob') + ' for ' + dealtNow);
@@ -7298,11 +7370,11 @@ wss.on('connection', (ws) => {
             } else if (slot.kind === 'mana') {
                 player.mana = Math.min(player.maxMana, player.mana + (slot.amount || 8));
             } else if (slot.kind === 'bomb') {
-                if (inSettlement(player.x, player.z)) {
+                const npc = npcs.get(data.targetId);
+                if (inSettlement(player.x, player.z) && !(npc && npc.dummy && npc.alive)) {
                     send(ws, { type: 'useResult', ok: false, reason: 'This camp is safe' });
                     return;
                 }
-                const npc = npcs.get(data.targetId);
                 if (!npc || !npc.alive || (npc.instanceId || '') !== (player.instanceId || '')) {
                     send(ws, { type: 'useResult', ok: false, reason: 'Select a hostile target' });
                     return;
@@ -7314,32 +7386,36 @@ wss.on('connection', (ws) => {
                 const damage = slot.amount || 10;
                 dropStealth(player, 'You attack');
                 enterCombat(player, now);
-                npc.hp -= damage;
-                noteThreat(npc, playerThreat(player), damage);
-                tellParty(player, (player.name || 'Ally') + (npc.hp <= 0 ? ' kills ' : ' hits ') + (npc.name || 'Mob') + ' for ' + damage + ' with a bomb');
                 let gained = 0;
                 let leveled = false;
                 let chest = null;
-                if (npc.hp <= 0) {
-                    downNpc(npc);
-                    const award = awardKill(player, npc);
-                    gained = award.gained;
-                    leveled = award.leveled;
-                    chest = spawnChest(npc, award.members);
+                if (npc.dummy) {
+                    practiceHit(npc, player, damage, 'Bomb');
+                } else {
+                    npc.hp -= damage;
+                    noteThreat(npc, playerThreat(player), damage);
+                    tellParty(player, (player.name || 'Ally') + (npc.hp <= 0 ? ' kills ' : ' hits ') + (npc.name || 'Mob') + ' for ' + damage + ' with a bomb');
+                    if (npc.hp <= 0) {
+                        downNpc(npc);
+                        const award = awardKill(player, npc);
+                        gained = award.gained;
+                        leveled = award.leveled;
+                        chest = spawnChest(npc, award.members);
+                    }
+                    broadcast({
+                        type: 'npcHit',
+                        id: npc.id,
+                        hp: npc.hp,
+                        maxHp: npc.maxHp,
+                        alive: npc.alive,
+                        x: npc.x,
+                        z: npc.z,
+                        level: npc.level,
+                        name: npc.name,
+                        tint: npc.tint
+                    });
+                    if (npc.ambientGone) npcs.delete(npc.id);
                 }
-                broadcast({
-                    type: 'npcHit',
-                    id: npc.id,
-                    hp: npc.hp,
-                    maxHp: npc.maxHp,
-                    alive: npc.alive,
-                    x: npc.x,
-                    z: npc.z,
-                    level: npc.level,
-                    name: npc.name,
-                    tint: npc.tint
-                });
-                if (npc.ambientGone) npcs.delete(npc.id);
                 slot.qty -= 1;
                 if (slot.qty <= 0) player.slots[index] = null;
                 startCooldown(player, 'bomb', BOMB_COOLDOWN, now);
@@ -8376,6 +8452,58 @@ function spawnDungeonMobs() {
     else if (briefs[0] && briefs[0].id) activateMap(briefs[0].id);
 }
 
+const CITY_DUMMIES = [
+    { lx: -5, lz: 21.2, wounded: false },
+    { lx: -5, lz: 23.2, wounded: false },
+    { lx: -5, lz: 25.2, wounded: true }
+];
+
+function spawnCityDummies() {
+    for (const npc of [...npcs.values()]) {
+        if (npc.dummy) npcs.delete(npc.id);
+    }
+    const briefs = mapBriefs();
+    const runs = briefs.length ? briefs : [{ id: '' }];
+    const back = currentMapId();
+    for (const brief of runs) {
+        if (brief.id) activateMap(brief.id);
+        const mapId = currentMapId();
+        for (const site of campSites()) {
+            if (site.layout !== 'city') continue;
+            CITY_DUMMIES.forEach((spot, index) => {
+                const at = campOffset(site.x, site.z, spot.lx, spot.lz);
+                if (!campStanding(at.x, at.z)) return;
+                const npc = {
+                    id: (mapId ? mapId + ':' : '') + 'dummy-' + site.id + '-' + index,
+                    dummy: true,
+                    wounded: !!spot.wounded,
+                    pinned: true,
+                    mapId,
+                    x: at.x,
+                    z: at.z,
+                    homeX: at.x,
+                    homeZ: at.z,
+                    rotY: Math.atan2(site.x - at.x, site.z - at.z),
+                    zx: Math.round(at.x / ZONE_SIZE),
+                    zz: Math.round(at.z / ZONE_SIZE),
+                    kind: 'dummy',
+                    name: spot.wounded ? 'Wounded dummy' : 'Training dummy',
+                    tint: spot.wounded ? '#922b21' : '#c4a574',
+                    level: 1,
+                    alive: true,
+                    aggroId: null,
+                    attackAt: 0,
+                    maxHp: 100000,
+                    hp: spot.wounded ? 30000 : 100000
+                };
+                npcs.set(npc.id, npc);
+            });
+        }
+    }
+    if (back) activateMap(back);
+    else if (briefs[0] && briefs[0].id) activateMap(briefs[0].id);
+}
+
 function spawnMobsForActiveMap() {
     const mapId = currentMapId();
     for (const brief of listDungeons()) {
@@ -8845,6 +8973,7 @@ function applyLoaded(config) {
     chests.clear();
     refreshNpcZones();
     spawnDungeonMobs();
+    spawnCityDummies();
     failMissingNamedQuests();
 }
 

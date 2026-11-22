@@ -950,7 +950,7 @@
         At level 20 and 40 a trainer teaches a special skill. Specials are not talents. A hunter calls a wolf: Attack, Follow, Stay, and Heal. Bite comes at 40. Summon brings it back if it dies, or if it falls too far behind. The wolf fights your target. A warlock raises a corpse that fights your target for a short time<br>
         Hamstring, Wing Clip, Frost Bolt, and Curse slow. Execute, Kill Shot, and Soul Burn double damage under 35% health. Cleave, Multi-Shot, Whirlwind, Frost Nova, and Hellfire hit nearby foes. Drain Life returns the damage as health. Barrier soaks hits<br>
         The bar is your level and experience. Armor and stats are on the character sheet<br>
-        Camps are safe. Creatures walk out, and you cannot attack while you are inside. A city is a much larger camp, with more buildings and people in the streets, and it is safe all the way across. The camp name appears when you enter<br>
+        Camps are safe. Creatures walk out, and you cannot attack while you are inside. A city is a much larger camp, with more buildings and people in the streets, and it is safe all the way across. Training dummies stand on the main street, past the inn and away from the castle. They never die. The wounded one is under 35% health, so finishers hit harder. The camp name appears when you enter<br>
         Tracked quests mark the zone, the dungeon portal, or the turn-in on the minimap<br>
         Crafted armor and weapons add stats. Cloth, staves, and wands favor Intellect. Swords, bows, and leather favor Strength<br>
         Setup downloads quests and items, or copies them so you can paste into cell A1<br>
@@ -4848,7 +4848,7 @@
                 if (mapLayers.npcs) for (const entry of worldNpcs.values()) {
                     const p = place(entry.group.position.x, entry.group.position.z);
                     if (!p || (!activeCave && !seenAt(entry.group.position.x, entry.group.position.z))) continue;
-                    ctx.fillStyle = entry.elite ? '#f1c40f' : '#e74c3c';
+                    ctx.fillStyle = entry.dummy ? '#c4a574' : entry.elite ? '#f1c40f' : '#e74c3c';
                     const s = entry.elite ? 4 : 3;
                     ctx.fillRect(p.mx - s, p.mz - s, s * 2, s * 2);
                 }
@@ -6329,7 +6329,7 @@
                 }
                 const npc = worldNpcs.get(selectedNpcId);
                 if (npc && !npc.dying) {
-                    return { kind: 'npc', id: selectedNpcId, group: npc.group, name: npc.name || 'Hostile', level: npc.level, hp: npc.hp, maxHp: npc.maxHp, elite: npc.elite };
+                    return { kind: 'npc', id: selectedNpcId, group: npc.group, name: npc.name || 'Hostile', level: npc.level, hp: npc.hp, maxHp: npc.maxHp, elite: npc.elite, dummy: !!npc.dummy, wounded: !!npc.wounded, lastHit: npc.lastHit || 0 };
                 }
                 const remote = remotePlayers.get(selectedNpcId);
                 if (remote) {
@@ -6433,6 +6433,24 @@
                     document.getElementById('targetHp').hidden = true;
                     if (statLine) statLine.hidden = true;
                     targetRing.material.color.set(0x2ecc71);
+                    targetRing.visible = true;
+                    targetRing.position.set(aimed.group.position.x, 0.05, aimed.group.position.z);
+                    return;
+                }
+                if (aimed.dummy) {
+                    frame.style.borderColor = aimed.wounded ? 'rgba(192,57,43,0.9)' : 'rgba(196,165,116,0.9)';
+                    document.getElementById('targetName').textContent = aimed.name;
+                    document.getElementById('targetHp').hidden = false;
+                    const pct = aimed.maxHp ? Math.max(0, Math.min(1, (aimed.hp || 0) / aimed.maxHp)) : 1;
+                    const fill = document.getElementById('targetHpFill');
+                    fill.style.width = (pct * 100) + '%';
+                    fill.style.background = aimed.wounded ? '#c0392b' : '#c4a574';
+                    if (statLine) {
+                        statLine.hidden = false;
+                        const last = aimed.lastHit ? 'Last hit ' + aimed.lastHit + '. ' : '';
+                        statLine.textContent = last + (aimed.wounded ? 'Wounded. Finishers hit harder.' : 'Does not die.');
+                    }
+                    targetRing.material.color.set(aimed.wounded ? 0xc0392b : 0xc4a574);
                     targetRing.visible = true;
                     targetRing.position.set(aimed.group.position.x, 0.05, aimed.group.position.z);
                     return;
@@ -6825,29 +6843,29 @@
                 }
             }
 
-            function makeNpcSprite(name, level, hp, maxHp, elite) {
+            function makeNpcSprite(name, level, hp, maxHp, elite, dummy) {
                 const canvas = document.createElement('canvas');
                 canvas.width = 512;
                 canvas.height = 224;
                 const ctx = canvas.getContext('2d');
-                ctx.fillStyle = elite ? 'rgba(42,28,6,0.88)' : 'rgba(0,0,0,0.72)';
+                ctx.fillStyle = dummy ? 'rgba(42,32,18,0.88)' : elite ? 'rgba(42,28,6,0.88)' : 'rgba(0,0,0,0.72)';
                 ctx.fillRect(16, 8, 480, 104);
-                if (elite) {
+                if (elite && !dummy) {
                     ctx.strokeStyle = '#f1c40f';
                     ctx.lineWidth = 8;
                     ctx.strokeRect(20, 12, 472, 96);
                 }
-                ctx.fillStyle = elite ? '#f6e27a' : '#ff6666';
+                ctx.fillStyle = dummy ? '#e7d3a1' : elite ? '#f6e27a' : '#ff6666';
                 ctx.font = 'bold 40px Arial';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(elite ? 'Elite ' + (name || 'Hostile') : (name || 'Hostile'), 256, 40);
+                ctx.fillText(dummy ? (name || 'Training dummy') : (elite ? 'Elite ' + (name || 'Hostile') : (name || 'Hostile')), 256, 40);
                 ctx.font = '32px Arial';
-                ctx.fillText('Lv ' + level, 256, 84);
+                ctx.fillText(dummy ? (hp / (maxHp || 1) <= 0.35 ? 'Wounded' : 'Practice') : ('Lv ' + level), 256, 84);
                 ctx.fillStyle = '#222';
                 ctx.fillRect(56, 132, 400, 28);
                 const width = Math.max(0, Math.min(400, 400 * (hp / (maxHp || 1))));
-                ctx.fillStyle = elite ? '#f1c40f' : '#e74c3c';
+                ctx.fillStyle = dummy ? (hp / (maxHp || 1) <= 0.35 ? '#c0392b' : '#c4a574') : elite ? '#f1c40f' : '#e74c3c';
                 ctx.fillRect(56, 132, width, 28);
                 const tex = sharpTexture(canvas);
                 const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
@@ -7225,6 +7243,8 @@
                         for (const oz of [-0.9, 0.9]) campBlock(parent, site, lx + ox, 0.7, lz + oz, 0.16, 1.4, 0.16, wood, true);
                     }
                 }
+                campBlock(parent, site, -5, 0.05, 23.2, 3.4, 0.1, 8.8, 0x6d5a45, false);
+                campBlock(parent, site, -6.7, 0.55, 23.2, 0.12, 1.05, 8.8, 0x5c4033, false);
             }
 
             function buildCamp(parent, site) {
@@ -7493,7 +7513,7 @@
                     if (old.material) old.material.dispose();
                     if (old.userData.texture) old.userData.texture.dispose();
                 }
-                const label = makeNpcSprite(state.name, state.level, state.hp, state.maxHp, state.elite);
+                const label = makeNpcSprite(state.name, state.level, state.hp, state.maxHp, state.elite, state.dummy);
                 label.position.y = entry.group.userData.labelY || 2.45;
                 label.visible = state.id === selectedNpcId;
                 entry.group.add(label);
@@ -7501,23 +7521,51 @@
                 entry.name = state.name || entry.name;
                 entry.level = state.level;
                 entry.elite = !!state.elite;
+                entry.dummy = !!state.dummy;
+                entry.wounded = !!state.wounded;
                 entry.hp = state.hp;
                 entry.maxHp = state.maxHp || entry.maxHp || state.hp;
                 if (selectedNpcId === state.id) refreshTargetFrame();
+            }
+
+            function makeTrainingDummy(wounded) {
+                const wood = wounded ? 0x6b4423 : 0x8d5a2b;
+                const group = new THREE.Group();
+                group.userData.noGait = true;
+                const mat = (color) => new THREE.MeshLambertMaterial({ color });
+                const base = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.4, 0.14, 8), mat(0x4a4038));
+                base.position.y = 0.07;
+                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 1.35, 8), mat(wood));
+                post.position.y = 0.8;
+                const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), mat(wounded ? 0x5c4033 : 0xc4a574));
+                head.position.y = 1.58;
+                const arm = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.08, 0.08), mat(wood));
+                arm.position.y = wounded ? 1.02 : 1.22;
+                if (wounded) arm.rotation.z = -0.7;
+                const band = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.028, 6, 12), mat(wounded ? 0xa93226 : 0xd7c4a3));
+                band.rotation.x = Math.PI / 2;
+                band.position.y = wounded ? 0.95 : 0.86;
+                group.add(base, post, head, arm, band);
+                if (wounded) {
+                    const stain = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.28, 0.02), mat(0x922b21));
+                    stain.position.set(0.04, 1.2, 0.15);
+                    group.add(stain);
+                }
+                return group;
             }
 
             function upsertNpc(state) {
                 let entry = worldNpcs.get(state.id);
                 if (!entry) {
                     if (!npcModelsReady) return;
-                    const modelKind = state.kind === 'ogre' && state.style === 'caster' ? 'ogre-caster' : (state.kind || 'boar');
-                    const body = cloneNpcModel(modelKind);
+                    const modelKind = state.kind === 'dummy' ? 'dummy' : (state.kind === 'ogre' && state.style === 'caster' ? 'ogre-caster' : (state.kind || 'boar'));
+                    const body = state.kind === 'dummy' ? makeTrainingDummy(!!state.wounded) : cloneNpcModel(modelKind);
                     if (!body) return;
                     const group = new THREE.Group();
-                    const rank = (0.9 + Math.min(12, state.level || 1) * 0.05) * (state.elite ? 1.28 : 1);
+                    const rank = state.kind === 'dummy' ? 1 : (0.9 + Math.min(12, state.level || 1) * 0.05) * (state.elite ? 1.28 : 1);
                     body.scale.multiplyScalar(rank);
                     plantFeet(body);
-                    if (state.elite) tintHostile(body, '#f1c40f', 0.28);
+                    if (state.elite && state.kind !== 'dummy') tintHostile(body, '#f1c40f', 0.28);
                     body.updateWorldMatrix(true, true);
                     const bounds = new THREE.Box3().setFromObject(body);
                     group.add(body);
@@ -7527,11 +7575,11 @@
                     group.userData.bobAmp = state.kind === 'wisp' ? 0.12 : 0;
                     group.position.set(state.x, state.dungeonId ? 0.2 : 0, state.z);
                     scene.add(group);
-                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, name: state.name || 'Hostile', level: -1, hp: -1, maxHp: state.maxHp || 1, elite: !!state.elite, dungeonId: state.dungeonId || '', bob: Math.random() * Math.PI * 2 };
+                    entry = { group, tx: state.x, tz: state.z, rotY: state.rotY || 0, name: state.name || 'Hostile', level: -1, hp: -1, maxHp: state.maxHp || 1, elite: !!state.elite, dummy: state.kind === 'dummy' || !!state.dummy, wounded: !!state.wounded, dungeonId: state.dungeonId || '', bob: Math.random() * Math.PI * 2 };
                     group.userData.npcId = state.id;
                     const ring = new THREE.Mesh(
                         new THREE.RingGeometry(0.7, 0.92, 22),
-                        new THREE.MeshBasicMaterial({ color: 0xff5533, side: THREE.DoubleSide, transparent: true, opacity: 0.95, depthTest: false })
+                        new THREE.MeshBasicMaterial({ color: state.wounded ? 0xc0392b : (state.kind === 'dummy' ? 0xc4a574 : 0xff5533), side: THREE.DoubleSide, transparent: true, opacity: 0.95, depthTest: false })
                     );
                     ring.rotation.x = -Math.PI / 2;
                     ring.position.y = 0.12;
@@ -7546,8 +7594,8 @@
                 entry.tx = state.x;
                 entry.tz = state.z;
                 entry.rotY = state.rotY || 0;
-                if (entry.name !== (state.name || entry.name) || entry.level !== state.level || entry.hp !== state.hp || entry.elite !== !!state.elite) {
-                    setNpcLabel(entry, { name: state.name || entry.name, level: state.level, hp: state.hp, maxHp: state.maxHp || entry.maxHp, elite: !!state.elite, id: state.id });
+                if (entry.name !== (state.name || entry.name) || entry.level !== state.level || entry.hp !== state.hp || entry.elite !== !!state.elite || entry.dummy !== !!state.dummy || entry.wounded !== !!state.wounded) {
+                    setNpcLabel(entry, { name: state.name || entry.name, level: state.level, hp: state.hp, maxHp: state.maxHp || entry.maxHp, elite: !!state.elite, dummy: !!state.dummy, wounded: !!state.wounded, id: state.id });
                 }
             }
 
@@ -10493,7 +10541,7 @@
                 for (const remoteMixer of remoteMixers) remoteMixer.update(delta);
                 for (const entry of worldNpcs.values()) {
                     if (entry.dying) continue;
-                    const wounded = entry.hp > 0 && entry.maxHp > 0 && entry.hp < entry.maxHp - 0.5;
+                    const wounded = !entry.dummy && entry.hp > 0 && entry.maxHp > 0 && entry.hp < entry.maxHp - 0.5;
                     entry.group.visible = !!entry.dungeonId || wounded || hillDrawn(entry.tx, entry.tz) || Math.hypot(entry.tx - characterGroup.position.x, entry.tz - characterGroup.position.z) < 48;
                     entry.group.position.x += (entry.tx - entry.group.position.x) * Math.min(1, delta * 10);
                     entry.group.position.z += (entry.tz - entry.group.position.z) * Math.min(1, delta * 10);
@@ -11436,12 +11484,17 @@
                     } else if (data.type === 'npcHit') {
                         const entry = worldNpcs.get(data.id);
                         const prev = entry && entry.hp > 0 ? entry.hp : 0;
-                        const dealt = prev ? Math.max(0, prev - data.hp) : 0;
+                        const dealt = Number.isFinite(data.damage) ? Math.max(0, Math.round(data.damage)) : (prev ? Math.max(0, prev - data.hp) : 0);
                         const x = data.x != null ? data.x : (entry ? entry.group.position.x : 0);
                         const z = data.z != null ? data.z : (entry ? entry.group.position.z : 0);
                         if (dealt) floatText(x, 1.9, z, '-' + dealt, data.alive ? '#ffe08a' : '#ff3b3b');
                         if (data.alive) {
                             upsertNpc(data);
+                            const live = worldNpcs.get(data.id);
+                            if (live && Number.isFinite(data.damage)) {
+                                live.lastHit = dealt;
+                                if (selectedNpcId === data.id) refreshTargetFrame();
+                            }
                             flashNpc(data.id);
                         } else {
                             removeWorldNpc(data.id);
