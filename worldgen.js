@@ -270,6 +270,62 @@ const ZONE_PACKS = [
     ['cultist', 'knight', 'wisp']
 ];
 
+export const ZONE_THEMES = [
+    { id: 'forest', name: 'Forest', color: [0.12, 0.34, 0.13] },
+    { id: 'plains', name: 'Plains', color: [0.50, 0.56, 0.24] },
+    { id: 'swamp', name: 'Swamp', color: [0.18, 0.28, 0.14] },
+    { id: 'desert', name: 'Desert', color: [0.78, 0.64, 0.34] },
+    { id: 'hills', name: 'Hills', color: [0.42, 0.38, 0.28] },
+    { id: 'ice', name: 'Ice', color: [0.76, 0.86, 0.92] },
+    { id: 'town', name: 'Town', color: [0.55, 0.46, 0.34] },
+    { id: 'hell', name: 'Hell', color: [0.46, 0.09, 0.06] }
+];
+
+export const DEFAULT_MOB_THEMES = {
+    boar: 'plains',
+    wolf: 'forest',
+    spider: 'swamp',
+    bandit: 'hills',
+    ogre: 'hills',
+    wisp: 'swamp',
+    knight: 'town',
+    cultist: 'hell'
+};
+
+const THEME_MOBS = Object.keys(DEFAULT_MOB_THEMES);
+let mobThemeMap = { ...DEFAULT_MOB_THEMES };
+
+export function sanitizeMobThemes(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const out = { ...DEFAULT_MOB_THEMES };
+    for (const mob of THEME_MOBS) {
+        const theme = src[mob];
+        if (theme === 'none' || theme === '') out[mob] = 'none';
+        else if (ZONE_THEMES.some(entry => entry.id === theme)) out[mob] = theme;
+    }
+    return out;
+}
+
+export function installMobThemes(raw) {
+    mobThemeMap = sanitizeMobThemes(raw);
+}
+
+export function themeOf(map, mob) {
+    const id = map && Object.prototype.hasOwnProperty.call(map, mob) ? map[mob] : DEFAULT_MOB_THEMES[mob];
+    if (!id || id === 'none') return null;
+    return ZONE_THEMES.find(entry => entry.id === id) || null;
+}
+
+export function groundThemeAt(x, z) {
+    const drawn = designedZoneAt(x, z);
+    if (drawn) return themeOf(mobThemeMap, drawn.mob);
+    if (designedZones.length) return null;
+    const zx = Math.floor((x + ZONE_SIZE / 2) / ZONE_SIZE);
+    const zz = Math.floor((z + ZONE_SIZE / 2) / ZONE_SIZE);
+    if (Math.max(Math.abs(zx), Math.abs(zz)) > WORLD_RADIUS) return null;
+    return themeOf(mobThemeMap, zoneNpc(zx, zz).kind);
+}
+
 export const WORLD_RADIUS = 4;
 
 function organicAt(a, b, t) {
@@ -782,6 +838,7 @@ function pointInPoly(x, z, points) {
 }
 
 export function applyWorldConfig(config) {
+    if (config && config.mobThemes) installMobThemes(config.mobThemes);
     heightCache.clear();
     const bounds = config && config.bounds && typeof config.bounds === 'object' ? config.bounds : {};
     const half = Number(bounds.half);

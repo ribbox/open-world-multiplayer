@@ -1145,7 +1145,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, listRoads, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset, campYaw, campSpot, roadAt, listDungeons, dungeonById, dungeonWorld, dungeonLocal, dungeonClamp, dungeonBlocked, dungeonTravel, DUNGEON_HALF, CITY_RADIUS } from './worldgen.js';
+        import { chunkResources, CHUNK_SIZE, terrainHeight, WATER_LEVEL, ZONE_SIZE, WORLD_RADIUS, zoneAt, zoneName, zoneNpc, zoneCamp, clampWorld, worldBounds, sellPrice, itemRarity, FOG_CELL, fogCellsAround, applyWorldConfig, designedZoneAt, listDesignedZones, listRoads, blocksClimb, waterAt, swimRange, curvePoints, worldShape, boundaryInset, campYaw, campSpot, roadAt, listDungeons, dungeonById, dungeonWorld, dungeonLocal, dungeonClamp, dungeonBlocked, dungeonTravel, DUNGEON_HALF, CITY_RADIUS, groundThemeAt } from './worldgen.js';
         import { iconIndex } from './icons.js';
 
         const loadingLabel = document.getElementById('loadingLabel');
@@ -5373,6 +5373,11 @@
 
             function groundColor(wx, wz, y) {
                 const cliff = worldShape().edge === 'hills' && boundaryInset(wx, wz) < 18;
+                const theme = !cliff && y >= WATER_LEVEL + 0.55 ? groundThemeAt(wx, wz) : null;
+                if (theme) {
+                    const n = 0.88 + 0.16 * (Math.abs(Math.sin(wx * 12.9898 + wz * 78.233)) % 1);
+                    return { tint: theme.color.map(ch => Math.min(1, ch * n)), sand: false, grass: false, warmth: 0 };
+                }
                 const sand = sandReady && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
                 const grass = !sand && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
                 const tint = grass || sand

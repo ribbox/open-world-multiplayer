@@ -119,6 +119,9 @@
                 <input id="spawnPerMin" type="number" min="0" max="30">
                 <label>Most mobs in one of those areas</label>
                 <input id="spawnCap" type="number" min="0" max="40">
+                <h3>Zone theme by mob</h3>
+                <p>A zone is painted from its own mob. Forest, plains, swamp, desert, hills, ice, town, and hell are the ground types. Quest mobs that spawn into a zone do not change it.</p>
+                <div id="themeMap"></div>
                 <label>World half-size</label>
                 <input id="worldHalf" type="number" min="200" max="2000">
                 <label>World edge</label>
@@ -204,7 +207,7 @@
         </div>
     </div>
     <script type="module">
-        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve, polygonIntersection, downsampleRing, DUNGEON_HALF, applyWorldConfig, zoneName, zoneNpc, zoneCamp, boundaryInset, waterAt } from './worldgen.js';
+        import { WORLD_RADIUS, ZONE_SIZE, worldBounds, curvePoints, segmentCurve, polygonIntersection, downsampleRing, DUNGEON_HALF, applyWorldConfig, zoneName, zoneNpc, zoneCamp, boundaryInset, waterAt, ZONE_THEMES, DEFAULT_MOB_THEMES, themeOf, sanitizeMobThemes } from './worldgen.js';
         import { applyQuestPlaces } from './sheets.js';
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -669,8 +672,13 @@
                     const cell = Math.abs(q.px - p.px);
                     const camp = zoneCamp(zx, zz);
                     if (onLandPreview(camp.x, camp.z)) mark(camp.x, camp.z, '#f1c40f', 4);
-                    if (cell < 36) continue;
                     const mob = zoneNpc(zx, zz);
+                    const theme = themeFor(mob.kind);
+                    if (theme) {
+                        ctx.fillStyle = themeCss(theme.color, 0.45);
+                        ctx.fillRect(p.px, p.py, q.px - p.px, q.py - p.py);
+                    }
+                    if (cell < 36) continue;
                     ctx.font = Math.max(10, Math.min(14, cell / 8)) + 'px sans-serif';
                     ctx.fillStyle = '#ffffff';
                     ctx.fillText(zoneName(zx, zz), (p.px + q.px) / 2, (p.py + q.py) / 2 - 8);
@@ -702,7 +710,9 @@
                 mark(dungeon.portal.x, dungeon.portal.z, '#bb88ff', 6);
             }
             config.zones.forEach((entry, index) => {
-                strokeZone(entry.points, entry.edges, index === selected ? 'rgba(241,196,15,0.35)' : entry.elite ? 'rgba(230,126,34,0.34)' : 'rgba(90,170,255,0.28)', index === selected ? '#f1c40f' : entry.elite ? '#e67e22' : '#9cf', true);
+                const theme = themeFor(entry.mob);
+                const fill = theme ? themeCss(theme.color, index === selected ? 0.55 : 0.4) : (index === selected ? 'rgba(241,196,15,0.35)' : entry.elite ? 'rgba(230,126,34,0.34)' : 'rgba(90,170,255,0.28)');
+                strokeZone(entry.points, entry.edges, fill, index === selected ? '#f1c40f' : entry.elite ? '#e67e22' : '#9cf', true);
                 for (const camp of entry.camps) mark(camp.x, camp.z, CAMP_COLOR[camp.layout] || '#f1c40f', camp.layout === 'city' ? 11 : 5);
                 for (const node of entry.nodes) {
                     const color = node.type === 'tree' ? '#27ae60' : node.type === 'plain-tree' ? '#145a32' : node.type === 'rock' ? '#e67e22' : node.type === 'plain-rock' ? '#888' : node.type === 'herb' ? '#7dff4a' : '#f4d03f';
@@ -1630,6 +1640,13 @@
             note('Dungeon added. Move its portal, then save.');
         });
         const MOB_LABEL = { boar: 'Wild Boar', wolf: 'Wolf', spider: 'Moss Spider', bandit: 'Bandit', ogre: 'Hill Ogre', wisp: 'Fen Wisp', knight: 'Plate Knight', cultist: 'Cultist' };
+        function themeCss(color, alpha) {
+            const [r, g, b] = color.map(ch => Math.round(ch * 255));
+            return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+        }
+        function themeFor(mob) {
+            return themeOf(config && config.mobThemes, mob);
+        }
         let questPick = 0;
         let questZoneId = '';
         function allZones() {
@@ -2246,6 +2263,31 @@
             document.getElementById('worldEdge').addEventListener('change', () => { config.bounds.edge = document.getElementById('worldEdge').value; draw(); });
             document.getElementById('swimDistance').addEventListener('change', () => { config.bounds.swim = Number(document.getElementById('swimDistance').value); draw(); });
             document.getElementById('maxSlope').addEventListener('change', () => { config.bounds.maxSlope = Number(document.getElementById('maxSlope').value); draw(); });
+            const box = document.getElementById('themeMap');
+            config.mobThemes = sanitizeMobThemes(config.mobThemes);
+            box.replaceChildren();
+            for (const mob of Object.keys(DEFAULT_MOB_THEMES)) {
+                const row = document.createElement('label');
+                row.textContent = MOB_LABEL[mob] || mob;
+                const pick = document.createElement('select');
+                const none = document.createElement('option');
+                none.value = 'none';
+                none.textContent = 'No theme';
+                pick.appendChild(none);
+                for (const theme of ZONE_THEMES) {
+                    const option = document.createElement('option');
+                    option.value = theme.id;
+                    option.textContent = theme.name;
+                    pick.appendChild(option);
+                }
+                pick.value = config.mobThemes[mob] || 'none';
+                pick.addEventListener('change', () => {
+                    config.mobThemes[mob] = pick.value;
+                    draw();
+                });
+                row.appendChild(pick);
+                box.appendChild(row);
+            }
         }
         document.getElementById('mapPick').addEventListener('change', () => {
             const next = Number(document.getElementById('mapPick').value);

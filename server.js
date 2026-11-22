@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, campOffset, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, installMaps, activateMap, currentMapId, mapBriefs, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, CITY_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked, dungeonTravel, zoneNameOnMap } from './worldgen.js';
+import { chunkResources, zoneAt, zoneNpc, zoneCamp, zoneCampPlan, campSpot, campOffset, zoneInWorld, clampWorld, sellPrice, fogCellsAround, terrainHeight, designedZoneAt, listDesignedZones, listRoads, applyWorldConfig, installMaps, activateMap, currentMapId, mapBriefs, worldShape, boundaryInset, blocksClimb, swimTooFar, customMap, waterAt, ZONE_SIZE, WORLD_RADIUS, CITY_RADIUS, listDungeons, dungeonById, dungeonWorld, dungeonClamp, dungeonBlocked, dungeonTravel, zoneNameOnMap, sanitizeMobThemes } from './worldgen.js';
 import { defaultIconName, iconKeyFromChoice } from './icons.js';
 import { buildWorkbook, readWorkbook, spreadsheetUrl, clipboardSheets } from './sheets.js';
 
@@ -8926,7 +8926,8 @@ function sanitizeWorld(input) {
         quests: sanitizeQuests(src.quests),
         items: sanitizeItems(src.items),
         sheetUrl: cleanSheetUrl(src.sheetUrl),
-        grips: sanitizeGrips(src.grips)
+        grips: sanitizeGrips(src.grips),
+        mobThemes: sanitizeMobThemes(src.mobThemes)
     };
 }
 
@@ -9032,7 +9033,8 @@ function publicWorld() {
         mapName: brief ? brief.name : '',
         minLevel: brief ? brief.minLevel : 1,
         maps: mapBriefs(),
-        grips: (worldConfig && worldConfig.grips) || {}
+        grips: (worldConfig && worldConfig.grips) || {},
+        mobThemes: (worldConfig && worldConfig.mobThemes) || sanitizeMobThemes(null)
     };
 }
 
