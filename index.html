@@ -903,7 +903,7 @@
     <div id="pick">
         <div id="pickCard">
             <h1>Characters</h1>
-            <form id="pickAccount">
+            <form id="pickAccount" onsubmit="event.preventDefault()">
                 <h2>Same characters on another computer</h2>
                 <input id="accountName" maxlength="16" placeholder="Account" autocomplete="username">
                 <input id="accountPass" type="password" maxlength="64" placeholder="Password" autocomplete="current-password">
@@ -912,6 +912,89 @@
                 <button type="button" id="accountOut" hidden>Log out</button>
                 <p id="accountNote">Create an account here, then log in with it on the other computer.</p>
             </form>
+            <script>
+                (function () {
+                    const form = document.getElementById('pickAccount');
+                    const note = document.getElementById('accountNote');
+                    function showSignedIn(name) {
+                        document.getElementById('accountName').hidden = true;
+                        document.getElementById('accountPass').hidden = true;
+                        document.getElementById('accountLogin').hidden = true;
+                        document.getElementById('accountCreate').hidden = true;
+                        document.getElementById('accountOut').hidden = false;
+                        note.textContent = 'Signed in as ' + name + '. These characters are on this account.';
+                    }
+                    function showSignedOut(message) {
+                        document.getElementById('accountName').hidden = false;
+                        document.getElementById('accountPass').hidden = false;
+                        document.getElementById('accountLogin').hidden = false;
+                        document.getElementById('accountCreate').hidden = false;
+                        document.getElementById('accountOut').hidden = true;
+                        note.textContent = message || 'Create an account here, then log in with it on the other computer.';
+                    }
+                    function showCharacters(characters) {
+                        const list = document.getElementById('pickList');
+                        if (!list || typeof window.renderAccountRoster === 'function') return;
+                        list.replaceChildren();
+                        (characters || []).forEach(function (row) {
+                            const button = document.createElement('button');
+                            button.type = 'button';
+                            button.textContent = (row.name || 'Player') + ' · ' + (row.level || 1);
+                            button.addEventListener('click', function () {
+                                if (typeof window.playAccountCharacter === 'function') window.playAccountCharacter(row.id);
+                                else note.textContent = 'Signed in. The game is still loading.';
+                            });
+                            list.appendChild(button);
+                        });
+                    }
+                    function send(create) {
+                        const name = document.getElementById('accountName').value.trim();
+                        const password = document.getElementById('accountPass').value;
+                        note.textContent = create ? 'Creating account...' : 'Signing in...';
+                        const control = new AbortController();
+                        const timer = setTimeout(function () { control.abort(); }, 8000);
+                        fetch('/api/account', {
+                            method: 'POST',
+                            headers: { 'content-type': 'application/json' },
+                            body: JSON.stringify({ name: name, password: password, create: create, characters: [] }),
+                            signal: control.signal
+                        }).then(function (response) {
+                            return response.json().then(function (data) { return { ok: response.ok, data: data }; });
+                        }).then(function (result) {
+                            if (!result.ok) {
+                                note.textContent = (result.data && result.data.error) || 'Could not use that account';
+                                return;
+                            }
+                            document.getElementById('accountPass').value = '';
+                            localStorage.setItem('ow-account', result.data.token || '');
+                            localStorage.setItem('ow-account-name', result.data.name || name);
+                            showSignedIn(result.data.name || name);
+                            showCharacters(result.data.characters || []);
+                            if (typeof window.onAccountLogin === 'function') window.onAccountLogin(result.data);
+                            else window.pendingAccount = result.data;
+                        }).catch(function () {
+                            note.textContent = 'Could not reach the server';
+                        }).finally(function () { clearTimeout(timer); });
+                    }
+                    form.addEventListener('submit', function (event) {
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+                        send(false);
+                    });
+                    document.getElementById('accountCreate').addEventListener('click', function (event) {
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+                        send(true);
+                    });
+                    document.getElementById('accountOut').addEventListener('click', function () {
+                        localStorage.removeItem('ow-account');
+                        localStorage.removeItem('ow-account-name');
+                        window.pendingAccount = null;
+                        showSignedOut('');
+                        if (typeof window.onAccountLogout === 'function') window.onAccountLogout();
+                    });
+                })();
+            </script>
             <div id="pickBody">
                 <form id="pickNew">
                     <h2>Pick a new character</h2>
@@ -1831,6 +1914,18 @@
                 accountReady = true;
                 if (Array.isArray(data.characters)) adoptRoster(data.characters);
                 showAccount(accountName);
+            }
+            window.onAccountLogin = function (data) { useAccount(data); };
+            window.onAccountLogout = function () {
+                accountToken = '';
+                accountName = '';
+                accountReady = false;
+                showAccount('');
+            };
+            if (window.pendingAccount) {
+                const pending = window.pendingAccount;
+                window.pendingAccount = null;
+                useAccount(pending);
             }
             function sendAccount(create) {
                 const note = document.getElementById('accountNote');
@@ -11674,23 +11769,12 @@
                 chosenClass = '';
                 playCharacter(id);
             });
-            document.getElementById('pickAccount').addEventListener('submit', (event) => {
-                event.preventDefault();
-                sendAccount(false);
-            });
-            document.getElementById('accountCreate').addEventListener('click', () => sendAccount(true));
-            document.getElementById('accountOut').addEventListener('click', () => {
-                accountToken = '';
-                accountName = '';
-                accountReady = false;
-                localStorage.removeItem('ow-account');
-                localStorage.removeItem('ow-account-name');
-                showAccount('');
-            });
             if (accountToken) {
+                const stamped = accountToken;
                 fetch('/api/account', { headers: { authorization: 'Bearer ' + accountToken } })
                     .then(response => response.json().then(data => ({ ok: response.ok, data })))
                     .then(({ ok, data }) => {
+                        if (accountToken !== stamped) return;
                         if (!ok) {
                             accountToken = '';
                             localStorage.removeItem('ow-account');
