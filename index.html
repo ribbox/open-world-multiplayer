@@ -943,6 +943,7 @@
                         (characters || []).forEach(function (row) {
                             const line = document.createElement('div');
                             line.className = 'pick-slot';
+                            line.dataset.id = row.id || '';
                             const title = document.createElement('strong');
                             title.textContent = row.name || 'Player';
                             const play = document.createElement('button');
@@ -954,17 +955,13 @@
                             const look = row.look || row.class;
                             if (look) img.src = '/portraits/' + look + '.jpg';
                             play.appendChild(img);
-                            play.addEventListener('click', function () {
-                                localStorage.setItem('ow-id', row.id || '');
-                                localStorage.setItem('ow-name', row.name || 'Player');
-                                if (typeof window.playAccountCharacter === 'function') window.playAccountCharacter(row.id);
-                            });
                             const sub = document.createElement('span');
                             sub.className = 'sub';
                             sub.textContent = [row.class || 'Adventurer', row.level || 1].join(' · ');
                             line.append(title, play, sub);
                             list.appendChild(line);
                         });
+                        window.lastPaintedRoster = characters || [];
                     }
                     window.paintRoster = paintRoster;
                     function send(create) {
@@ -1011,7 +1008,11 @@
                     document.getElementById('accountOut').addEventListener('click', function () {
                         localStorage.removeItem('ow-account');
                         localStorage.removeItem('ow-account-name');
+                        localStorage.removeItem('ow-roster');
                         window.pendingAccount = null;
+                        window.pendingPlayId = '';
+                        const list = document.getElementById('pickList');
+                        if (list) list.replaceChildren();
                         showSignedOut('');
                         if (typeof window.onAccountLogout === 'function') window.onAccountLogout();
                     });
@@ -1051,8 +1052,35 @@
                     if (typeof window.chooseClass === 'function') window.chooseClass(button.dataset.class);
                 });
                 try {
-                    if (typeof window.paintRoster === 'function') window.paintRoster(JSON.parse(localStorage.getItem('ow-roster') || '[]'));
+                    if (localStorage.getItem('ow-account') && typeof window.paintRoster === 'function') {
+                        window.paintRoster(JSON.parse(localStorage.getItem('ow-roster') || '[]'));
+                    }
                 } catch (err) { /* the signed-in list is filled after login */ }
+                document.getElementById('pickList').addEventListener('click', function (event) {
+                    if (event.target.closest('.pick-del, .pick-confirm, .pick-mini')) return;
+                    const slot = event.target.closest('[data-id]');
+                    if (!slot || !slot.dataset.id) return;
+                    if (typeof window.playAccountCharacter === 'function') window.playAccountCharacter(slot.dataset.id);
+                    else window.pendingPlayId = slot.dataset.id;
+                });
+                document.getElementById('pickNew').addEventListener('submit', function (event) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    const picked = document.querySelector('#pickClasses .pick-class.on');
+                    const classId = window.pendingClass || (picked && picked.dataset.class) || '';
+                    const note = document.getElementById('pickNote');
+                    if (!classId) {
+                        note.hidden = false;
+                        note.textContent = 'Choose a class, then create the character.';
+                        return;
+                    }
+                    note.hidden = true;
+                    const input = document.getElementById('pickName');
+                    const name = (input.value || '').trim().slice(0, 16) || 'Player';
+                    input.value = '';
+                    if (typeof window.createAccountCharacter === 'function') window.createAccountCharacter(name, classId);
+                    else window.pendingCreate = { name: name, classId: classId };
+                });
             </script>
         </div>
     </div>
@@ -1963,7 +1991,11 @@
                 accountToken = '';
                 accountName = '';
                 accountReady = false;
+                roster = [];
+                localStorage.removeItem('ow-roster');
                 showAccount('');
+                const list = document.getElementById('pickList');
+                if (list) list.replaceChildren();
             };
             function sendAccount(create) {
                 const note = document.getElementById('accountNote');
@@ -11279,7 +11311,7 @@
                 }
                 renderer.render(scene, camera);
             }
-            animate();
+            try { animate(); } catch (err) { console.error(err); }
 
             console.log('Open World Prototype with external GLB character started');
 
@@ -11602,6 +11634,7 @@
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.className = 'pick-class' + (chosenClass === id ? ' on' : '');
+                    button.dataset.class = id;
                     const img = document.createElement('img');
                     img.src = LOOKS[id];
                     img.alt = CLASS_LABEL[id];
@@ -11610,6 +11643,7 @@
                     button.append(label, img);
                     button.addEventListener('click', () => {
                         chosenClass = id;
+                        window.pendingClass = id;
                         const note = document.getElementById('pickNote');
                         if (note) note.hidden = true;
                         renderClassChoices();
@@ -11661,13 +11695,13 @@
                 for (const row of roster) {
                     const line = document.createElement('div');
                     line.className = 'pick-slot';
+                    line.dataset.id = row.id || '';
                     const title = document.createElement('strong');
                     title.textContent = row.name || 'Player';
                     const play = document.createElement('button');
                     play.type = 'button';
                     play.className = 'pick-play';
                     play.appendChild(faceImage(row));
-                    if (row.class) play.addEventListener('click', () => playCharacter(row.id));
                     const sub = document.createElement('span');
                     sub.className = 'sub';
                     const bits = [(CLASS_LABEL[row.class] || 'No class'), String(row.level || 1)];
@@ -11773,7 +11807,11 @@
             }
 
             function playCharacter(id) {
-                const row = roster.find(item => item.id === id);
+                let row = roster.find(item => item.id === id);
+                if (!row && Array.isArray(window.lastPaintedRoster)) {
+                    row = window.lastPaintedRoster.find(item => item.id === id) || null;
+                    if (row && !roster.some(item => item.id === row.id)) roster.push(row);
+                }
                 if (!row) return;
                 persistentId = row.id;
                 playerName = row.name || 'Player';
@@ -11794,26 +11832,20 @@
             }
 
             document.getElementById('changeChar').addEventListener('click', showPick);
-            document.getElementById('pickNew').addEventListener('submit', (event) => {
-                event.preventDefault();
+            window.createAccountCharacter = (name, classId) => {
                 if (roster.length >= 8) return;
-                const note = document.getElementById('pickNote');
-                if (!chosenClass && window.pendingClass) chosenClass = window.pendingClass;
-                if (!chosenClass) {
-                    note.hidden = false;
-                    note.textContent = 'Choose a class, then create the character.';
-                    return;
-                }
-                note.hidden = true;
-                const input = document.getElementById('pickName');
-                const name = input.value.trim().slice(0, 16) || 'Player';
-                input.value = '';
                 const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-                roster.push({ id, name, class: chosenClass, look: chosenClass, level: 1 });
+                roster.push({ id, name: name || 'Player', class: classId, look: classId, level: 1 });
                 storeRoster();
                 chosenClass = '';
+                window.pendingClass = '';
                 playCharacter(id);
-            });
+            };
+            if (window.pendingCreate && window.pendingCreate.classId) {
+                const pending = window.pendingCreate;
+                window.pendingCreate = null;
+                window.createAccountCharacter(pending.name, pending.classId);
+            }
             if (window.pendingAccount) {
                 const pending = window.pendingAccount;
                 window.pendingAccount = null;
@@ -11839,6 +11871,11 @@
             }
             window.playAccountCharacter = playCharacter;
             window.renderAccountRoster = renderPick;
+            if (window.pendingPlayId) {
+                const pendingId = window.pendingPlayId;
+                window.pendingPlayId = '';
+                playCharacter(pendingId);
+            }
             try { renderPick(); } catch (err) { console.error(err); }
 
             function connectMultiplayer() {
