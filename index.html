@@ -958,7 +958,46 @@
                             const sub = document.createElement('span');
                             sub.className = 'sub';
                             sub.textContent = [row.class || 'Adventurer', row.level || 1].join(' · ');
-                            line.append(title, play, sub);
+                            const del = document.createElement('button');
+                            del.type = 'button';
+                            del.className = 'pick-del';
+                            del.setAttribute('aria-label', 'Remove ' + (row.name || 'character'));
+                            del.textContent = '×';
+                            del.addEventListener('click', function () {
+                                const old = list.querySelector('.pick-confirm');
+                                if (old) old.remove();
+                                const box = document.createElement('div');
+                                box.className = 'pick-confirm';
+                                const ask = document.createElement('span');
+                                ask.textContent = 'Are you sure? Type delete to remove ' + (row.name || 'this character') + '.';
+                                const typed = document.createElement('input');
+                                typed.maxLength = 12;
+                                typed.placeholder = 'delete';
+                                typed.autocomplete = 'off';
+                                const yes = document.createElement('button');
+                                yes.type = 'button';
+                                yes.className = 'text-btn';
+                                yes.textContent = 'Delete';
+                                yes.disabled = true;
+                                const no = document.createElement('button');
+                                no.type = 'button';
+                                no.className = 'text-btn';
+                                no.textContent = 'Cancel';
+                                typed.addEventListener('input', function () { yes.disabled = typed.value.trim().toLowerCase() !== 'delete'; });
+                                yes.addEventListener('click', function () {
+                                    if (typeof window.deleteAccountCharacter === 'function') window.deleteAccountCharacter(row.id);
+                                    else {
+                                        const next = (window.lastPaintedRoster || []).filter(function (item) { return item.id !== row.id; });
+                                        localStorage.setItem('ow-roster', JSON.stringify(next));
+                                        paintRoster(next);
+                                    }
+                                });
+                                no.addEventListener('click', function () { box.remove(); });
+                                box.append(ask, typed, yes, no);
+                                list.appendChild(box);
+                                typed.focus();
+                            });
+                            line.append(title, play, sub, del);
                             list.appendChild(line);
                         });
                         window.lastPaintedRoster = characters || [];
@@ -11832,6 +11871,15 @@
             }
 
             document.getElementById('changeChar').addEventListener('click', showPick);
+            window.deleteAccountCharacter = (id) => {
+                roster = roster.filter(item => item.id !== id);
+                if (localStorage.getItem('ow-id') === id) {
+                    localStorage.removeItem('ow-id');
+                    localStorage.removeItem('ow-name');
+                }
+                storeRoster();
+                renderPick();
+            };
             window.createAccountCharacter = (name, classId) => {
                 if (roster.length >= 8) return;
                 const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
