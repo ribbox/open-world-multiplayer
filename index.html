@@ -1099,8 +1099,14 @@
                     if (event.target.closest('.pick-del, .pick-confirm, .pick-mini')) return;
                     const slot = event.target.closest('[data-id]');
                     if (!slot || !slot.dataset.id) return;
-                    if (typeof window.playAccountCharacter === 'function') window.playAccountCharacter(slot.dataset.id);
-                    else window.pendingPlayId = slot.dataset.id;
+                    const note = document.getElementById('accountNote');
+                    if (note) note.textContent = 'Entering the world...';
+                    try {
+                        if (typeof window.playAccountCharacter === 'function') window.playAccountCharacter(slot.dataset.id);
+                        else window.pendingPlayId = slot.dataset.id;
+                    } catch (err) {
+                        if (note) note.textContent = 'Could not enter: ' + (err && err.message ? err.message : err);
+                    }
                 });
                 document.getElementById('pickNew').addEventListener('submit', function (event) {
                     event.preventDefault();
@@ -1117,8 +1123,13 @@
                     const input = document.getElementById('pickName');
                     const name = (input.value || '').trim().slice(0, 16) || 'Player';
                     input.value = '';
-                    if (typeof window.createAccountCharacter === 'function') window.createAccountCharacter(name, classId);
-                    else window.pendingCreate = { name: name, classId: classId };
+                    if (typeof window.createAccountCharacter === 'function') {
+                        try { window.createAccountCharacter(name, classId); }
+                        catch (err) {
+                            note.hidden = false;
+                            note.textContent = 'Could not create: ' + (err && err.message ? err.message : err);
+                        }
+                    } else window.pendingCreate = { name: name, classId: classId };
                 });
             </script>
         </div>
@@ -2453,6 +2464,8 @@
                 for (const args of batch) loader.load(...args);
                 paintLoading();
             }
+            window.playAccountCharacter = (id) => playCharacter(id);
+            window.createAccountCharacter = (name, classId) => makeCharacter(name, classId);
             loader.load(
                 '/models/player.glb',
                 (gltf) => {
@@ -11735,6 +11748,11 @@
                     const line = document.createElement('div');
                     line.className = 'pick-slot';
                     line.dataset.id = row.id || '';
+                    line.addEventListener('click', (event) => {
+                        if (event.target.closest('.pick-del, .pick-confirm, .pick-mini')) return;
+                        event.stopPropagation();
+                        playCharacter(row.id);
+                    });
                     const title = document.createElement('strong');
                     title.textContent = row.name || 'Player';
                     const play = document.createElement('button');
@@ -11846,28 +11864,64 @@
             }
 
             function playCharacter(id) {
-                let row = roster.find(item => item.id === id);
-                if (!row && Array.isArray(window.lastPaintedRoster)) {
-                    row = window.lastPaintedRoster.find(item => item.id === id) || null;
-                    if (row && !roster.some(item => item.id === row.id)) roster.push(row);
+                const note = document.getElementById('accountNote');
+                try {
+                    let row = roster.find(item => item.id === id);
+                    if (!row && Array.isArray(window.lastPaintedRoster)) {
+                        row = window.lastPaintedRoster.find(item => item.id === id) || null;
+                        if (row && !roster.some(item => item.id === row.id)) roster.push(row);
+                    }
+                    if (!row) {
+                        if (note) note.textContent = 'That character is not on this account.';
+                        return;
+                    }
+                    persistentId = row.id;
+                    playerName = row.name || 'Player';
+                    if (nameInput) nameInput.value = playerName;
+                    localStorage.setItem('ow-id', persistentId);
+                    localStorage.setItem('ow-name', playerName);
+                    document.getElementById('pick').hidden = true;
+                    const change = document.getElementById('changeChar');
+                    if (change) change.hidden = false;
+                    switching = false;
+                    freshEnter = true;
+                    startAssetLoads();
+                    if (gameSocket) {
+                        const old = gameSocket;
+                        gameSocket = null;
+                        try { old.close(); } catch { /* already closed */ }
+                    }
+                    connectMultiplayer();
+                } catch (err) {
+                    console.error(err);
+                    if (note) note.textContent = 'Could not enter: ' + (err && err.message ? err.message : err);
+                    const pick = document.getElementById('pick');
+                    if (pick) pick.hidden = false;
                 }
-                if (!row) return;
-                persistentId = row.id;
-                playerName = row.name || 'Player';
-                nameInput.value = playerName;
-                localStorage.setItem('ow-id', persistentId);
-                localStorage.setItem('ow-name', playerName);
-                document.getElementById('pick').hidden = true;
-                document.getElementById('changeChar').hidden = false;
-                switching = false;
-                freshEnter = true;
-                startAssetLoads();
-                if (gameSocket) {
-                    const old = gameSocket;
-                    gameSocket = null;
-                    try { old.close(); } catch { /* already closed */ }
+            }
+
+            function makeCharacter(name, classId) {
+                const note = document.getElementById('pickNote');
+                if (!classId) {
+                    if (note) {
+                        note.hidden = false;
+                        note.textContent = 'Choose a class, then create the character.';
+                    }
+                    return;
                 }
-                connectMultiplayer();
+                if (roster.length >= 8) {
+                    if (note) {
+                        note.hidden = false;
+                        note.textContent = 'Eight characters already. Delete one first.';
+                    }
+                    return;
+                }
+                const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+                roster.push({ id, name: name || 'Player', class: classId, look: classId, level: 1 });
+                storeRoster();
+                chosenClass = '';
+                window.pendingClass = '';
+                playCharacter(id);
             }
 
             document.getElementById('changeChar').addEventListener('click', showPick);
@@ -11879,15 +11933,6 @@
                 }
                 storeRoster();
                 renderPick();
-            };
-            window.createAccountCharacter = (name, classId) => {
-                if (roster.length >= 8) return;
-                const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-                roster.push({ id, name: name || 'Player', class: classId, look: classId, level: 1 });
-                storeRoster();
-                chosenClass = '';
-                window.pendingClass = '';
-                playCharacter(id);
             };
             if (window.pendingCreate && window.pendingCreate.classId) {
                 const pending = window.pendingCreate;
