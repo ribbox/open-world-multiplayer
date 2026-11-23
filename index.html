@@ -2574,10 +2574,10 @@
                     shader.uniforms.sandOn = sandOnUniform;
                     shader.uniforms.waterLevel = { value: WATER_LEVEL };
                     shader.vertexShader = shader.vertexShader
-                        .replace('#include <common>', '#include <common>\nattribute float biome;\nattribute float warmth;\nvarying float vBiome;\nvarying float vWarmth;\nvarying float vGroundY;')
-                        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvBiome = biome;\nvWarmth = warmth;\nvGroundY = position.y;');
+                        .replace('#include <common>', '#include <common>\nattribute float biome;\nattribute float warmth;\nattribute float edge;\nattribute vec3 edgeColor;\nvarying float vBiome;\nvarying float vWarmth;\nvarying float vEdge;\nvarying vec3 vEdgeColor;\nvarying float vGroundY;')
+                        .replace('#include <uv_vertex>', '#include <uv_vertex>\nvBiome = biome;\nvWarmth = warmth;\nvEdge = edge;\nvEdgeColor = edgeColor;\nvGroundY = position.y;');
                     shader.fragmentShader = shader.fragmentShader
-                        .replace('#include <common>', '#include <common>\nvarying float vBiome;\nvarying float vWarmth;\nvarying float vGroundY;\nuniform sampler2D sandMap;\nuniform float sandOn;\nuniform float waterLevel;')
+                        .replace('#include <common>', '#include <common>\nvarying float vBiome;\nvarying float vWarmth;\nvarying float vEdge;\nvarying vec3 vEdgeColor;\nvarying float vGroundY;\nuniform sampler2D sandMap;\nuniform float sandOn;\nuniform float waterLevel;')
                         .replace('#include <color_fragment>', `#include <color_fragment>
                             vec3 soil = vec3(0.40, 0.28, 0.16);
                             if (sandOn > 0.5) soil = texture2D(sandMap, vMapUv).rgb * vec3(0.55, 0.40, 0.24);
@@ -2592,6 +2592,13 @@
                                 diffuseColor.rgb = mix(beach, soil, vWarmth);
                             } else {
                                 diffuseColor.rgb = mix(diffuseColor.rgb, soil, vWarmth);
+                            }
+                            if (vEdge > 0.05 && vGroundY >= waterLevel + 0.55) {
+                                vec2 cell = floor(vMapUv * 18.0);
+                                float h = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+                                float gate = clamp(vEdge, 0.0, 0.9);
+                                if (h < gate) diffuseColor.rgb = mix(diffuseColor.rgb, vEdgeColor, 0.88);
+                                else diffuseColor.rgb = mix(diffuseColor.rgb, vEdgeColor, gate * 0.18);
                             }`);
                 };
                 return mat;
@@ -5588,40 +5595,79 @@
                 return cover;
             }
 
+            function themeEdge(wx, wz, y, cliff, here) {
+                if (cliff || y < WATER_LEVEL + 0.55) return null;
+                const hereId = here ? here.id : '';
+                const band = 9;
+                const steps = 8;
+                let other = null;
+                let far = 0;
+                let near = 0;
+                for (let i = 0; i < steps; i++) {
+                    const angle = (i / steps) * Math.PI * 2;
+                    const c = Math.cos(angle);
+                    const s = Math.sin(angle);
+                    const farTheme = groundThemeAt(wx + c * band, wz + s * band);
+                    if ((farTheme ? farTheme.id : '') !== hereId) {
+                        far += 1;
+                        if (!other) other = farTheme || { color: [0.22, 0.40, 0.16] };
+                    }
+                    const nearTheme = groundThemeAt(wx + c * band * 0.42, wz + s * band * 0.42);
+                    if ((nearTheme ? nearTheme.id : '') !== hereId) {
+                        near += 1;
+                        if (!other) other = nearTheme || { color: [0.22, 0.40, 0.16] };
+                    }
+                }
+                if (!other || (!far && !near)) return null;
+                const mix = Math.min(0.9, near / steps * 1.05 + far / steps * 0.62);
+                if (mix < 0.08) return null;
+                return { mix, color: other.color };
+            }
+
             function groundColor(wx, wz, y) {
                 const cliff = worldShape().edge === 'hills' && boundaryInset(wx, wz) < 18;
                 const warmth = y >= WATER_LEVEL + 0.15 ? campWarmth(wx, wz) : 0;
                 const theme = !cliff && y >= WATER_LEVEL + 0.55 ? groundThemeAt(wx, wz) : null;
+                let sand = false;
+                let grass = false;
+                let tint;
                 if (theme) {
                     const n = 0.88 + 0.16 * (Math.abs(Math.sin(wx * 12.9898 + wz * 78.233)) % 1);
-                    const tint = theme.color.map(ch => Math.min(1, ch * n));
-                    if (warmth > 0) {
-                        const dirt = [0.42, 0.30, 0.18];
-                        tint[0] += (dirt[0] - tint[0]) * warmth;
-                        tint[1] += (dirt[1] - tint[1]) * warmth;
-                        tint[2] += (dirt[2] - tint[2]) * warmth;
-                    }
-                    return { tint, sand: false, grass: false, warmth: 0 };
+                    tint = theme.color.map(ch => Math.min(1, ch * n));
+                } else {
+                    sand = sandReady && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
+                    grass = !sand && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
+                    tint = grass || sand
+                        ? [1, 1, 1]
+                        : y < WATER_LEVEL - 0.15
+                        ? [0.07, 0.2, 0.3]
+                        : y < WATER_LEVEL + 0.55
+                        ? [0.76, 0.68, 0.42]
+                        : cliff || y > 11 ? [0.45, 0.42, 0.36]
+                        : y > 7.5 ? [0.42, 0.48, 0.34]
+                        : y > 4.2 ? [0.32, 0.5, 0.22]
+                        : [0.16, 0.46, 0.15];
                 }
-                const sand = sandReady && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
-                const grass = !sand && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
-                const tint = grass || sand
-                    ? [1, 1, 1]
-                    : y < WATER_LEVEL - 0.15
-                    ? [0.07, 0.2, 0.3]
-                    : y < WATER_LEVEL + 0.55
-                    ? [0.76, 0.68, 0.42]
-                    : cliff || y > 11 ? [0.45, 0.42, 0.36]
-                    : y > 7.5 ? [0.42, 0.48, 0.34]
-                    : y > 4.2 ? [0.32, 0.5, 0.22]
-                    : [0.16, 0.46, 0.15];
+                const edge = themeEdge(wx, wz, y, cliff, theme);
+                if (edge && grass && edge.mix > 0.35) {
+                    tint = [0.22, 0.40, 0.16];
+                    grass = false;
+                    sand = false;
+                }
                 if (warmth > 0 && !grass && !sand) {
                     const dirt = [0.42, 0.30, 0.18];
                     tint[0] += (dirt[0] - tint[0]) * warmth;
                     tint[1] += (dirt[1] - tint[1]) * warmth;
                     tint[2] += (dirt[2] - tint[2]) * warmth;
                 }
-                return { tint, sand, grass, warmth: grass || sand ? warmth : 0 };
+                return {
+                    tint,
+                    sand,
+                    grass,
+                    warmth: grass || sand ? warmth : 0,
+                    edge: edge ? edge.mix : 0,
+                    edgeColor: edge ? edge.color : [0, 0, 0]
+                };
             }
 
             function retintGround() {
@@ -5630,10 +5676,20 @@
                     const pos = geo.attributes.position;
                     const colors = geo.attributes.color;
                     let warmth = geo.attributes.warmth;
+                    let edge = geo.attributes.edge;
+                    let edgeColor = geo.attributes.edgeColor;
                     if (!pos || !colors) continue;
                     if (!warmth || warmth.count !== pos.count) {
                         geo.setAttribute('warmth', new THREE.BufferAttribute(new Float32Array(pos.count), 1));
                         warmth = geo.attributes.warmth;
+                    }
+                    if (!edge || edge.count !== pos.count) {
+                        geo.setAttribute('edge', new THREE.BufferAttribute(new Float32Array(pos.count), 1));
+                        edge = geo.attributes.edge;
+                    }
+                    if (!edgeColor || edgeColor.count !== pos.count) {
+                        geo.setAttribute('edgeColor', new THREE.BufferAttribute(new Float32Array(pos.count * 3), 3));
+                        edgeColor = geo.attributes.edgeColor;
                     }
                     const ox = mesh.parent ? mesh.parent.position.x : 0;
                     const oz = mesh.parent ? mesh.parent.position.z : 0;
@@ -5641,9 +5697,14 @@
                         const painted = groundColor(ox + pos.getX(i), oz + pos.getZ(i), pos.getY(i));
                         colors.setXYZ(i, painted.tint[0], painted.tint[1], painted.tint[2]);
                         warmth.setX(i, painted.warmth || 0);
+                        edge.setX(i, painted.edge || 0);
+                        const tone = painted.edgeColor || [0, 0, 0];
+                        edgeColor.setXYZ(i, tone[0], tone[1], tone[2]);
                     }
                     colors.needsUpdate = true;
                     warmth.needsUpdate = true;
+                    edge.needsUpdate = true;
+                    edgeColor.needsUpdate = true;
                 }
             }
 
@@ -5655,6 +5716,8 @@
                 const colors = new Float32Array(pos.count * 3);
                 const biome = new Float32Array(pos.count);
                 const warmth = new Float32Array(pos.count);
+                const edge = new Float32Array(pos.count);
+                const edgeColor = new Float32Array(pos.count * 3);
                 const uv = geo.attributes.uv;
                 let wet = false;
                 for (let i = 0; i < pos.count; i++) {
@@ -5667,6 +5730,11 @@
                     const painted = groundColor(wx, wz, y);
                     biome[i] = painted.sand ? 2 : painted.grass ? 1 : 0;
                     warmth[i] = painted.warmth || 0;
+                    edge[i] = painted.edge || 0;
+                    const tone = painted.edgeColor || [0, 0, 0];
+                    edgeColor[i * 3] = tone[0];
+                    edgeColor[i * 3 + 1] = tone[1];
+                    edgeColor[i * 3 + 2] = tone[2];
                     colors[i * 3] = painted.tint[0];
                     colors[i * 3 + 1] = painted.tint[1];
                     colors[i * 3 + 2] = painted.tint[2];
@@ -5674,6 +5742,8 @@
                 geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                 geo.setAttribute('biome', new THREE.BufferAttribute(biome, 1));
                 geo.setAttribute('warmth', new THREE.BufferAttribute(warmth, 1));
+                geo.setAttribute('edge', new THREE.BufferAttribute(edge, 1));
+                geo.setAttribute('edgeColor', new THREE.BufferAttribute(edgeColor, 3));
                 geo.computeVertexNormals();
                 if (grassMat && grassMat.normalMap) {
                     try { geo.computeTangents(); } catch { /* the color still tiles if tangents fail */ }
