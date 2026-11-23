@@ -932,21 +932,6 @@
                         document.getElementById('accountOut').hidden = true;
                         note.textContent = message || 'Create an account here, then log in with it on the other computer.';
                     }
-                    function showCharacters(characters) {
-                        const list = document.getElementById('pickList');
-                        if (!list || typeof window.renderAccountRoster === 'function') return;
-                        list.replaceChildren();
-                        (characters || []).forEach(function (row) {
-                            const button = document.createElement('button');
-                            button.type = 'button';
-                            button.textContent = (row.name || 'Player') + ' · ' + (row.level || 1);
-                            button.addEventListener('click', function () {
-                                if (typeof window.playAccountCharacter === 'function') window.playAccountCharacter(row.id);
-                                else note.textContent = 'Signed in. The game is still loading.';
-                            });
-                            list.appendChild(button);
-                        });
-                    }
                     function send(create) {
                         const name = document.getElementById('accountName').value.trim();
                         const password = document.getElementById('accountPass').value;
@@ -969,7 +954,6 @@
                             localStorage.setItem('ow-account', result.data.token || '');
                             localStorage.setItem('ow-account-name', result.data.name || name);
                             showSignedIn(result.data.name || name);
-                            showCharacters(result.data.characters || []);
                             if (typeof window.onAccountLogin === 'function') window.onAccountLogin(result.data);
                             else window.pendingAccount = result.data;
                         }).catch(function () {
@@ -1922,11 +1906,6 @@
                 accountReady = false;
                 showAccount('');
             };
-            if (window.pendingAccount) {
-                const pending = window.pendingAccount;
-                window.pendingAccount = null;
-                useAccount(pending);
-            }
             function sendAccount(create) {
                 const note = document.getElementById('accountNote');
                 const name = document.getElementById('accountName').value.trim();
@@ -11769,6 +11748,11 @@
                 chosenClass = '';
                 playCharacter(id);
             });
+            if (window.pendingAccount) {
+                const pending = window.pendingAccount;
+                window.pendingAccount = null;
+                useAccount(pending);
+            }
             if (accountToken) {
                 const stamped = accountToken;
                 fetch('/api/account', { headers: { authorization: 'Bearer ' + accountToken } })
