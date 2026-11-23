@@ -932,7 +932,52 @@
                         document.getElementById('accountOut').hidden = true;
                         note.textContent = message || 'Create an account here, then log in with it on the other computer.';
                     }
-                    function send(create) {
+                    function paintRoster(characters) {
+                        const list = document.getElementById('pickList');
+                        if (!list) return;
+                        if (typeof window.renderAccountRoster === 'function') {
+                            window.renderAccountRoster();
+                            return;
+                        }
+                        list.replaceChildren();
+                        (characters || []).forEach(function (row) {
+                            const line = document.createElement('div');
+                            line.className = 'pick-slot';
+                            const title = document.createElement('strong');
+                            title.textContent = row.name || 'Player';
+                            const play = document.createElement('button');
+                            play.type = 'button';
+                            play.className = 'pick-play';
+                            const img = document.createElement('img');
+                            img.className = 'pick-face';
+                            img.alt = row.name || '';
+                            const look = row.look || row.class;
+                            if (look) img.src = '/portraits/' + look + '.jpg';
+                            play.appendChild(img);
+                            play.addEventListener('click', function () {
+                                localStorage.setItem('ow-id', row.id || '');
+                                localStorage.setItem('ow-name', row.name || 'Player');
+                                if (typeof window.playAccountCharacter === 'function') window.playAccountCharacter(row.id);
+                            });
+                            const sub = document.createElement('span');
+                            sub.className = 'sub';
+                            sub.textContent = [row.class || 'Adventurer', row.level || 1].join(' · ');
+                            line.append(title, play, sub);
+                            list.appendChild(line);
+                        });
+                    }
+                    document.getElementById('pickClasses').addEventListener('click', function (event) {
+                        const button = event.target.closest('[data-class]');
+                        if (!button) return;
+                        window.pendingClass = button.dataset.class;
+                        document.querySelectorAll('#pickClasses .pick-class').forEach(function (el) {
+                            el.classList.toggle('on', el === button);
+                        });
+                        if (typeof window.chooseClass === 'function') window.chooseClass(button.dataset.class);
+                    });
+                    try {
+                        paintRoster(JSON.parse(localStorage.getItem('ow-roster') || '[]'));
+                    } catch (err) { /* the game script fills this once it is ready */ }
                         const name = document.getElementById('accountName').value.trim();
                         const password = document.getElementById('accountPass').value;
                         note.textContent = create ? 'Creating account...' : 'Signing in...';
@@ -954,8 +999,11 @@
                             localStorage.setItem('ow-account', result.data.token || '');
                             localStorage.setItem('ow-account-name', result.data.name || name);
                             showSignedIn(result.data.name || name);
-                            if (typeof window.onAccountLogin === 'function') window.onAccountLogin(result.data);
-                            else window.pendingAccount = result.data;
+                            try {
+                                if (typeof window.onAccountLogin === 'function') window.onAccountLogin(result.data);
+                                else window.pendingAccount = result.data;
+                            } catch (err) { console.error(err); }
+                            if (!document.getElementById('pickList').children.length) paintRoster(result.data.characters || []);
                         }).catch(function () {
                             note.textContent = 'Could not reach the server';
                         }).finally(function () { clearTimeout(timer); });
@@ -983,7 +1031,14 @@
                 <form id="pickNew">
                     <h2>Pick a new character</h2>
                     <p id="pickNote" hidden></p>
-                    <div id="pickClasses"></div>
+                    <div id="pickClasses">
+                        <button type="button" class="pick-class" data-class="warrior"><span>Warrior</span><img src="/portraits/warrior.jpg" alt="Warrior"></button>
+                        <button type="button" class="pick-class" data-class="paladin"><span>Paladin</span><img src="/portraits/paladin.jpg" alt="Paladin"></button>
+                        <button type="button" class="pick-class" data-class="rogue"><span>Rogue</span><img src="/portraits/rogue.jpg" alt="Rogue"></button>
+                        <button type="button" class="pick-class" data-class="hunter"><span>Hunter</span><img src="/portraits/hunter.jpg" alt="Hunter"></button>
+                        <button type="button" class="pick-class" data-class="mage"><span>Mage</span><img src="/portraits/mage.jpg" alt="Mage"></button>
+                        <button type="button" class="pick-class" data-class="warlock"><span>Warlock</span><img src="/portraits/warlock.jpg" alt="Warlock"></button>
+                    </div>
                     <div id="pickCreate">
                         <input id="pickName" maxlength="16" placeholder="New name" autocomplete="off">
                         <button type="submit">Create</button>
@@ -8417,9 +8472,9 @@
                 return loadedChunks.has(cx + ',' + cz);
             }
 
-            updateChunks();
-            addRoadRibbons();
-            rebuildOverworldPortals();
+            try { updateChunks(); } catch (err) { console.error(err); }
+            try { addRoadRibbons(); } catch (err) { console.error(err); }
+            try { rebuildOverworldPortals(); } catch (err) { console.error(err); }
 
             const picker = document.getElementById('actionPicker');
             const PICKER_GROUPS = [
@@ -11528,6 +11583,12 @@
             }
 
             let chosenClass = '';
+            window.chooseClass = (id) => {
+                chosenClass = id || '';
+                window.pendingClass = chosenClass;
+                renderClassChoices();
+            };
+            if (window.pendingClass) chosenClass = window.pendingClass;
 
             function renderClassChoices() {
                 const box = document.getElementById('pickClasses');
@@ -11733,6 +11794,7 @@
                 event.preventDefault();
                 if (roster.length >= 8) return;
                 const note = document.getElementById('pickNote');
+                if (!chosenClass && window.pendingClass) chosenClass = window.pendingClass;
                 if (!chosenClass) {
                     note.hidden = false;
                     note.textContent = 'Choose a class, then create the character.';
@@ -11771,7 +11833,9 @@
                     })
                     .catch(() => {});
             }
-            renderPick();
+            window.playAccountCharacter = playCharacter;
+            window.renderAccountRoster = renderPick;
+            try { renderPick(); } catch (err) { console.error(err); }
 
             function connectMultiplayer() {
                 if (!persistentId) return;
