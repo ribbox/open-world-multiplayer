@@ -966,18 +966,8 @@
                             list.appendChild(line);
                         });
                     }
-                    document.getElementById('pickClasses').addEventListener('click', function (event) {
-                        const button = event.target.closest('[data-class]');
-                        if (!button) return;
-                        window.pendingClass = button.dataset.class;
-                        document.querySelectorAll('#pickClasses .pick-class').forEach(function (el) {
-                            el.classList.toggle('on', el === button);
-                        });
-                        if (typeof window.chooseClass === 'function') window.chooseClass(button.dataset.class);
-                    });
-                    try {
-                        paintRoster(JSON.parse(localStorage.getItem('ow-roster') || '[]'));
-                    } catch (err) { /* the game script fills this once it is ready */ }
+                    window.paintRoster = paintRoster;
+                    function send(create) {
                         const name = document.getElementById('accountName').value.trim();
                         const password = document.getElementById('accountPass').value;
                         note.textContent = create ? 'Creating account...' : 'Signing in...';
@@ -1050,6 +1040,20 @@
                     <div id="pickList"></div>
                 </div>
             </div>
+            <script>
+                document.getElementById('pickClasses').addEventListener('click', function (event) {
+                    const button = event.target.closest('[data-class]');
+                    if (!button) return;
+                    window.pendingClass = button.dataset.class;
+                    document.querySelectorAll('#pickClasses .pick-class').forEach(function (el) {
+                        el.classList.toggle('on', el === button);
+                    });
+                    if (typeof window.chooseClass === 'function') window.chooseClass(button.dataset.class);
+                });
+                try {
+                    if (typeof window.paintRoster === 'function') window.paintRoster(JSON.parse(localStorage.getItem('ow-roster') || '[]'));
+                } catch (err) { /* the signed-in list is filled after login */ }
+            </script>
         </div>
     </div>
     <div id="mapAimTip" hidden></div>
