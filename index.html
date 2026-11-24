@@ -8010,6 +8010,20 @@
                 refreshQuestMarks();
             }
 
+            let deathBitGeo = null;
+            let deathBitHot = null;
+            let deathBitAsh = null;
+            function deathBitMesh(hot) {
+                if (!deathBitGeo) {
+                    deathBitGeo = new THREE.BoxGeometry(0.14, 0.14, 0.14);
+                    deathBitHot = new THREE.MeshBasicMaterial({ color: 0xff4422, transparent: true });
+                    deathBitAsh = new THREE.MeshBasicMaterial({ color: 0x1a1a1a, transparent: true });
+                }
+                const bit = new THREE.Mesh(deathBitGeo, (hot ? deathBitHot : deathBitAsh).clone());
+                bit.userData.shared = true;
+                return bit;
+            }
+
             function removeWorldNpc(id) {
                 const entry = worldNpcs.get(id);
                 if (!entry || entry.dying) return;
@@ -8019,16 +8033,15 @@
                 if (selectedNpcId === id) selectNpc(null);
                 const origin = entry.group.position;
                 for (let i = 0; i < 8; i++) {
-                    const bit = new THREE.Mesh(
-                        new THREE.BoxGeometry(0.14, 0.14, 0.14),
-                        new THREE.MeshBasicMaterial({ color: i % 2 ? 0xff4422 : 0x1a1a1a })
-                    );
+                    const bit = deathBitMesh(i % 2 === 0);
                     bit.position.set(origin.x, 1, origin.z);
+                    bit.material.opacity = 1;
                     scene.add(bit);
                     const ang = (i / 8) * Math.PI * 2;
                     combatFx.push({
                         kind: 'bit',
                         mesh: bit,
+                        shared: true,
                         age: 0,
                         life: 0.65,
                         vx: Math.cos(ang) * 2.4,
@@ -8048,11 +8061,23 @@
                 worldNpcs.delete(id);
             }
 
+            const floatPool = [];
             function floatText(x, y, z, text, color) {
-                const canvas = document.createElement('canvas');
-                canvas.width = 256;
-                canvas.height = 128;
-                const ctx = canvas.getContext('2d');
+                let row = null;
+                for (const item of floatPool) if (!item.live) { row = item; break; }
+                if (!row) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 256;
+                    canvas.height = 128;
+                    const ctx = canvas.getContext('2d');
+                    const tex = new THREE.CanvasTexture(canvas);
+                    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+                    sprite.scale.set(1.6, 0.8, 1);
+                    row = { live: false, canvas, ctx, tex, sprite };
+                    floatPool.push(row);
+                }
+                const ctx = row.ctx;
+                ctx.clearRect(0, 0, 256, 128);
                 ctx.font = 'bold 72px Arial';
                 ctx.textAlign = 'center';
                 ctx.lineWidth = 10;
@@ -8060,12 +8085,12 @@
                 ctx.fillStyle = color;
                 ctx.strokeText(text, 128, 88);
                 ctx.fillText(text, 128, 88);
-                const tex = new THREE.CanvasTexture(canvas);
-                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
-                sprite.position.set(x, y, z);
-                sprite.scale.set(1.6, 0.8, 1);
-                scene.add(sprite);
-                combatFx.push({ kind: 'text', sprite, age: 0, life: 0.85 });
+                row.tex.needsUpdate = true;
+                row.live = true;
+                row.sprite.position.set(x, y, z);
+                row.sprite.material.opacity = 1;
+                scene.add(row.sprite);
+                combatFx.push({ kind: 'text', pooled: row, sprite: row.sprite, age: 0, life: 0.85 });
             }
 
             function flashNpc(id) {
@@ -8099,7 +8124,6 @@
                     entry.group.rotation.x = Math.min(1.35, entry.deathT * 2.4);
                     const base = entry.dungeonId ? 0.2 : terrainHeight(entry.group.position.x, entry.group.position.z);
                     entry.group.position.y = base - Math.min(0.7, entry.deathT * 0.8);
-                    fadeNpc(entry.group, Math.max(0, 1 - entry.deathT / 0.8));
                     if (entry.deathT >= 0.8) done.push(id);
                 }
                 for (const id of done) finishDeath(worldNpcs.get(id), id);
@@ -8112,8 +8136,11 @@
                         fx.sprite.material.opacity = Math.max(0, 1 - u);
                         if (u >= 1) {
                             scene.remove(fx.sprite);
-                            fx.sprite.material.map.dispose();
-                            fx.sprite.material.dispose();
+                            if (fx.pooled) fx.pooled.live = false;
+                            else {
+                                fx.sprite.material.map.dispose();
+                                fx.sprite.material.dispose();
+                            }
                             combatFx.splice(i, 1);
                         }
                     } else if (fx.kind === 'bit') {
@@ -8122,10 +8149,13 @@
                         fx.mesh.position.z += fx.vz * delta;
                         fx.vy -= 6 * delta;
                         fx.mesh.material.opacity = Math.max(0, 1 - u);
-                        fx.mesh.material.transparent = true;
                         if (u >= 1) {
                             scene.remove(fx.mesh);
-                            fx.mesh.material.dispose();
+                            if (fx.shared) fx.mesh.material.dispose();
+                            else {
+                                fx.mesh.geometry.dispose();
+                                fx.mesh.material.dispose();
+                            }
                             combatFx.splice(i, 1);
                         }
                     } else if (u >= 1) {
