@@ -8706,6 +8706,23 @@
                 holdAction('bomb');
             }
 
+            const DRAW_DIST = {
+                near: { load: 1, keep: 1, fogNear: 18, fogFar: 72 },
+                medium: { load: 1, keep: 2, fogNear: 28, fogFar: 115 },
+                far: { load: 2, keep: 3, fogNear: 40, fogFar: 180 }
+            };
+            function drawPreset() {
+                return DRAW_DIST[window.drawDistance] || DRAW_DIST.far;
+            }
+            window.applyDrawDistance = function () {
+                if (!activeCave && scene.fog) {
+                    const preset = drawPreset();
+                    scene.fog.near = preset.fogNear;
+                    scene.fog.far = preset.fogFar;
+                }
+                unloadDistantChunks(characterGroup.position.x, characterGroup.position.z);
+            };
+
             function unloadDistantChunks(playerX, playerZ) {
                 const currentCX = Math.floor(playerX / chunkSize);
                 const currentCZ = Math.floor(playerZ / chunkSize);
