@@ -1040,7 +1040,9 @@ export function customMap() {
 
 export function designedZoneAt(x, z) {
     for (let i = designedZones.length - 1; i >= 0; i--) {
-        if (pointInPoly(x, z, designedZones[i].samples || designedZones[i].points)) return designedZones[i];
+        const zone = designedZones[i];
+        if (x < zone.minX || x > zone.maxX || z < zone.minZ || z > zone.maxZ) continue;
+        if (pointInPoly(x, z, zone.samples || zone.points)) return zone;
     }
     return null;
 }
