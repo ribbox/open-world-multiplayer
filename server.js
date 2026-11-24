@@ -1591,7 +1591,10 @@ function applyElite(npc, elite, baseHp) {
     npc.elite = !!elite;
     npc.stats = mobStatBlock(npc.level, npc.kind, npc.style);
     const base = baseHp > 0 ? baseHp : npcMaxHp(npc.level);
-    const hp = base + (npc.stats.stamina || 0) * 2;
+    const lv = Math.max(1, npc.level || 1);
+    const grown = base + (npc.stats.stamina || 0) * 2;
+    const bulk = 1 + Math.max(0, lv - 10) * 0.043;
+    const hp = Math.max(1, Math.round(grown * bulk));
     npc.maxHp = npc.elite ? Math.round(hp * 2.5) : hp;
     npc.hp = npc.maxHp;
 }
