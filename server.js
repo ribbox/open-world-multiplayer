@@ -1527,6 +1527,20 @@ function eliteStrike(npc, target) {
     return Math.max(1, Math.round(hp * portion * (1 - resist)));
 }
 
+function mobHitDamage(npc, victim, casting) {
+    const block = npc.stats || mobStatBlock(npc.level, npc.kind, npc.style);
+    const primary = Math.max(1, casting ? (block.intellect || npc.level || 1) : (block.strength || npc.level || 1));
+    const mobLevel = Math.max(1, npc.level || 1);
+    const targetLevel = Math.max(1, victim.level || mobLevel);
+    const raw = 3 + mobLevel * (0.9 + mobLevel * 0.028) + primary * 0.55;
+    const gap = mobLevel - targetLevel;
+    const gapMod = Math.max(0.55, Math.min(1.85, 1 + gap * 0.07));
+    const armor = Math.max(0, victim.armor || 0);
+    const soften = 18 + targetLevel;
+    const resist = armor / (armor + soften);
+    return Math.max(1, Math.round(raw * gapMod * (1 - resist * 0.55)));
+}
+
 function gearAmount(level) {
     return Math.max(1, Math.round((level * level) / 33));
 }
@@ -6259,14 +6273,10 @@ function tickNpcs() {
             if (victim && now >= npc.attackAt && !shielded) {
                 npc.attackAt = now + (casting ? 1800 : 1400);
                 if (cultist) npc.cultistCast = !casting;
-                const block = npc.stats || mobStatBlock(npc.level, npc.kind, npc.style);
-                const primary = casting ? (block.intellect || npc.level) : (block.strength || npc.level);
-                const raw = 1 + primary;
-                let damage = npc.elite ? eliteStrike(npc, victim) : Math.max(1, Math.round(raw) - (victim.armor || 0));
-                if (focusNow.kind === 'pet') {
-                    const resist = petResist(victim);
-                    damage = npc.elite ? petEliteHit(npc, victim) : Math.max(1, Math.round(raw * (1 - resist * 0.5)));
-                }
+                let damage = npc.elite
+                    ? (focusNow.kind === 'pet' ? petEliteHit(npc, victim) : eliteStrike(npc, victim))
+                    : mobHitDamage(npc, victim, casting);
+                if (!npc.elite && cultist && !casting) damage = Math.max(1, Math.round(damage * 0.7));
                 const bolt = npc.kind === 'wisp' ? '#7ee7ff' : npc.kind === 'cultist' ? '#d56bff' : '#b46bff';
                 if (focusNow.kind !== 'player') {
                     victim.hp = Math.max(0, victim.hp - damage);
