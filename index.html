@@ -65,6 +65,7 @@
         #settings h3 { margin: 12px 0 6px; font-size: 13px; color: #e2c48a; }
         #settings p { margin: 4px 0 8px; font-size: 12px; color: #c8b48a; }
         #settings label { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 14px; cursor: pointer; }
+        #settings select { margin-left: auto; background: #1a140e; color: #f4efe2; border: 1px solid #6b5438; border-radius: 4px; padding: 2px 6px; }
         #bindList { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; align-items: start; }
         .bind-group { min-width: 0; }
         #settings .bind-group h3 { margin: 8px 0 4px; }
@@ -1294,6 +1295,13 @@
             <label><input type="checkbox" id="setMusic" checked> Music</label>
             <p id="musicNow">This region: Wilds</p>
             <h3>Display</h3>
+            <label>Draw distance
+                <select id="setDraw">
+                    <option value="near">Near</option>
+                    <option value="medium">Medium</option>
+                    <option value="far" selected>Far</option>
+                </select>
+            </label>
             <label><input type="checkbox" id="setFps"> Frames per second</label>
             <button type="button" class="text-btn" id="setFullscreen">Full screen</button>
             <h3>Keys</h3>
@@ -1761,10 +1769,14 @@
             const sound = document.getElementById('setSound');
             const music = document.getElementById('setMusic');
             const fps = document.getElementById('setFps');
+            const draw = document.getElementById('setDraw');
+            const drawId = draw && (draw.value === 'near' || draw.value === 'medium' || draw.value === 'far') ? draw.value : 'far';
+            window.drawDistance = drawId;
             localStorage.setItem('ow-settings', JSON.stringify({
                 sound: !sound || sound.checked,
                 music: !music || music.checked,
                 fps: !!(fps && fps.checked),
+                draw: drawId,
                 binds
             }));
         }
@@ -1780,9 +1792,12 @@
             const sound = document.getElementById('setSound');
             const music = document.getElementById('setMusic');
             const fps = document.getElementById('setFps');
+            const draw = document.getElementById('setDraw');
             if (sound) sound.checked = saved.sound !== false;
             if (music) music.checked = saved.music !== false;
             if (fps) fps.checked = saved.fps === true;
+            if (draw) draw.value = saved.draw === 'near' || saved.draw === 'medium' ? saved.draw : 'far';
+            window.drawDistance = draw ? draw.value : 'far';
             applyFpsVisible(!!(fps && fps.checked));
             sfx.sound(saved.sound !== false);
             sfx.music(saved.music !== false);
@@ -1869,6 +1884,10 @@
         document.getElementById('setFps').addEventListener('change', (event) => {
             applyFpsVisible(event.target.checked);
             saveSettings();
+        });
+        document.getElementById('setDraw').addEventListener('change', () => {
+            saveSettings();
+            if (typeof window.applyDrawDistance === 'function') window.applyDrawDistance(window.drawDistance);
         });
         document.getElementById('bindReset').addEventListener('click', () => {
             binds = Object.assign({}, DEFAULT_BINDS);
@@ -6326,7 +6345,7 @@
                     directionalLight.intensity = 0.15;
                     caveLamp.intensity = 1.7;
                 } else {
-                    scene.fog = new THREE.Fog(0x87CEEB, 40, 180);
+                    scene.fog = new THREE.Fog(0x87CEEB, drawPreset().fogNear, drawPreset().fogFar);
                     scene.background = new THREE.Color(0x87CEEB);
                     renderer.setClearColor(0x87CEEB, 1);
                     ambientLight.intensity = 0.7;
@@ -8690,7 +8709,7 @@
             function unloadDistantChunks(playerX, playerZ) {
                 const currentCX = Math.floor(playerX / chunkSize);
                 const currentCZ = Math.floor(playerZ / chunkSize);
-                const keepDistance = 3;
+                const keepDistance = drawPreset().keep;
                 for (const [key, data] of loadedChunks.entries()) {
                     const [cx, cz] = key.split(',').map(Number);
                     if (Math.abs(cx - currentCX) > keepDistance || Math.abs(cz - currentCZ) > keepDistance) {
@@ -8722,9 +8741,10 @@
                 const pz = characterGroup.position.z;
                 const currentCX = Math.floor(px / chunkSize);
                 const currentCZ = Math.floor(pz / chunkSize);
+                const reach = drawPreset().load;
                 let built = 0;
-                for (let dx = -2; dx <= 2; dx++) {
-                    for (let dz = -2; dz <= 2; dz++) {
+                for (let dx = -reach; dx <= reach; dx++) {
+                    for (let dz = -reach; dz <= reach; dz++) {
                         if (generateChunk(currentCX + dx, currentCZ + dz)) {
                             built += 1;
                             if (built >= 2) return;
@@ -8742,6 +8762,7 @@
             }
 
             try { updateChunks(); } catch (err) { console.error(err); }
+            try { window.applyDrawDistance(); } catch (err) { console.error(err); }
             try { addRoadRibbons(); } catch (err) { console.error(err); }
             try { rebuildOverworldPortals(); } catch (err) { console.error(err); }
 
@@ -11330,7 +11351,10 @@
                 for (const entry of worldNpcs.values()) {
                     if (entry.dying) continue;
                     const wounded = !entry.dummy && entry.hp > 0 && entry.maxHp > 0 && entry.hp < entry.maxHp - 0.5;
-                    entry.group.visible = !!entry.dungeonId || wounded || hillDrawn(entry.tx, entry.tz) || Math.hypot(entry.tx - characterGroup.position.x, entry.tz - characterGroup.position.z) < 48;
+                    const sight = drawPreset().fogFar * 0.9;
+                    const dist = Math.hypot(entry.tx - characterGroup.position.x, entry.tz - characterGroup.position.z);
+                    const onMap = !!entry.dungeonId || hillDrawn(entry.tx, entry.tz);
+                    entry.group.visible = onMap && (wounded || dist < sight || entry.group.userData.npcId === selectedNpcId);
                     entry.group.position.x += (entry.tx - entry.group.position.x) * Math.min(1, delta * 10);
                     entry.group.position.z += (entry.tz - entry.group.position.z) * Math.min(1, delta * 10);
                     entry.group.rotation.y = entry.rotY;
