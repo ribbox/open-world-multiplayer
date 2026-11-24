@@ -5614,6 +5614,19 @@
                 return cover;
             }
 
+            const themeGrid = new Map();
+            function clearThemeGrid() {
+                themeGrid.clear();
+            }
+            function cachedTheme(x, z) {
+                const key = Math.round(x * 0.5) * 131071 + Math.round(z * 0.5);
+                if (themeGrid.has(key)) return themeGrid.get(key);
+                if (themeGrid.size > 24000) themeGrid.clear();
+                const theme = groundThemeAt(x, z) || null;
+                themeGrid.set(key, theme);
+                return theme;
+            }
+
             function themeEdge(wx, wz, y, cliff, here) {
                 if (cliff || y < WATER_LEVEL + 0.55) return null;
                 const hereId = here ? here.id : '';
@@ -5626,15 +5639,17 @@
                     const angle = (i / steps) * Math.PI * 2;
                     const c = Math.cos(angle);
                     const s = Math.sin(angle);
-                    const farTheme = groundThemeAt(wx + c * band, wz + s * band);
+                    const farTheme = cachedTheme(wx + c * band, wz + s * band);
                     if ((farTheme ? farTheme.id : '') !== hereId) {
                         far += 1;
                         if (!other) other = farTheme || { color: [0.22, 0.40, 0.16] };
                     }
-                    const nearTheme = groundThemeAt(wx + c * band * 0.42, wz + s * band * 0.42);
-                    if ((nearTheme ? nearTheme.id : '') !== hereId) {
-                        near += 1;
-                        if (!other) other = nearTheme || { color: [0.22, 0.40, 0.16] };
+                    if (far) {
+                        const nearTheme = cachedTheme(wx + c * band * 0.42, wz + s * band * 0.42);
+                        if ((nearTheme ? nearTheme.id : '') !== hereId) {
+                            near += 1;
+                            if (!other) other = nearTheme || { color: [0.22, 0.40, 0.16] };
+                        }
                     }
                 }
                 if (!other || (!far && !near)) return null;
@@ -5646,7 +5661,7 @@
             function groundColor(wx, wz, y) {
                 const cliff = worldShape().edge === 'hills' && boundaryInset(wx, wz) < 18;
                 const warmth = y >= WATER_LEVEL + 0.15 ? campWarmth(wx, wz) : 0;
-                const theme = !cliff && y >= WATER_LEVEL + 0.55 ? groundThemeAt(wx, wz) : null;
+                const theme = !cliff && y >= WATER_LEVEL + 0.55 ? cachedTheme(wx, wz) : null;
                 let sand = false;
                 let grass = false;
                 let tint;
@@ -6076,7 +6091,7 @@
                     for (let i = 0; i < count * 3 && hit < count; i++) {
                         const spot = themePoint(cx, cz, salt + i);
                         if (!themeOpen(spot.x, spot.z)) continue;
-                        const theme = groundThemeAt(spot.x, spot.z);
+                        const theme = cachedTheme(spot.x, spot.z);
                         if (!theme || theme.id !== themeId) continue;
                         const y = terrainHeight(spot.x, spot.z);
                         place(spot, y, hit);
@@ -6230,7 +6245,8 @@
                 const buckets = new Map();
                 const drop = [];
                 root.traverse(obj => {
-                    if (!obj.isMesh || !obj.geometry || !obj.material || (Array.isArray(obj.material))) return;
+                    if (!obj.isMesh || !obj.geometry || !obj.material || Array.isArray(obj.material)) return;
+                    if (obj.material.map) return;
                     drop.push(obj);
                     let bucket = buckets.get(obj.material.uuid);
                     if (!bucket) {
@@ -6705,6 +6721,7 @@
                     for (const [id, hits] of Object.entries(data.resources)) resourceHits.set(id, hits);
                 }
                 if (data.world) {
+                    clearThemeGrid();
                     applyWorldConfig(data.world);
                     bootWorld = data.world;
                     worldGrips = data.world.grips || {};
@@ -8764,7 +8781,7 @@
                     for (let dz = -reach; dz <= reach; dz++) {
                         if (generateChunk(currentCX + dx, currentCZ + dz)) {
                             built += 1;
-                            if (built >= 2) return;
+                            if (built >= 1) return;
                         }
                     }
                 }
