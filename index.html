@@ -6151,6 +6151,87 @@
                 });
                 group.userData.themeCamps = camps;
                 group.userData.themeTrees = treesReady;
+                sealTheme(root);
+            }
+
+            function mergeThemeGeos(geos) {
+                let verts = 0;
+                let indexes = 0;
+                const withUv = geos.every(geo => geo.attributes.uv);
+                for (const geo of geos) {
+                    const count = geo.attributes.position.count;
+                    verts += count;
+                    indexes += geo.index ? geo.index.count : count;
+                }
+                const positions = new Float32Array(verts * 3);
+                const normals = new Float32Array(verts * 3);
+                const uvs = withUv ? new Float32Array(verts * 2) : null;
+                const indices = new Uint32Array(indexes);
+                let base = 0;
+                let cursor = 0;
+                for (const geo of geos) {
+                    const pos = geo.attributes.position;
+                    const nor = geo.attributes.normal;
+                    const uv = geo.attributes.uv;
+                    for (let i = 0; i < pos.count; i++) {
+                        positions[(base + i) * 3] = pos.getX(i);
+                        positions[(base + i) * 3 + 1] = pos.getY(i);
+                        positions[(base + i) * 3 + 2] = pos.getZ(i);
+                        if (nor) {
+                            normals[(base + i) * 3] = nor.getX(i);
+                            normals[(base + i) * 3 + 1] = nor.getY(i);
+                            normals[(base + i) * 3 + 2] = nor.getZ(i);
+                        }
+                        if (uvs && uv) {
+                            uvs[(base + i) * 2] = uv.getX(i);
+                            uvs[(base + i) * 2 + 1] = uv.getY(i);
+                        }
+                    }
+                    if (geo.index) {
+                        for (let i = 0; i < geo.index.count; i++) indices[cursor + i] = geo.index.getX(i) + base;
+                        cursor += geo.index.count;
+                    } else {
+                        for (let i = 0; i < pos.count; i++) indices[cursor + i] = base + i;
+                        cursor += pos.count;
+                    }
+                    base += pos.count;
+                    geo.dispose();
+                }
+                const merged = new THREE.BufferGeometry();
+                merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+                if (uvs) merged.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+                merged.setIndex(new THREE.BufferAttribute(indices, 1));
+                return merged;
+            }
+
+            function sealTheme(root) {
+                root.updateMatrixWorld(true);
+                const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+                const buckets = new Map();
+                const drop = [];
+                root.traverse(obj => {
+                    if (!obj.isMesh || !obj.geometry || !obj.material || (Array.isArray(obj.material))) return;
+                    drop.push(obj);
+                    let bucket = buckets.get(obj.material.uuid);
+                    if (!bucket) {
+                        bucket = { material: obj.material, geos: [] };
+                        buckets.set(obj.material.uuid, bucket);
+                    }
+                    const geo = obj.geometry.clone();
+                    geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, obj.matrixWorld));
+                    bucket.geos.push(geo);
+                });
+                for (const obj of drop) if (obj.parent) obj.parent.remove(obj);
+                for (const bucket of buckets.values()) {
+                    if (!bucket.geos.length) continue;
+                    const mesh = new THREE.Mesh(mergeThemeGeos(bucket.geos), bucket.material);
+                    mesh.userData.themePiece = true;
+                    mesh.userData.themeMerged = true;
+                    mesh.castShadow = !!bucket.material.map;
+                    mesh.receiveShadow = true;
+                    root.add(mesh);
+                }
             }
 
             const roadRibbonMat = new THREE.MeshStandardMaterial({
@@ -8589,7 +8670,8 @@
                                 const ti = terrainMeshes.indexOf(obj);
                                 if (ti !== -1) terrainMeshes.splice(ti, 1);
                             }
-                            if (obj.geometry && !(obj.userData && (obj.userData.shared || obj.userData.themePiece))) obj.geometry.dispose();
+                            if (obj.geometry && obj.userData && obj.userData.themeMerged) obj.geometry.dispose();
+                            else if (obj.geometry && !(obj.userData && (obj.userData.shared || obj.userData.themePiece))) obj.geometry.dispose();
                             if (obj.material && obj.material !== grassMat && obj.material !== roadRibbonMat && !(obj.userData && (obj.userData.shared || obj.userData.themePiece))) {
                                 if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
                                 else obj.material.dispose();
@@ -11419,18 +11501,24 @@
                     pumpDress();
                 }
                 const fpsReadout = document.getElementById('fps');
+                let fpsText = '';
                 if (fpsReadout && !fpsReadout.hidden) {
                     const now = performance.now();
                     if (!fpsStamp) fpsStamp = now;
                     fpsFrames += 1;
                     const span = now - fpsStamp;
                     if (span >= 500) {
-                        fpsReadout.textContent = Math.round(fpsFrames * 1000 / span) + ' FPS';
+                        fpsText = Math.round(fpsFrames * 1000 / span) + ' FPS';
                         fpsFrames = 0;
                         fpsStamp = now;
                     }
                 }
                 renderer.render(scene, camera);
+                if (fpsText) {
+                    const draws = renderer.info.render.calls;
+                    const tris = Math.round(renderer.info.render.triangles / 1000);
+                    fpsReadout.textContent = fpsText + ' · ' + draws + ' draws · ' + tris + 'k tris';
+                }
             }
             try { animate(); } catch (err) { console.error(err); }
 
