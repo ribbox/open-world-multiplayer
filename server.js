@@ -1534,7 +1534,9 @@ function mobHitDamage(npc, victim, casting) {
     const targetLevel = Math.max(1, victim.level || mobLevel);
     const raw = 3 + mobLevel * (0.9 + mobLevel * 0.028) + primary * 0.55;
     const gap = mobLevel - targetLevel;
-    const gapMod = Math.max(0.55, Math.min(1.85, 1 + gap * 0.07));
+    const gapMod = gap >= 0
+        ? Math.min(3, 1 + gap * 0.16)
+        : Math.max(0.4, 1 + gap * 0.1);
     const armor = Math.max(0, victim.armor || 0);
     const soften = 18 + targetLevel;
     const resist = armor / (armor + soften);
