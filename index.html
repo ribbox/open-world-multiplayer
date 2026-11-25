@@ -6005,63 +6005,6 @@
                     rock: new THREE.DodecahedronGeometry(0.46, 0),
                     bloom: new THREE.SphereGeometry(0.09, 5, 4)
                 };
-                const padPos = [];
-                const padCol = [];
-                const greens = [[0.20, 0.40, 0.16], [0.28, 0.48, 0.15], [0.14, 0.32, 0.12], [0.33, 0.50, 0.18], [0.18, 0.36, 0.13]];
-                for (let p = 0; p < 26; p++) {
-                    const n = p * 17.3 + 4;
-                    const cxp = (themeRoll(n) - 0.5) * 5.4;
-                    const czp = (themeRoll(n + 2) - 0.5) * 5.4;
-                    const rad = 0.32 + themeRoll(n + 4) * 0.62;
-                    const sides = 5;
-                    const col = greens[p % greens.length];
-                    const yaw = themeRoll(n + 6) * Math.PI * 2;
-                    for (let s = 0; s < sides; s++) {
-                        const a0 = yaw + (s / sides) * Math.PI * 2;
-                        const a1 = yaw + ((s + 1) / sides) * Math.PI * 2;
-                        const r0 = rad * (0.72 + themeRoll(n + s) * 0.45);
-                        const r1 = rad * (0.72 + themeRoll(n + s + 3) * 0.45);
-                        const tri = [[cxp, 0.04, czp], [cxp + Math.cos(a0) * r0, 0.04, czp + Math.sin(a0) * r0], [cxp + Math.cos(a1) * r1, 0.04, czp + Math.sin(a1) * r1]];
-                        for (const v of tri) {
-                            padPos.push(v[0], v[1], v[2]);
-                            padCol.push(col[0], col[1], col[2]);
-                        }
-                    }
-                }
-                const reedPos = [];
-                const reedCol = [];
-                for (let r = 0; r < 6; r++) {
-                    const n = 90 + r * 11;
-                    const x = (themeRoll(n) - 0.5) * 4.6;
-                    const z = (themeRoll(n + 1) - 0.5) * 4.6;
-                    const h = 0.65 + themeRoll(n + 2) * 0.9;
-                    const w = 0.03;
-                    const quads = [
-                        [x - w, 0.05, z, x + w, 0.05, z, x + w, h, z, x - w, h, z],
-                        [x, 0.05, z - w, x, 0.05, z + w, x, h, z + w, x, h, z - w]
-                    ];
-                    for (const q of quads) {
-                        for (const i of [0, 1, 2, 0, 2, 3]) {
-                            reedPos.push(q[i * 3], q[i * 3 + 1], q[i * 3 + 2]);
-                            reedCol.push(0.52, 0.60, 0.26);
-                        }
-                    }
-                }
-                const sheet = new THREE.PlaneGeometry(6.2, 6.2);
-                sheet.rotateX(-Math.PI / 2);
-                const pads = new THREE.BufferGeometry();
-                pads.setAttribute('position', new THREE.Float32BufferAttribute(padPos, 3));
-                pads.setAttribute('color', new THREE.Float32BufferAttribute(padCol, 3));
-                pads.computeVertexNormals();
-                const reedGeo = new THREE.BufferGeometry();
-                reedGeo.setAttribute('position', new THREE.Float32BufferAttribute(reedPos, 3));
-                reedGeo.setAttribute('color', new THREE.Float32BufferAttribute(reedCol, 3));
-                themeKit.duckSheet = sheet;
-                themeKit.duckPads = pads;
-                themeKit.duckReeds = reedGeo;
-                themeKit.duckSheetMat = mat(0x0b1c12, flat);
-                themeKit.duckPadMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-                themeKit.duckReedMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
                 return themeKit;
             }
             function markTheme(mesh) {
@@ -6141,41 +6084,56 @@
                     group.add(markTheme(limb));
                 }
             }
-            function layDuckweed(group, lx, lz, y, n) {
-                const kit = themeBits();
-                const yaw = themeRoll(n) * Math.PI * 2;
-                for (const [geo, material] of [[kit.duckSheet, kit.duckSheetMat], [kit.duckPads, kit.duckPadMat], [kit.duckReeds, kit.duckReedMat]]) {
-                    const mesh = new THREE.Mesh(geo, material);
-                    mesh.position.set(lx, y + 0.04, lz);
-                    mesh.rotation.y = yaw;
-                    group.add(markTheme(mesh));
-                }
+            let duckweedTemplate = null;
+            let duckweedSpan = 4.4;
+            loader.load('/models/water-open-duckweed-bayou.glb', (gltf) => {
+                const model = gltf.scene;
+                model.updateMatrixWorld(true);
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                model.position.x -= (box.min.x + box.max.x) * 0.5;
+                model.position.z -= (box.min.z + box.max.z) * 0.5;
+                model.traverse(obj => {
+                    if (!obj.isMesh || !obj.material) return;
+                    obj.castShadow = false;
+                    obj.receiveShadow = true;
+                    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+                    for (const mat of mats) mat.vertexColors = true;
+                });
+                duckweedSpan = Math.max(size.x, size.z, 1);
+                duckweedTemplate = model;
+                if (loadedChunks.size) dressChunks();
+            }, undefined, (err) => console.warn('Duckweed water failed', err));
+            function layDuckweed(group, lx, lz, y) {
+                if (!duckweedTemplate) return;
+                const tile = duckweedTemplate.clone(true);
+                tile.position.set(lx, y, lz);
+                group.add(tile);
             }
             function coverSwamp(root, cx, cz) {
-                const step = 6.1;
+                if (!duckweedTemplate) return;
+                const step = duckweedSpan;
                 const half = CHUNK_SIZE / 2;
-                let i = 0;
-                for (let x = -half + step * 0.5; x < half; x += step) {
-                    for (let z = -half + step * 0.5; z < half; z += step) {
-                        i += 1;
-                        const jx = x + (themeRoll(cx * 13 + i) - 0.5) * 0.7;
-                        const jz = z + (themeRoll(cz * 17 + i) - 0.5) * 0.7;
-                        const wx = cx * CHUNK_SIZE + jx;
-                        const wz = cz * CHUNK_SIZE + jz;
+                const start = -half + step * 0.5;
+                for (let x = start; x < half; x += step) {
+                    for (let z = start; z < half; z += step) {
+                        const wx = cx * CHUNK_SIZE + x;
+                        const wz = cz * CHUNK_SIZE + z;
                         if (!campClear(wx, wz)) continue;
                         const road = roadAt(wx, wz);
                         if (road && road.dist < 2.2) continue;
                         const theme = cachedTheme(wx, wz);
                         if (!theme || theme.id !== 'swamp') continue;
                         const bed = terrainHeight(wx, wz);
-                        layDuckweed(root, jx, jz, bed < WATER_LEVEL ? WATER_LEVEL : bed, i + cx * 19 + cz * 7);
+                        layDuckweed(root, x, z, bed < WATER_LEVEL ? WATER_LEVEL : bed);
                     }
                 }
             }
             function placeThemeDress(cx, cz, group, colliders, force) {
                 const camps = lastCamps ? lastCamps.length : -1;
                 const treesReady = !!treeTemplate;
-                if (!force && group.userData.themeCamps === camps && group.userData.themeTrees === treesReady) return;
+                const duckReady = !!duckweedTemplate;
+                if (!force && group.userData.themeCamps === camps && group.userData.themeTrees === treesReady && group.userData.themeDuck === duckReady) return;
                 dropThemeColliders(colliders);
                 if (group.userData.themeRoot) group.remove(group.userData.themeRoot);
                 const root = new THREE.Group();
@@ -6274,6 +6232,7 @@
                 });
                 group.userData.themeCamps = camps;
                 group.userData.themeTrees = treesReady;
+                group.userData.themeDuck = duckReady;
                 sealTheme(root);
             }
 
@@ -6281,6 +6240,7 @@
                 let verts = 0;
                 let indexes = 0;
                 const withUv = geos.every(geo => geo.attributes.uv);
+                const withColor = geos.every(geo => geo.attributes.color);
                 for (const geo of geos) {
                     const count = geo.attributes.position.count;
                     verts += count;
@@ -6289,6 +6249,7 @@
                 const positions = new Float32Array(verts * 3);
                 const normals = new Float32Array(verts * 3);
                 const uvs = withUv ? new Float32Array(verts * 2) : null;
+                const colors = withColor ? new Float32Array(verts * 3) : null;
                 const indices = new Uint32Array(indexes);
                 let base = 0;
                 let cursor = 0;
@@ -6296,6 +6257,7 @@
                     const pos = geo.attributes.position;
                     const nor = geo.attributes.normal;
                     const uv = geo.attributes.uv;
+                    const col = geo.attributes.color;
                     for (let i = 0; i < pos.count; i++) {
                         positions[(base + i) * 3] = pos.getX(i);
                         positions[(base + i) * 3 + 1] = pos.getY(i);
@@ -6308,6 +6270,11 @@
                         if (uvs && uv) {
                             uvs[(base + i) * 2] = uv.getX(i);
                             uvs[(base + i) * 2 + 1] = uv.getY(i);
+                        }
+                        if (colors && col) {
+                            colors[(base + i) * 3] = col.getX(i);
+                            colors[(base + i) * 3 + 1] = col.getY(i);
+                            colors[(base + i) * 3 + 2] = col.getZ(i);
                         }
                     }
                     if (geo.index) {
@@ -6324,6 +6291,7 @@
                 merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
                 if (uvs) merged.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+                if (colors) merged.setAttribute('color', new THREE.BufferAttribute(colors, 3));
                 merged.setIndex(new THREE.BufferAttribute(indices, 1));
                 return merged;
             }
