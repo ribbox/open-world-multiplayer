@@ -5666,8 +5666,12 @@
                 let grass = false;
                 let tint;
                 if (theme) {
-                    const n = 0.88 + 0.16 * (Math.abs(Math.sin(wx * 12.9898 + wz * 78.233)) % 1);
-                    tint = theme.color.map(ch => Math.min(1, ch * n));
+                    if (theme.id === 'swamp') {
+                        tint = [0.05, 0.11, 0.07];
+                    } else {
+                        const n = 0.88 + 0.16 * (Math.abs(Math.sin(wx * 12.9898 + wz * 78.233)) % 1);
+                        tint = theme.color.map(ch => Math.min(1, ch * n));
+                    }
                 } else {
                     sand = sandReady && y >= WATER_LEVEL - 0.15 && y < WATER_LEVEL + 0.55 && !cliff;
                     grass = !sand && grassMat && y >= WATER_LEVEL + 0.55 && !cliff && y <= 11;
@@ -5793,10 +5797,11 @@
 
                 if (!wet) return;
                 const step = chunkSize / seg;
-                const verts = [];
                 const level = WATER_LEVEL;
-                const fillShore = (ax, az, bx, bz, cx, cz, ha, hb, hc) => {
-                    const tri = [[ax, az, ha], [bx, bz, hb], [cx, cz, hc]];
+                const openVerts = [];
+                const swampVerts = [];
+                const fillShore = (ax, az, bx, bz, cx0, cz0, ha, hb, hc, into) => {
+                    const tri = [[ax, az, ha], [bx, bz, hb], [cx0, cz0, hc]];
                     const under = [];
                     for (let i = 0; i < 3; i++) {
                         const p = tri[i];
@@ -5810,7 +5815,7 @@
                         }
                     }
                     for (let i = 1; i < under.length - 1; i++) {
-                        verts.push(under[0][0], level, under[0][1], under[i][0], level, under[i][1], under[i + 1][0], level, under[i + 1][1]);
+                        into.push(under[0][0], level, under[0][1], under[i][0], level, under[i][1], under[i + 1][0], level, under[i + 1][1]);
                     }
                 };
                 for (let iz = 0; iz < seg; iz++) {
@@ -5826,25 +5831,28 @@
                         if (Math.min(h00, h10, h01, h11) >= level) continue;
                         const mid = roadAt(cx * chunkSize + (x0 + x1) / 2, cz * chunkSize + (z0 + z1) / 2, 5);
                         if (mid && mid.dist < 4.2) continue;
-                        fillShore(x0, z0, x1, z0, x0, z1, h00, h10, h01);
-                        fillShore(x1, z0, x1, z1, x0, z1, h10, h11, h01);
+                        const here = cachedTheme(cx * chunkSize + (x0 + x1) / 2, cz * chunkSize + (z0 + z1) / 2);
+                        const into = here && here.id === 'swamp' ? swampVerts : openVerts;
+                        fillShore(x0, z0, x1, z0, x0, z1, h00, h10, h01, into);
+                        fillShore(x1, z0, x1, z1, x0, z1, h10, h11, h01, into);
                     }
                 }
-                if (!verts.length) return;
-                const waterGeo = new THREE.BufferGeometry();
-                waterGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-                waterGeo.computeVertexNormals();
-                const water = new THREE.Mesh(
-                    waterGeo,
-                    new THREE.MeshLambertMaterial({
-                        color: 0x1a6fbf,
+                const addWater = (list, color) => {
+                    if (!list.length) return;
+                    const waterGeo = new THREE.BufferGeometry();
+                    waterGeo.setAttribute('position', new THREE.Float32BufferAttribute(list, 3));
+                    waterGeo.computeVertexNormals();
+                    group.add(new THREE.Mesh(waterGeo, new THREE.MeshLambertMaterial({
+                        color,
                         transparent: true,
-                        opacity: 0.9,
+                        opacity: 0.92,
                         depthWrite: false,
                         side: THREE.DoubleSide
-                    })
-                );
-                group.add(water);
+                    })));
+                };
+                addWater(openVerts, 0x1a6fbf);
+                addWater(swampVerts, 0x10261a);
+                if (!openVerts.length && !swampVerts.length) return;
             }
 
             function generateChunk(cx, cz) {
@@ -5997,6 +6005,63 @@
                     rock: new THREE.DodecahedronGeometry(0.46, 0),
                     bloom: new THREE.SphereGeometry(0.09, 5, 4)
                 };
+                const padPos = [];
+                const padCol = [];
+                const greens = [[0.20, 0.40, 0.16], [0.28, 0.48, 0.15], [0.14, 0.32, 0.12], [0.33, 0.50, 0.18], [0.18, 0.36, 0.13]];
+                for (let p = 0; p < 26; p++) {
+                    const n = p * 17.3 + 4;
+                    const cxp = (themeRoll(n) - 0.5) * 5.4;
+                    const czp = (themeRoll(n + 2) - 0.5) * 5.4;
+                    const rad = 0.32 + themeRoll(n + 4) * 0.62;
+                    const sides = 5;
+                    const col = greens[p % greens.length];
+                    const yaw = themeRoll(n + 6) * Math.PI * 2;
+                    for (let s = 0; s < sides; s++) {
+                        const a0 = yaw + (s / sides) * Math.PI * 2;
+                        const a1 = yaw + ((s + 1) / sides) * Math.PI * 2;
+                        const r0 = rad * (0.72 + themeRoll(n + s) * 0.45);
+                        const r1 = rad * (0.72 + themeRoll(n + s + 3) * 0.45);
+                        const tri = [[cxp, 0.04, czp], [cxp + Math.cos(a0) * r0, 0.04, czp + Math.sin(a0) * r0], [cxp + Math.cos(a1) * r1, 0.04, czp + Math.sin(a1) * r1]];
+                        for (const v of tri) {
+                            padPos.push(v[0], v[1], v[2]);
+                            padCol.push(col[0], col[1], col[2]);
+                        }
+                    }
+                }
+                const reedPos = [];
+                const reedCol = [];
+                for (let r = 0; r < 6; r++) {
+                    const n = 90 + r * 11;
+                    const x = (themeRoll(n) - 0.5) * 4.6;
+                    const z = (themeRoll(n + 1) - 0.5) * 4.6;
+                    const h = 0.65 + themeRoll(n + 2) * 0.9;
+                    const w = 0.03;
+                    const quads = [
+                        [x - w, 0.05, z, x + w, 0.05, z, x + w, h, z, x - w, h, z],
+                        [x, 0.05, z - w, x, 0.05, z + w, x, h, z + w, x, h, z - w]
+                    ];
+                    for (const q of quads) {
+                        for (const i of [0, 1, 2, 0, 2, 3]) {
+                            reedPos.push(q[i * 3], q[i * 3 + 1], q[i * 3 + 2]);
+                            reedCol.push(0.52, 0.60, 0.26);
+                        }
+                    }
+                }
+                const sheet = new THREE.PlaneGeometry(6.2, 6.2);
+                sheet.rotateX(-Math.PI / 2);
+                const pads = new THREE.BufferGeometry();
+                pads.setAttribute('position', new THREE.Float32BufferAttribute(padPos, 3));
+                pads.setAttribute('color', new THREE.Float32BufferAttribute(padCol, 3));
+                pads.computeVertexNormals();
+                const reedGeo = new THREE.BufferGeometry();
+                reedGeo.setAttribute('position', new THREE.Float32BufferAttribute(reedPos, 3));
+                reedGeo.setAttribute('color', new THREE.Float32BufferAttribute(reedCol, 3));
+                themeKit.duckSheet = sheet;
+                themeKit.duckPads = pads;
+                themeKit.duckReeds = reedGeo;
+                themeKit.duckSheetMat = mat(0x0b1c12, flat);
+                themeKit.duckPadMat = new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+                themeKit.duckReedMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
                 return themeKit;
             }
             function markTheme(mesh) {
@@ -6076,6 +6141,37 @@
                     group.add(markTheme(limb));
                 }
             }
+            function layDuckweed(group, lx, lz, y, n) {
+                const kit = themeBits();
+                const yaw = themeRoll(n) * Math.PI * 2;
+                for (const [geo, material] of [[kit.duckSheet, kit.duckSheetMat], [kit.duckPads, kit.duckPadMat], [kit.duckReeds, kit.duckReedMat]]) {
+                    const mesh = new THREE.Mesh(geo, material);
+                    mesh.position.set(lx, y + 0.04, lz);
+                    mesh.rotation.y = yaw;
+                    group.add(markTheme(mesh));
+                }
+            }
+            function coverSwamp(root, cx, cz) {
+                const step = 6.1;
+                const half = CHUNK_SIZE / 2;
+                let i = 0;
+                for (let x = -half + step * 0.5; x < half; x += step) {
+                    for (let z = -half + step * 0.5; z < half; z += step) {
+                        i += 1;
+                        const jx = x + (themeRoll(cx * 13 + i) - 0.5) * 0.7;
+                        const jz = z + (themeRoll(cz * 17 + i) - 0.5) * 0.7;
+                        const wx = cx * CHUNK_SIZE + jx;
+                        const wz = cz * CHUNK_SIZE + jz;
+                        if (!campClear(wx, wz)) continue;
+                        const road = roadAt(wx, wz);
+                        if (road && road.dist < 2.2) continue;
+                        const theme = cachedTheme(wx, wz);
+                        if (!theme || theme.id !== 'swamp') continue;
+                        const bed = terrainHeight(wx, wz);
+                        layDuckweed(root, jx, jz, bed < WATER_LEVEL ? WATER_LEVEL : bed, i + cx * 19 + cz * 7);
+                    }
+                }
+            }
             function placeThemeDress(cx, cz, group, colliders, force) {
                 const camps = lastCamps ? lastCamps.length : -1;
                 const treesReady = !!treeTemplate;
@@ -6104,14 +6200,7 @@
                     root.add(placeProp(treeTemplate, { x: spot.x, z: spot.z, px: spot.lx, pz: spot.lz }, scale));
                     addThemeSolid(colliders, 'theme-f-' + cx + '-' + cz + '-' + spot.n, spot.x, spot.z, 0.42);
                 });
-                scatter('swamp', 7, 200, (spot, y) => {
-                    layPatch(root, kit.mudGeo, kit.mud, spot.lx, spot.lz, y, 0.85 + themeRoll(spot.n) * 0.7, 1.15);
-                    layPatch(root, kit.mudGeo, kit.mud, spot.lx + 1.6, spot.lz + 0.8, y, 0.5, 0.65);
-                    addBlades(root, themeRoll(spot.n) > 0.5 ? kit.reedDark : kit.reed, spot.lx - 1.2, spot.lz + 1.1, y, spot.n, 7, true);
-                });
-                scatter('swamp', 6, 260, (spot, y) => {
-                    addBlades(root, kit.reed, spot.lx, spot.lz, y, spot.n, 8, true);
-                });
+                coverSwamp(root, cx, cz);
                 scatter('plains', 8, 300, (spot, y) => {
                     addBlades(root, kit.tuft, spot.lx, spot.lz, y, spot.n, 4, false);
                     if (themeRoll(spot.n) > 0.45) {
