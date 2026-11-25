@@ -1534,9 +1534,10 @@ function mobHitDamage(npc, victim, casting) {
     const targetLevel = Math.max(1, victim.level || mobLevel);
     const raw = 3 + mobLevel * (0.9 + mobLevel * 0.028) + primary * 0.55;
     const gap = mobLevel - targetLevel;
+    const perLevel = 0.1 + mobLevel * 0.006;
     const gapMod = gap >= 0
-        ? Math.min(3, 1 + gap * 0.16)
-        : Math.max(0.4, 1 + gap * 0.1);
+        ? Math.min(4.5, 1 + gap * perLevel)
+        : Math.max(0.35, 1 + gap * 0.12);
     const armor = Math.max(0, victim.armor || 0);
     const soften = 18 + targetLevel;
     const resist = armor / (armor + soften);
@@ -1593,7 +1594,7 @@ function applyElite(npc, elite, baseHp) {
     const base = baseHp > 0 ? baseHp : npcMaxHp(npc.level);
     const lv = Math.max(1, npc.level || 1);
     const grown = base + (npc.stats.stamina || 0) * 2;
-    const bulk = 1 + Math.max(0, lv - 10) * 0.043;
+    const bulk = 1 + Math.max(0, lv - 10) * 0.035 + Math.max(0, lv - 35) * 0.09;
     const hp = Math.max(1, Math.round(grown * bulk));
     npc.maxHp = npc.elite ? Math.round(hp * 2.5) : hp;
     npc.hp = npc.maxHp;
