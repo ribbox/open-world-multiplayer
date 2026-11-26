@@ -6127,6 +6127,7 @@
                 holder.add(model);
                 return holder;
             }
+            let bankDrop = 0.58;
             function bayouReady() {
                 return !!(duckweedTemplate && bankStraight && bankCorner);
             }
@@ -6139,6 +6140,22 @@
             }, undefined, (err) => console.warn('Duckweed water failed', err));
             loader.load('/models/shore-straight-bayou-tile.glb', (gltf) => {
                 bankStraight = prepBayou(gltf, false);
+                const rim = [];
+                const v = new THREE.Vector3();
+                bankStraight.updateMatrixWorld(true);
+                bankStraight.traverse(obj => {
+                    if (!obj.isMesh || !obj.geometry || !obj.geometry.attributes.position) return;
+                    const pos = obj.geometry.attributes.position;
+                    for (let i = 0; i < pos.count; i += 2) {
+                        v.fromBufferAttribute(pos, i);
+                        obj.localToWorld(v);
+                        if (v.z < -1) rim.push(v.y);
+                    }
+                });
+                if (rim.length) {
+                    rim.sort((a, b) => a - b);
+                    bankDrop = rim[Math.floor(rim.length * 0.7)];
+                }
                 noteBayou();
             }, undefined, (err) => console.warn('Bayou bank failed', err));
             loader.load('/models/shore-corner-in-bayou-tile.glb', (gltf) => {
@@ -6162,7 +6179,7 @@
                 const put = (template, ox, oz, pieceYaw) => {
                     const x = ox * c + oz * s;
                     const z = -ox * s + oz * c;
-                    placeBayou(group, template, spot.lx + x, spot.lz + z, y, pieceYaw + pondYaw);
+                    placeBayou(group, template, spot.lx + x, spot.lz + z, y - bankDrop, pieceYaw + pondYaw);
                 };
                 for (const ox of [-2, 2]) {
                     for (const oz of [-2, 2]) put(duckweedTemplate, ox, oz, 0);
