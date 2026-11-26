@@ -6213,15 +6213,28 @@
                 put(bankCorner, -6, 6, Math.PI / 2);
                 put(bankCorner, 6, 6, Math.PI);
             }
+            function pondRise(x, z) {
+                let low = Infinity;
+                let high = -Infinity;
+                for (const ox of [-8, 0, 8]) {
+                    for (const oz of [-8, 0, 8]) {
+                        const h = terrainHeight(x + ox, z + oz);
+                        if (h < low) low = h;
+                        if (h > high) high = h;
+                    }
+                }
+                return high - low;
+            }
             function findPond(cx, cz) {
                 if (themeRoll(cx * 91.7 + cz * 53.2) < 0.72) return null;
-                for (let i = 0; i < 8; i++) {
+                for (let i = 0; i < 16; i++) {
                     const spot = themePoint(cx, cz, 900 + i);
                     if (!themeOpen(spot.x, spot.z)) continue;
                     const road = roadAt(spot.x, spot.z);
                     if (road && road.dist < 12) continue;
                     const theme = cachedTheme(spot.x, spot.z);
                     if (!theme || theme.id !== 'swamp') continue;
+                    if (pondRise(spot.x, spot.z) > 0.7) continue;
                     return spot;
                 }
                 return null;
