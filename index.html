@@ -6153,12 +6153,16 @@
             }
             function layPond(group, spot, pondYaw) {
                 if (!bayouReady()) return;
+                let y = terrainHeight(spot.x, spot.z);
+                for (const ox of [-8, 0, 8]) {
+                    for (const oz of [-8, 0, 8]) y = Math.min(y, terrainHeight(spot.x + ox, spot.z + oz));
+                }
                 const c = Math.cos(pondYaw);
                 const s = Math.sin(pondYaw);
                 const put = (template, ox, oz, pieceYaw) => {
                     const x = ox * c + oz * s;
                     const z = -ox * s + oz * c;
-                    placeBayou(group, template, spot.lx + x, spot.lz + z, terrainHeight(spot.x + x, spot.z + z), pieceYaw + pondYaw);
+                    placeBayou(group, template, spot.lx + x, spot.lz + z, y, pieceYaw + pondYaw);
                 };
                 for (const ox of [-2, 2]) {
                     for (const oz of [-2, 2]) put(duckweedTemplate, ox, oz, 0);
