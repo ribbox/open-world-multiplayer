@@ -5667,7 +5667,7 @@
                 let tint;
                 if (theme) {
                     if (theme.id === 'swamp') {
-                        tint = [0.037, 0.077, 0.024];
+                        tint = [0.222, 0.258, 0.07];
                     } else {
                         const n = 0.88 + 0.16 * (Math.abs(Math.sin(wx * 12.9898 + wz * 78.233)) % 1);
                         tint = theme.color.map(ch => Math.min(1, ch * n));
@@ -6141,7 +6141,12 @@
                         if (!themeOpen(wx, wz)) continue;
                         const theme = cachedTheme(wx, wz);
                         if (!theme || theme.id !== 'swamp') continue;
-                        layDuckweed(root, jx, jz, terrainHeight(wx, wz));
+                        const span = duckweedSpan;
+                        const y = terrainHeight(wx, wz);
+                        layDuckweed(root, jx - span * 0.5, jz - span * 0.5, y);
+                        layDuckweed(root, jx + span * 0.5, jz - span * 0.5, y);
+                        layDuckweed(root, jx - span * 0.5, jz + span * 0.5, y);
+                        layDuckweed(root, jx + span * 0.5, jz + span * 0.5, y);
                     }
                 }
             }
