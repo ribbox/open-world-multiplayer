@@ -5746,6 +5746,7 @@
                 }
             }
 
+            const pondSkirtMat = new THREE.MeshLambertMaterial({ color: 0x6b4f32, side: THREE.DoubleSide });
             function addTerrain(group, cx, cz) {
                 const seg = 48;
                 const geo = new THREE.PlaneGeometry(chunkSize, chunkSize, seg, seg);
@@ -5784,19 +5785,56 @@
                 geo.setAttribute('edgeColor', new THREE.BufferAttribute(edgeColor, 3));
                 geo.computeVertexNormals();
                 const ponds = pondsTouching(cx, cz);
+                let skirt = null;
                 if (ponds.length && geo.index) {
                     const src = geo.index;
                     const kept = [];
+                    const cut = [];
+                    const countEdge = (map, i, j) => {
+                        const k = i < j ? i + '_' + j : j + '_' + i;
+                        map.set(k, (map.get(k) || 0) + 1);
+                    };
+                    const keptEdges = new Map();
+                    const cutEdges = new Map();
                     for (let t = 0; t < src.count; t += 3) {
                         const a = src.getX(t);
                         const b = src.getX(t + 1);
                         const c = src.getX(t + 2);
                         const mx = cx * chunkSize + (pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3;
                         const mz = cz * chunkSize + (pos.getZ(a) + pos.getZ(b) + pos.getZ(c)) / 3;
-                        if (overPond(mx, mz, ponds)) continue;
-                        kept.push(a, b, c);
+                        if (overPond(mx, mz, ponds)) {
+                            cut.push(a, b, c);
+                            countEdge(cutEdges, a, b);
+                            countEdge(cutEdges, b, c);
+                            countEdge(cutEdges, c, a);
+                        } else {
+                            kept.push(a, b, c);
+                            countEdge(keptEdges, a, b);
+                            countEdge(keptEdges, b, c);
+                            countEdge(keptEdges, c, a);
+                        }
                     }
                     geo.setIndex(kept);
+                    const wall = [];
+                    for (const key of cutEdges.keys()) {
+                        if (!keptEdges.has(key)) continue;
+                        const [ia, ib] = key.split('_').map(Number);
+                        const ax = pos.getX(ia);
+                        const ay = pos.getY(ia);
+                        const az = pos.getZ(ia);
+                        const bx = pos.getX(ib);
+                        const by = pos.getY(ib);
+                        const bz = pos.getZ(ib);
+                        const floor = pondFloor(cx * chunkSize + (ax + bx) * 0.5, cz * chunkSize + (az + bz) * 0.5, ponds);
+                        wall.push(ax, ay, az, bx, by, bz, bx, floor, bz, ax, ay, az, bx, floor, bz, ax, floor, az);
+                    }
+                    if (wall.length) {
+                        const wallGeo = new THREE.BufferGeometry();
+                        wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wall, 3));
+                        wallGeo.computeVertexNormals();
+                        skirt = new THREE.Mesh(wallGeo, pondSkirtMat);
+                        skirt.receiveShadow = true;
+                    }
                 }
                 if (grassMat && grassMat.normalMap) {
                     try { geo.computeTangents(); } catch { /* the color still tiles if tangents fail */ }
@@ -5809,6 +5847,7 @@
                 mesh.userData.terrain = true;
                 terrainMeshes.push(mesh);
                 group.add(mesh);
+                if (skirt) group.add(skirt);
 
                 if (!wet) return;
                 const step = chunkSize / seg;
@@ -6254,6 +6293,22 @@
                     if (Math.abs(wx - spot.x) < 8 && Math.abs(wz - spot.z) < 8) return true;
                 }
                 return false;
+            }
+            function pondFloor(wx, wz, ponds) {
+                let spot = ponds[0];
+                let best = Infinity;
+                for (const next of ponds) {
+                    const d = Math.abs(wx - next.x) + Math.abs(wz - next.z);
+                    if (d < best) {
+                        best = d;
+                        spot = next;
+                    }
+                }
+                let y = terrainHeight(spot.x, spot.z);
+                for (const ox of [-8, 0, 8]) {
+                    for (const oz of [-8, 0, 8]) y = Math.min(y, terrainHeight(spot.x + ox, spot.z + oz));
+                }
+                return y - bankDrop - 0.25;
             }
             function scatterDuckweed(root, cx, cz) {
                 if (!bayouReady()) return;
