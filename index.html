@@ -6120,34 +6120,32 @@
                 duckweedTemplate = holder;
                 if (loadedChunks.size) dressChunks();
             }, undefined, (err) => console.warn('Duckweed water failed', err));
-            function layDuckweed(group, lx, lz, y) {
+            function layPond(group, lx, lz, y, yaw) {
                 if (!duckweedTemplate) return;
-                const tile = duckweedTemplate.clone(true);
-                tile.position.set(lx, y, lz);
-                group.add(tile);
+                const half = duckweedSpan * 0.5;
+                const c = Math.cos(yaw);
+                const s = Math.sin(yaw);
+                for (const ox of [-half, half]) {
+                    for (const oz of [-half, half]) {
+                        const tile = duckweedTemplate.clone(true);
+                        tile.position.set(lx + ox * c - oz * s, y, lz + ox * s + oz * c);
+                        tile.rotation.y = yaw;
+                        group.add(tile);
+                    }
+                }
             }
             function scatterDuckweed(root, cx, cz) {
                 if (!duckweedTemplate) return;
-                const step = 18;
-                const half = CHUNK_SIZE / 2;
-                let i = 0;
-                for (let x = -half + step * 0.5; x < half; x += step) {
-                    for (let z = -half + step * 0.5; z < half; z += step) {
-                        i += 1;
-                        const jx = x + (themeRoll(cx * 13 + i) - 0.5) * 5;
-                        const jz = z + (themeRoll(cz * 17 + i) - 0.5) * 5;
-                        const wx = cx * CHUNK_SIZE + jx;
-                        const wz = cz * CHUNK_SIZE + jz;
-                        if (!themeOpen(wx, wz)) continue;
-                        const theme = cachedTheme(wx, wz);
-                        if (!theme || theme.id !== 'swamp') continue;
-                        const span = duckweedSpan;
-                        const y = terrainHeight(wx, wz);
-                        layDuckweed(root, jx - span * 0.5, jz - span * 0.5, y);
-                        layDuckweed(root, jx + span * 0.5, jz - span * 0.5, y);
-                        layDuckweed(root, jx - span * 0.5, jz + span * 0.5, y);
-                        layDuckweed(root, jx + span * 0.5, jz + span * 0.5, y);
-                    }
+                if (themeRoll(cx * 91.7 + cz * 53.2) < 0.72) return;
+                for (let i = 0; i < 8; i++) {
+                    const spot = themePoint(cx, cz, 900 + i);
+                    if (!themeOpen(spot.x, spot.z)) continue;
+                    const road = roadAt(spot.x, spot.z);
+                    if (road && road.dist < 8) continue;
+                    const theme = cachedTheme(spot.x, spot.z);
+                    if (!theme || theme.id !== 'swamp') continue;
+                    layPond(root, spot.lx, spot.lz, terrainHeight(spot.x, spot.z), themeRoll(spot.n) * Math.PI * 2);
+                    return;
                 }
             }
             function placeThemeDress(cx, cz, group, colliders, force) {
