@@ -5783,6 +5783,21 @@
                 geo.setAttribute('edge', new THREE.BufferAttribute(edge, 1));
                 geo.setAttribute('edgeColor', new THREE.BufferAttribute(edgeColor, 3));
                 geo.computeVertexNormals();
+                const ponds = pondsTouching(cx, cz);
+                if (ponds.length && geo.index) {
+                    const src = geo.index;
+                    const kept = [];
+                    for (let t = 0; t < src.count; t += 3) {
+                        const a = src.getX(t);
+                        const b = src.getX(t + 1);
+                        const c = src.getX(t + 2);
+                        const mx = cx * chunkSize + (pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3;
+                        const mz = cz * chunkSize + (pos.getZ(a) + pos.getZ(b) + pos.getZ(c)) / 3;
+                        if (overPond(mx, mz, ponds)) continue;
+                        kept.push(a, b, c);
+                    }
+                    geo.setIndex(kept);
+                }
                 if (grassMat && grassMat.normalMap) {
                     try { geo.computeTangents(); } catch { /* the color still tiles if tangents fail */ }
                 }
@@ -6176,32 +6191,30 @@
                 }
                 const c = Math.cos(pondYaw);
                 const s = Math.sin(pondYaw);
-                const bankY = y - Math.max(0, bankDrop - 0.28);
-                const waterY = y - 0.03;
-                const put = (template, ox, oz, pieceYaw, height) => {
+                const height = y - bankDrop;
+                const put = (template, ox, oz, pieceYaw) => {
                     const x = ox * c + oz * s;
                     const z = -ox * s + oz * c;
                     placeBayou(group, template, spot.lx + x, spot.lz + z, height, pieceYaw + pondYaw);
                 };
                 for (const ox of [-2, 2]) {
-                    for (const oz of [-2, 2]) put(duckweedTemplate, ox, oz, 0, waterY);
+                    for (const oz of [-2, 2]) put(duckweedTemplate, ox, oz, 0);
                 }
                 for (const ox of [-2, 2]) {
-                    put(bankStraight, ox, -6, 0, bankY);
-                    put(bankStraight, ox, 6, Math.PI, bankY);
+                    put(bankStraight, ox, -6, 0);
+                    put(bankStraight, ox, 6, Math.PI);
                 }
                 for (const oz of [-2, 2]) {
-                    put(bankStraight, -6, oz, Math.PI / 2, bankY);
-                    put(bankStraight, 6, oz, -Math.PI / 2, bankY);
+                    put(bankStraight, -6, oz, Math.PI / 2);
+                    put(bankStraight, 6, oz, -Math.PI / 2);
                 }
-                put(bankCorner, -6, -6, 0, bankY);
-                put(bankCorner, 6, -6, -Math.PI / 2, bankY);
-                put(bankCorner, -6, 6, Math.PI / 2, bankY);
-                put(bankCorner, 6, 6, Math.PI, bankY);
+                put(bankCorner, -6, -6, 0);
+                put(bankCorner, 6, -6, -Math.PI / 2);
+                put(bankCorner, -6, 6, Math.PI / 2);
+                put(bankCorner, 6, 6, Math.PI);
             }
-            function scatterDuckweed(root, cx, cz) {
-                if (!bayouReady()) return;
-                if (themeRoll(cx * 91.7 + cz * 53.2) < 0.72) return;
+            function findPond(cx, cz) {
+                if (themeRoll(cx * 91.7 + cz * 53.2) < 0.72) return null;
                 for (let i = 0; i < 8; i++) {
                     const spot = themePoint(cx, cz, 900 + i);
                     if (!themeOpen(spot.x, spot.z)) continue;
@@ -6209,10 +6222,32 @@
                     if (road && road.dist < 12) continue;
                     const theme = cachedTheme(spot.x, spot.z);
                     if (!theme || theme.id !== 'swamp') continue;
-                    const turn = Math.floor(themeRoll(spot.n) * 4) * Math.PI / 2;
-                    layPond(root, spot, turn);
-                    return;
+                    return spot;
                 }
+                return null;
+            }
+            function pondsTouching(cx, cz) {
+                const found = [];
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dz = -1; dz <= 1; dz++) {
+                        const spot = findPond(cx + dx, cz + dz);
+                        if (spot) found.push(spot);
+                    }
+                }
+                return found;
+            }
+            function overPond(wx, wz, ponds) {
+                for (const spot of ponds) {
+                    if (Math.abs(wx - spot.x) < 8 && Math.abs(wz - spot.z) < 8) return true;
+                }
+                return false;
+            }
+            function scatterDuckweed(root, cx, cz) {
+                if (!bayouReady()) return;
+                const spot = findPond(cx, cz);
+                if (!spot) return;
+                const turn = Math.floor(themeRoll(spot.n) * 4) * Math.PI / 2;
+                layPond(root, spot, turn);
             }
             function placeThemeDress(cx, cz, group, colliders, force) {
                 const camps = lastCamps ? lastCamps.length : -1;
