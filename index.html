@@ -5667,7 +5667,7 @@
                 let tint;
                 if (theme) {
                     if (theme.id === 'swamp') {
-                        tint = [0.05, 0.11, 0.07];
+                        tint = [0.037, 0.077, 0.024];
                     } else {
                         const n = 0.88 + 0.16 * (Math.abs(Math.sin(wx * 12.9898 + wz * 78.233)) % 1);
                         tint = theme.color.map(ch => Math.min(1, ch * n));
@@ -5851,7 +5851,7 @@
                     })));
                 };
                 addWater(openVerts, 0x1a6fbf);
-                addWater(swampVerts, 0x10261a);
+                addWater(swampVerts, 0x091406);
                 if (!openVerts.length && !swampVerts.length) return;
             }
 
@@ -6110,25 +6110,6 @@
                 tile.position.set(lx, y, lz);
                 group.add(tile);
             }
-            function coverSwamp(root, cx, cz) {
-                if (!duckweedTemplate) return;
-                const step = duckweedSpan;
-                const half = CHUNK_SIZE / 2;
-                const start = -half + step * 0.5;
-                for (let x = start; x < half; x += step) {
-                    for (let z = start; z < half; z += step) {
-                        const wx = cx * CHUNK_SIZE + x;
-                        const wz = cz * CHUNK_SIZE + z;
-                        if (!campClear(wx, wz)) continue;
-                        const road = roadAt(wx, wz);
-                        if (road && road.dist < 2.2) continue;
-                        const theme = cachedTheme(wx, wz);
-                        if (!theme || theme.id !== 'swamp') continue;
-                        const bed = terrainHeight(wx, wz);
-                        layDuckweed(root, x, z, bed < WATER_LEVEL ? WATER_LEVEL : bed);
-                    }
-                }
-            }
             function placeThemeDress(cx, cz, group, colliders, force) {
                 const camps = lastCamps ? lastCamps.length : -1;
                 const treesReady = !!treeTemplate;
@@ -6158,7 +6139,9 @@
                     root.add(placeProp(treeTemplate, { x: spot.x, z: spot.z, px: spot.lx, pz: spot.lz }, scale));
                     addThemeSolid(colliders, 'theme-f-' + cx + '-' + cz + '-' + spot.n, spot.x, spot.z, 0.42);
                 });
-                coverSwamp(root, cx, cz);
+                scatter('swamp', 4, 200, (spot, y) => {
+                    layDuckweed(root, spot.lx, spot.lz, y);
+                });
                 scatter('plains', 8, 300, (spot, y) => {
                     addBlades(root, kit.tuft, spot.lx, spot.lz, y, spot.n, 4, false);
                     if (themeRoll(spot.n) > 0.45) {
