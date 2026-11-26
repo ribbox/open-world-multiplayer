@@ -6085,73 +6085,116 @@
                 }
             }
             let duckweedTemplate = null;
-            let duckweedSpan = 4.4;
-            loader.load('/models/water-open-duckweed-bayou.glb', (gltf) => {
+            let bankStraight = null;
+            let bankCorner = null;
+            function prepBayou(gltf, seatSheet) {
                 const model = gltf.scene;
                 model.updateMatrixWorld(true);
                 const box = new THREE.Box3().setFromObject(model);
-                model.position.x -= (box.min.x + box.max.x) * 0.5;
-                model.position.z -= (box.min.z + box.max.z) * 0.5;
-                model.updateMatrixWorld(true);
-                let sum = 0;
-                let n = 0;
-                const v = new THREE.Vector3();
+                if (seatSheet) {
+                    model.position.x -= (box.min.x + box.max.x) * 0.5;
+                    model.position.z -= (box.min.z + box.max.z) * 0.5;
+                    model.updateMatrixWorld(true);
+                }
                 model.traverse(obj => {
-                    if (!obj.isMesh || !obj.geometry || !obj.geometry.attributes.position) return;
+                    if (!obj.isMesh || !obj.material) return;
                     obj.castShadow = false;
                     obj.receiveShadow = true;
                     const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
                     for (const mat of mats) mat.vertexColors = true;
-                    const pos = obj.geometry.attributes.position;
-                    const nor = obj.geometry.attributes.normal;
-                    for (let i = 0; i < pos.count; i += 3) {
-                        if (nor && nor.getY(i) < 0.5) continue;
-                        v.fromBufferAttribute(pos, i);
-                        obj.localToWorld(v);
-                        sum += v.y;
-                        n += 1;
-                    }
                 });
-                const sheet = n ? sum / n : box.min.y;
-                model.position.y -= sheet - 0.08;
+                if (seatSheet) {
+                    let sum = 0;
+                    let n = 0;
+                    const v = new THREE.Vector3();
+                    model.traverse(obj => {
+                        if (!obj.isMesh || !obj.geometry || !obj.geometry.attributes.position) return;
+                        const pos = obj.geometry.attributes.position;
+                        const nor = obj.geometry.attributes.normal;
+                        for (let i = 0; i < pos.count; i += 3) {
+                            if (nor && nor.getY(i) < 0.5) continue;
+                            v.fromBufferAttribute(pos, i);
+                            obj.localToWorld(v);
+                            sum += v.y;
+                            n += 1;
+                        }
+                    });
+                    model.position.y -= (n ? sum / n : box.min.y) - 0.08;
+                } else {
+                    model.position.y -= box.min.y;
+                }
                 const holder = new THREE.Group();
                 holder.add(model);
-                duckweedSpan = Math.max(box.getSize(new THREE.Vector3()).x, 1);
-                duckweedTemplate = holder;
-                if (loadedChunks.size) dressChunks();
+                return holder;
+            }
+            function bayouReady() {
+                return !!(duckweedTemplate && bankStraight && bankCorner);
+            }
+            function noteBayou() {
+                if (bayouReady() && loadedChunks.size) dressChunks();
+            }
+            loader.load('/models/water-open-duckweed-bayou.glb', (gltf) => {
+                duckweedTemplate = prepBayou(gltf, true);
+                noteBayou();
             }, undefined, (err) => console.warn('Duckweed water failed', err));
-            function layPond(group, lx, lz, y, yaw) {
-                if (!duckweedTemplate) return;
-                const half = duckweedSpan * 0.5;
-                const c = Math.cos(yaw);
-                const s = Math.sin(yaw);
-                for (const ox of [-half, half]) {
-                    for (const oz of [-half, half]) {
-                        const tile = duckweedTemplate.clone(true);
-                        tile.position.set(lx + ox * c - oz * s, y, lz + ox * s + oz * c);
-                        tile.rotation.y = yaw;
-                        group.add(tile);
-                    }
+            loader.load('/models/shore-straight-bayou-tile.glb', (gltf) => {
+                bankStraight = prepBayou(gltf, false);
+                noteBayou();
+            }, undefined, (err) => console.warn('Bayou bank failed', err));
+            loader.load('/models/shore-corner-in-bayou-tile.glb', (gltf) => {
+                bankCorner = prepBayou(gltf, false);
+                noteBayou();
+            }, undefined, (err) => console.warn('Bayou bank corner failed', err));
+            function placeBayou(group, template, lx, lz, y, yaw) {
+                const tile = template.clone(true);
+                tile.position.set(lx, y, lz);
+                tile.rotation.y = yaw;
+                group.add(tile);
+            }
+            function layPond(group, spot, pondYaw) {
+                if (!bayouReady()) return;
+                const c = Math.cos(pondYaw);
+                const s = Math.sin(pondYaw);
+                const put = (template, ox, oz, pieceYaw) => {
+                    const x = ox * c + oz * s;
+                    const z = -ox * s + oz * c;
+                    placeBayou(group, template, spot.lx + x, spot.lz + z, terrainHeight(spot.x + x, spot.z + z), pieceYaw + pondYaw);
+                };
+                for (const ox of [-2, 2]) {
+                    for (const oz of [-2, 2]) put(duckweedTemplate, ox, oz, 0);
                 }
+                for (const ox of [-2, 2]) {
+                    put(bankStraight, ox, -6, 0);
+                    put(bankStraight, ox, 6, Math.PI);
+                }
+                for (const oz of [-2, 2]) {
+                    put(bankStraight, -6, oz, Math.PI / 2);
+                    put(bankStraight, 6, oz, -Math.PI / 2);
+                }
+                put(bankCorner, -6, -6, 0);
+                put(bankCorner, 6, -6, -Math.PI / 2);
+                put(bankCorner, -6, 6, Math.PI / 2);
+                put(bankCorner, 6, 6, Math.PI);
             }
             function scatterDuckweed(root, cx, cz) {
-                if (!duckweedTemplate) return;
+                if (!bayouReady()) return;
                 if (themeRoll(cx * 91.7 + cz * 53.2) < 0.72) return;
                 for (let i = 0; i < 8; i++) {
                     const spot = themePoint(cx, cz, 900 + i);
                     if (!themeOpen(spot.x, spot.z)) continue;
                     const road = roadAt(spot.x, spot.z);
-                    if (road && road.dist < 8) continue;
+                    if (road && road.dist < 12) continue;
                     const theme = cachedTheme(spot.x, spot.z);
                     if (!theme || theme.id !== 'swamp') continue;
-                    layPond(root, spot.lx, spot.lz, terrainHeight(spot.x, spot.z), themeRoll(spot.n) * Math.PI * 2);
+                    const turn = Math.floor(themeRoll(spot.n) * 4) * Math.PI / 2;
+                    layPond(root, spot, turn);
                     return;
                 }
             }
             function placeThemeDress(cx, cz, group, colliders, force) {
                 const camps = lastCamps ? lastCamps.length : -1;
                 const treesReady = !!treeTemplate;
-                const duckReady = !!duckweedTemplate;
+                const duckReady = bayouReady();
                 if (!force && group.userData.themeCamps === camps && group.userData.themeTrees === treesReady && group.userData.themeDuck === duckReady) return;
                 dropThemeColliders(colliders);
                 if (group.userData.themeRoot) group.remove(group.userData.themeRoot);
