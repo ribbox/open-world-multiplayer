@@ -6176,26 +6176,28 @@
                 }
                 const c = Math.cos(pondYaw);
                 const s = Math.sin(pondYaw);
-                const put = (template, ox, oz, pieceYaw) => {
+                const bankY = y - Math.max(0, bankDrop - 0.28);
+                const waterY = y - 0.03;
+                const put = (template, ox, oz, pieceYaw, height) => {
                     const x = ox * c + oz * s;
                     const z = -ox * s + oz * c;
-                    placeBayou(group, template, spot.lx + x, spot.lz + z, y - bankDrop, pieceYaw + pondYaw);
+                    placeBayou(group, template, spot.lx + x, spot.lz + z, height, pieceYaw + pondYaw);
                 };
                 for (const ox of [-2, 2]) {
-                    for (const oz of [-2, 2]) put(duckweedTemplate, ox, oz, 0);
+                    for (const oz of [-2, 2]) put(duckweedTemplate, ox, oz, 0, waterY);
                 }
                 for (const ox of [-2, 2]) {
-                    put(bankStraight, ox, -6, 0);
-                    put(bankStraight, ox, 6, Math.PI);
+                    put(bankStraight, ox, -6, 0, bankY);
+                    put(bankStraight, ox, 6, Math.PI, bankY);
                 }
                 for (const oz of [-2, 2]) {
-                    put(bankStraight, -6, oz, Math.PI / 2);
-                    put(bankStraight, 6, oz, -Math.PI / 2);
+                    put(bankStraight, -6, oz, Math.PI / 2, bankY);
+                    put(bankStraight, 6, oz, -Math.PI / 2, bankY);
                 }
-                put(bankCorner, -6, -6, 0);
-                put(bankCorner, 6, -6, -Math.PI / 2);
-                put(bankCorner, -6, 6, Math.PI / 2);
-                put(bankCorner, 6, 6, Math.PI);
+                put(bankCorner, -6, -6, 0, bankY);
+                put(bankCorner, 6, -6, -Math.PI / 2, bankY);
+                put(bankCorner, -6, 6, Math.PI / 2, bankY);
+                put(bankCorner, 6, 6, Math.PI, bankY);
             }
             function scatterDuckweed(root, cx, cz) {
                 if (!bayouReady()) return;
