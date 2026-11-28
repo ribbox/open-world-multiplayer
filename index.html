@@ -5833,27 +5833,35 @@
                         const mx = cx * chunkSize + (ax + bx) * 0.5;
                         const mz = cz * chunkSize + (az + bz) * 0.5;
                         const floor = pondFloor(mx, mz, ponds);
-                        let ox = 0;
-                        let oz = 0;
+                        let ux = 0;
+                        let uz = 0;
                         let best = Infinity;
                         for (const spot of ponds) {
                             const dx = mx - spot.x;
                             const dz = mz - spot.z;
-                            const d = Math.abs(dx) + Math.abs(dz);
+                            const d = dx * dx + dz * dz;
                             if (d < best) {
                                 best = d;
-                                const len = Math.hypot(dx, dz) || 1;
-                                ox = dx / len * 0.2;
-                                oz = dz / len * 0.2;
+                                const len = Math.sqrt(d) || 1;
+                                ux = dx / len;
+                                uz = dz / len;
                             }
                         }
-                        const a2x = ax + ox;
-                        const a2z = az + oz;
-                        const b2x = bx + ox;
-                        const b2z = bz + oz;
+                        const half = chunkSize * 0.5;
+                        const border = [ax, bx].some(v => Math.abs(Math.abs(v) - half) < 0.08)
+                            || [az, bz].some(v => Math.abs(Math.abs(v) - half) < 0.08);
+                        const reach = border ? 1.8 : 1.05;
+                        const a2x = ax + ux * reach;
+                        const a2z = az + uz * reach;
+                        const b2x = bx + ux * reach;
+                        const b2z = bz + uz * reach;
+                        const a1x = ax - ux * 0.35;
+                        const a1z = az - uz * 0.35;
+                        const b1x = bx - ux * 0.35;
+                        const b1z = bz - uz * 0.35;
                         wall.push(
-                            ax, ay + 0.05, az, bx, by + 0.05, bz, b2x, floor, b2z,
-                            ax, ay + 0.05, az, b2x, floor, b2z, a2x, floor, a2z
+                            a1x, ay + 0.08, a1z, b1x, by + 0.08, b1z, b2x, floor, b2z,
+                            a1x, ay + 0.08, a1z, b2x, floor, b2z, a2x, floor, a2z
                         );
                     }
                     if (wall.length) {
