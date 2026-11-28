@@ -3925,6 +3925,7 @@ function craftStatus(player) {
         name: recipe ? recipe.name : 'Item',
         made: job.made,
         total: job.total,
+        set: recipe ? recipe.set : '',
         ms: 3000,
         until: job.nextAt
     };

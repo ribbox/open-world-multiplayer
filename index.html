@@ -642,8 +642,14 @@
         }
         .craft-actions { display: flex; gap: 4px; flex: none; }
         .craft-have { color: #3dcc78; }
-        .craft-job { margin: 0 0 8px; }
-        .craft-job .craft-actions { justify-content: space-between; margin-bottom: 4px; }
+        .craft-skill-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .craft-sweep {
+            position: absolute; top: 0; bottom: 0; width: 16%;
+            border: 2px solid #fff6c8; border-radius: 5px; box-sizing: border-box;
+            background: rgba(255, 244, 194, 0.2);
+            box-shadow: 0 0 8px rgba(255, 229, 138, 0.9);
+            pointer-events: none;
+        }
         .text-btn { padding: 3px 8px; }
         .text-btn:disabled { opacity: 0.45; cursor: default; }
         #sheetClose { float: right; }
@@ -10909,14 +10915,27 @@
                 if (over <= 0) return base;
                 return Math.max(1, Math.ceil(base * (40 - over) / 40));
             }
-            function craftSkillBlock(name, skill) {
+            function craftSkillBlock(name, skill, crafting) {
                 const box = document.createElement('div');
                 box.className = 'craft-skill';
+                const head = document.createElement('div');
+                head.className = 'craft-skill-head';
                 const title = document.createElement('div');
                 title.textContent = name;
+                head.appendChild(title);
+                if (crafting) {
+                    const cancel = document.createElement('button');
+                    cancel.type = 'button';
+                    cancel.className = 'text-btn';
+                    cancel.textContent = 'Cancel';
+                    cancel.addEventListener('click', () => sendCharacter('craft', { cancel: true }));
+                    head.appendChild(cancel);
+                }
                 const level = document.createElement('div');
                 level.className = 'craft-level';
-                level.textContent = 'Level ' + skill.level;
+                if (crafting) level.id = 'craftJobLabel';
+                level.dataset.level = String(skill.level);
+                level.textContent = 'Level ' + skill.level + (crafting ? ' · ' + craftJob.name + ' ' + (Math.min(craftJob.total, (craftJob.made || 0) + 1)) + '/' + craftJob.total : '');
                 const track = document.createElement('div');
                 track.className = 'craft-track';
                 const fill = document.createElement('div');
@@ -10924,7 +10943,16 @@
                 const need = xpToNextCraft(skill.level);
                 fill.style.width = (skill.level >= 300 ? 100 : Math.max(0, Math.min(100, (skill.xp / need) * 100))) + '%';
                 track.appendChild(fill);
-                box.appendChild(title);
+                if (crafting) {
+                    const sweep = document.createElement('div');
+                    sweep.id = 'craftJobSweep';
+                    sweep.className = 'craft-sweep';
+                    const span = craftJob.ms || 3000;
+                    const p = Math.max(0, Math.min(1, (Date.now() - craftMark) / span));
+                    sweep.style.left = (p * 84) + '%';
+                    track.appendChild(sweep);
+                }
+                box.appendChild(head);
                 box.appendChild(level);
                 box.appendChild(track);
                 return box;
@@ -10971,35 +10999,20 @@
                 }
             }
             let craftJob = null;
+            let craftMark = 0;
+            function takeCraft(next) {
+                if (!next) {
+                    craftJob = null;
+                    return;
+                }
+                const same = craftJob && craftJob.recipe === next.recipe && craftJob.made === next.made && craftJob.total === next.total;
+                if (!same) craftMark = Date.now();
+                craftJob = next;
+            }
             function renderCraft(body) {
                 const craft = character.craft || { sets: {}, recipes: {} };
                 const known = new Set(character.recipes || []);
                 const skills = character.craftSkill || {};
-                if (craftJob) {
-                    const job = document.createElement('div');
-                    job.className = 'craft-job';
-                    const head = document.createElement('div');
-                    head.className = 'craft-actions';
-                    const label = document.createElement('div');
-                    label.id = 'craftJobLabel';
-                    label.textContent = 'Crafting ' + craftJob.name;
-                    const cancel = document.createElement('button');
-                    cancel.type = 'button';
-                    cancel.className = 'text-btn';
-                    cancel.textContent = 'Cancel';
-                    cancel.addEventListener('click', () => sendCharacter('craft', { cancel: true }));
-                    head.appendChild(label);
-                    head.appendChild(cancel);
-                    const track = document.createElement('div');
-                    track.className = 'craft-track';
-                    const fill = document.createElement('div');
-                    fill.id = 'craftJobFill';
-                    fill.className = 'craft-fill';
-                    track.appendChild(fill);
-                    job.appendChild(head);
-                    job.appendChild(track);
-                    body.appendChild(job);
-                }
                 const note = document.createElement('div');
                 note.textContent = 'Each item takes 3 seconds. Make the parts first. Making a part raises the skill too. x1, x10, or all you have materials for.';
                 body.appendChild(note);
@@ -11052,7 +11065,7 @@
                 const setId = craftSetTab;
                 const rows = groups[setId] || [];
                 const skill = skills[setId] || { level: 1, xp: 0, tiers: [0] };
-                body.appendChild(craftSkillBlock((craft.sets[setId] && craft.sets[setId].name) || setId, skill));
+                body.appendChild(craftSkillBlock((craft.sets[setId] && craft.sets[setId].name) || setId, skill, !!(craftJob && craftJob.set === setId)));
                 if (craftKindTab !== 'parts' && craftKindTab !== 'items') craftKindTab = 'parts';
                 const parts = rows.filter(([, recipe]) => recipe.part);
                 const items = rows.filter(([, recipe]) => !recipe.part);
@@ -11492,12 +11505,15 @@
                 const board = document.getElementById('market');
                 if (board && board.classList.contains('open') && !nearestRole('broker')) board.classList.remove('open');
                 if (craftJob) {
-                    const fill = document.getElementById('craftJobFill');
+                    const sweep = document.getElementById('craftJobSweep');
                     const label = document.getElementById('craftJobLabel');
                     const span = craftJob.ms || 3000;
-                    const left = Math.max(0, (craftJob.until || 0) - Date.now());
-                    if (fill) fill.style.width = Math.max(0, Math.min(100, (1 - left / span) * 100)) + '%';
-                    if (label) label.textContent = 'Crafting ' + craftJob.name + ' ' + (Math.min(craftJob.total, craftJob.made + 1)) + '/' + craftJob.total;
+                    const p = Math.max(0, Math.min(1, (Date.now() - craftMark) / span));
+                    if (sweep) sweep.style.left = (p * 84) + '%';
+                    if (label) {
+                        const text = 'Level ' + (label.dataset.level || '') + ' · ' + craftJob.name + ' ' + (Math.min(craftJob.total, craftJob.made + 1)) + '/' + craftJob.total;
+                        if (label.textContent !== text) label.textContent = text;
+                    }
                 }
                 const delta = Math.min(clock.getDelta(), 0.05);
 
@@ -13063,7 +13079,7 @@
                             }
                         }
                     } else if (data.type === 'character') {
-                        if (Object.prototype.hasOwnProperty.call(data, 'craft')) craftJob = data.craft || null;
+                        if (Object.prototype.hasOwnProperty.call(data, 'craft')) takeCraft(data.craft || null);
                         if (data.inventory) applyInventory(data.inventory);
                         applyStats(data);
                         if (Array.isArray(data.actionbar)) actionBar = data.actionbar;
