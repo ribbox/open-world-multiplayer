@@ -5816,8 +5816,8 @@
                     }
                     geo.setIndex(kept);
                     const wall = [];
-                    for (const key of cutEdges.keys()) {
-                        if (!keptEdges.has(key)) continue;
+                    for (const [key, n] of cutEdges) {
+                        if (n !== 1) continue;
                         const [ia, ib] = key.split('_').map(Number);
                         const ax = pos.getX(ia);
                         const ay = pos.getY(ia);
@@ -5825,8 +5825,31 @@
                         const bx = pos.getX(ib);
                         const by = pos.getY(ib);
                         const bz = pos.getZ(ib);
-                        const floor = pondFloor(cx * chunkSize + (ax + bx) * 0.5, cz * chunkSize + (az + bz) * 0.5, ponds);
-                        wall.push(ax, ay, az, bx, by, bz, bx, floor, bz, ax, ay, az, bx, floor, bz, ax, floor, az);
+                        const mx = cx * chunkSize + (ax + bx) * 0.5;
+                        const mz = cz * chunkSize + (az + bz) * 0.5;
+                        const floor = pondFloor(mx, mz, ponds);
+                        let ox = 0;
+                        let oz = 0;
+                        let best = Infinity;
+                        for (const spot of ponds) {
+                            const dx = mx - spot.x;
+                            const dz = mz - spot.z;
+                            const d = Math.abs(dx) + Math.abs(dz);
+                            if (d < best) {
+                                best = d;
+                                const len = Math.hypot(dx, dz) || 1;
+                                ox = dx / len * 0.2;
+                                oz = dz / len * 0.2;
+                            }
+                        }
+                        const a2x = ax + ox;
+                        const a2z = az + oz;
+                        const b2x = bx + ox;
+                        const b2z = bz + oz;
+                        wall.push(
+                            ax, ay + 0.05, az, bx, by + 0.05, bz, b2x, floor, b2z,
+                            ax, ay + 0.05, az, b2x, floor, b2z, a2x, floor, a2z
+                        );
                     }
                     if (wall.length) {
                         const wallGeo = new THREE.BufferGeometry();
