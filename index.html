@@ -2660,6 +2660,11 @@
                 treeTemplate = fitProp(gltf.scene);
                 dressChunks();
             }, undefined, (err) => console.warn('Tree model failed', err));
+            let mangroveTemplate = null;
+            loader.load('/models/mangrove-cluster.glb', (gltf) => {
+                mangroveTemplate = fitProp(gltf.scene);
+                refreshSwampTrees();
+            }, undefined, (err) => console.warn('Mangrove cluster failed', err));
             loader.load('/models/gather-tree.glb', (gltf) => {
                 gatherTreeTemplate = fitProp(gltf.scene);
                 dressChunks();
@@ -5963,7 +5968,10 @@
 
                     const meshes = [];
                     if (item.type === 'tree' || item.type === 'plain-tree') {
-                        const template = item.type === 'tree' ? (gatherTreeTemplate || treeTemplate) : treeTemplate;
+                        const theme = cachedTheme(item.x, item.z);
+                        const template = theme && theme.id === 'swamp' && mangroveTemplate
+                            ? mangroveTemplate
+                            : item.type === 'tree' ? (gatherTreeTemplate || treeTemplate) : treeTemplate;
                         if (!template) continue;
                         const scale = item.type === 'tree' ? 4.4 : 4.6 + Math.abs(Math.sin(item.x * 0.17 + item.z)) * 1.3;
                         const tree = placeProp(template, item, scale);
@@ -6025,6 +6033,26 @@
                     colliderById.set(item.id, collider);
                     placed.add(item.id);
                 }
+            }
+
+            function refreshSwampTrees() {
+                if (!mangroveTemplate) return;
+                for (const data of loadedChunks.values()) {
+                    if (!data.placed) data.placed = new Set(data.colliders.map(item => item.id));
+                    for (let i = data.colliders.length - 1; i >= 0; i--) {
+                        const collider = data.colliders[i];
+                        if (collider.type !== 'tree' && collider.type !== 'plain-tree') continue;
+                        const theme = cachedTheme(collider.x, collider.z);
+                        if (!theme || theme.id !== 'swamp') continue;
+                        for (const mesh of collider.meshes) data.group.remove(mesh);
+                        const idx = allColliders.indexOf(collider);
+                        if (idx !== -1) allColliders.splice(idx, 1);
+                        colliderById.delete(collider.id);
+                        data.colliders.splice(i, 1);
+                        data.placed.delete(collider.id);
+                    }
+                }
+                dressChunks();
             }
 
             const dressQueue = [];
