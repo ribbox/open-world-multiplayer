@@ -5800,75 +5800,52 @@
                 if (ponds.length && geo.index) {
                     const src = geo.index;
                     const kept = [];
-                    const cut = [];
-                    const countEdge = (map, i, j) => {
-                        const k = i < j ? i + '_' + j : j + '_' + i;
-                        map.set(k, (map.get(k) || 0) + 1);
-                    };
-                    const keptEdges = new Map();
-                    const cutEdges = new Map();
                     for (let t = 0; t < src.count; t += 3) {
                         const a = src.getX(t);
                         const b = src.getX(t + 1);
                         const c = src.getX(t + 2);
                         const mx = cx * chunkSize + (pos.getX(a) + pos.getX(b) + pos.getX(c)) / 3;
                         const mz = cz * chunkSize + (pos.getZ(a) + pos.getZ(b) + pos.getZ(c)) / 3;
-                        if (overPond(mx, mz, ponds)) {
-                            cut.push(a, b, c);
-                            countEdge(cutEdges, a, b);
-                            countEdge(cutEdges, b, c);
-                            countEdge(cutEdges, c, a);
-                        } else {
-                            kept.push(a, b, c);
-                            countEdge(keptEdges, a, b);
-                            countEdge(keptEdges, b, c);
-                            countEdge(keptEdges, c, a);
-                        }
+                        if (overPond(mx, mz, ponds)) continue;
+                        kept.push(a, b, c);
                     }
                     geo.setIndex(kept);
                     const wall = [];
-                    for (const [key, n] of cutEdges) {
-                        if (n !== 1) continue;
-                        const [ia, ib] = key.split('_').map(Number);
-                        const ax = pos.getX(ia);
-                        const ay = pos.getY(ia);
-                        const az = pos.getZ(ia);
-                        const bx = pos.getX(ib);
-                        const by = pos.getY(ib);
-                        const bz = pos.getZ(ib);
-                        const mx = cx * chunkSize + (ax + bx) * 0.5;
-                        const mz = cz * chunkSize + (az + bz) * 0.5;
-                        const floor = pondFloor(mx, mz, ponds);
-                        let ux = 0;
-                        let uz = 0;
-                        let best = Infinity;
-                        for (const spot of ponds) {
-                            const dx = mx - spot.x;
-                            const dz = mz - spot.z;
-                            const d = dx * dx + dz * dz;
-                            if (d < best) {
-                                best = d;
-                                const len = Math.sqrt(d) || 1;
-                                ux = dx / len;
-                                uz = dz / len;
+                    const half = chunkSize * 0.5;
+                    const pushWall = (ax, ay, az, bx, by, bz, floor) => {
+                        wall.push(
+                            ax, ay + 0.05, az, bx, by + 0.05, bz, bx, floor, bz,
+                            ax, ay + 0.05, az, bx, floor, bz, ax, floor, az
+                        );
+                    };
+                    for (const spot of ponds) {
+                        const y = pondFloor(spot.x, spot.z, ponds);
+                        const edge = 8.9;
+                        const steps = 8;
+                        const sides = [
+                            [-edge, -edge, edge, -edge],
+                            [edge, -edge, edge, edge],
+                            [edge, edge, -edge, edge],
+                            [-edge, edge, -edge, -edge]
+                        ];
+                        for (const [x0, z0, x1, z1] of sides) {
+                            for (let i = 0; i < steps; i++) {
+                                const t0 = i / steps;
+                                const t1 = (i + 1) / steps;
+                                const wx0 = spot.x + x0 + (x1 - x0) * t0;
+                                const wz0 = spot.z + z0 + (z1 - z0) * t0;
+                                const wx1 = spot.x + x0 + (x1 - x0) * t1;
+                                const wz1 = spot.z + z0 + (z1 - z0) * t1;
+                                const lx0 = wx0 - cx * chunkSize;
+                                const lz0 = wz0 - cz * chunkSize;
+                                const lx1 = wx1 - cx * chunkSize;
+                                const lz1 = wz1 - cz * chunkSize;
+                                const midX = (lx0 + lx1) * 0.5;
+                                const midZ = (lz0 + lz1) * 0.5;
+                                if (Math.abs(midX) > half + 0.2 || Math.abs(midZ) > half + 0.2) continue;
+                                pushWall(lx0, terrainHeight(wx0, wz0), lz0, lx1, terrainHeight(wx1, wz1), lz1, y);
                             }
                         }
-                        const half = chunkSize * 0.5;
-                        const border = [ax, bx].some(v => Math.abs(Math.abs(v) - half) < 0.08)
-                            || [az, bz].some(v => Math.abs(Math.abs(v) - half) < 0.08);
-                        const reach = border ? 1.8 : 1.05;
-                        const a2x = ax + ux * reach;
-                        const a2z = az + uz * reach;
-                        const b2x = bx + ux * reach;
-                        const b2z = bz + uz * reach;
-                        const a1x = ax - ux * 0.35;
-                        const a1z = az - uz * 0.35;
-                        const b1x = bx - ux * 0.35;
-                        const b1z = bz - uz * 0.35;
-                        wall.push(
-                            a1x, ay + 0.08, a1z, b1x, by + 0.08, b1z, b2x, floor, b2z,
-                            a1x, ay + 0.08, a1z, b2x, floor, b2z, a2x, floor, a2z
-                        );
                     }
                     if (wall.length) {
                         const wallGeo = new THREE.BufferGeometry();
